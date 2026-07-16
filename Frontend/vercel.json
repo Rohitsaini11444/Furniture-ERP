@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://rohitsaini.pythonanywhere.com/api/:path*"
+    },
+    {
+      "source": "/media/:path*",
+      "destination": "https://rohitsaini.pythonanywhere.com/media/:path*"
+    }
+  ]
+}
