@@ -110,24 +110,27 @@ class SampleImageSerializer(serializers.ModelSerializer):
         return None
 
 
-class SampleSerializer(serializers.ModelSerializer):
-    images = SampleImageSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Sample
-        fields = [
-            'id', 'sample_id', 'style_no', 'buyer_code', 'product_name',
-            'wood_type', 'finish_color', 'remark',
-            'size_length', 'size_breadth', 'size_height',
-            'images',
-        ]
-        read_only_fields = ['id', 'images']
-
-
 class BuyerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Buyer
         fields = '__all__'
+
+
+class SampleSerializer(serializers.ModelSerializer):
+    images = SampleImageSerializer(many=True, read_only=True)
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = Sample
+        fields = [
+            'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
+            'material', 'finish_color', 'remark',
+            'cbm', 'usd', 'vendor_name',
+            'size_length', 'size_breadth', 'size_height',
+            'size_length_inch', 'size_breadth_inch', 'size_height_inch',
+            'images',
+        ]
+        read_only_fields = ['id', 'images', 'buyer_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
 
 
 class BuyerMasterSerializer(serializers.ModelSerializer):

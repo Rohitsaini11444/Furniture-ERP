@@ -139,13 +139,13 @@ class SampleViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = Sample.objects.prefetch_related('images').all()
-        buyer_code = self.request.query_params.get('buyer_code')
-        wood_type = self.request.query_params.get('wood_type')
-        if buyer_code:
-            qs = qs.filter(buyer_code__icontains=buyer_code)
-        if wood_type:
-            qs = qs.filter(wood_type__icontains=wood_type)
+        qs = Sample.objects.select_related('buyer').prefetch_related('images').all()
+        buyer = self.request.query_params.get('buyer')
+        material = self.request.query_params.get('material')
+        if buyer:
+            qs = qs.filter(buyer_id=buyer)
+        if material:
+            qs = qs.filter(material__icontains=material)
         return qs
 
     def get_serializer_context(self):

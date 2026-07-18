@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search } from 'lucide-react';
+import { X, Search, ArrowLeft } from 'lucide-react';
 
 function SizeGroup({ label, prefix, values, onChange }) {
   return (
@@ -27,10 +28,12 @@ function SizeGroup({ label, prefix, values, onChange }) {
 }
 
 function BuyerMasters() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
   const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
@@ -111,9 +114,9 @@ function BuyerMasters() {
         ...prev,
         sample: sampleId,
         style_no: selectedSample.style_no || '',
-        buyer_code: selectedSample.buyer_code || '',
+        buyer_code: selectedSample.buyer_detail?.code || '',
         product_name: selectedSample.product_name || '',
-        wood_type: selectedSample.wood_type || '',
+        wood_type: selectedSample.material || '',
         finish_color: selectedSample.finish_color || '',
         size_length: selectedSample.size_length || '',
         size_breadth: selectedSample.size_breadth || '',
@@ -123,28 +126,44 @@ function BuyerMasters() {
     }
   };
 
+  // Load style on id change (routing edit)
+  useEffect(() => {
+    if (id && id !== 'new') {
+      api.get(`/buyer-masters/${id}/`)
+        .then(res => {
+          const bm = res.data;
+          setFormData({
+            buyer: bm.buyer,
+            sample: bm.sample || '',
+            style_no: bm.style_no,
+            buyer_code: bm.buyer_code,
+            product_name: bm.product_name,
+            wood_type: bm.wood_type,
+            finish_color: bm.finish_color,
+            size_length: bm.size_length || '',
+            size_breadth: bm.size_breadth || '',
+            size_height: bm.size_height || '',
+            remark: bm.remark || ''
+          });
+          setEditingId(bm.id);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setFormData(emptyForm);
+      setEditingId(null);
+    }
+  }, [id]);
+
   const openCreateModal = () => {
-    setFormData(emptyForm);
-    setEditingId(null);
-    setIsModalOpen(true);
+    navigate('/buyer-masters/new');
   };
 
   const openEditModal = (bm) => {
-    setFormData({
-      buyer: bm.buyer,
-      sample: bm.sample || '',
-      style_no: bm.style_no,
-      buyer_code: bm.buyer_code,
-      product_name: bm.product_name,
-      wood_type: bm.wood_type,
-      finish_color: bm.finish_color,
-      size_length: bm.size_length || '',
-      size_breadth: bm.size_breadth || '',
-      size_height: bm.size_height || '',
-      remark: bm.remark || ''
-    });
-    setEditingId(bm.id);
-    setIsModalOpen(true);
+    navigate(`/buyer-masters/${bm.id}`);
+  };
+
+  const closeModal = () => {
+    navigate('/buyer-masters');
   };
 
   const handleSubmit = (e) => {
@@ -159,8 +178,7 @@ function BuyerMasters() {
 
     request
       .then(() => {
-        setIsModalOpen(false);
-        setEditingId(null);
+        closeModal();
         fetchData();
       })
       .catch(err => console.error(err));
@@ -183,115 +201,33 @@ function BuyerMasters() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>Buyer Master</h2>
-        <button onClick={openCreateModal} className="btn-primary">+ Add New Style</button>
-      </div>
+      {id ? (
+        <div className="new-page-form" style={{ padding: '1rem 0' }}>
+          <button 
+            onClick={closeModal} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              background: 'none', 
+              border: 'none', 
+              color: '#8b5a2b', 
+              fontWeight: 600, 
+              cursor: 'pointer',
+              marginBottom: '1.5rem',
+              padding: 0,
+              fontSize: '1rem'
+            }}
+          >
+            <ArrowLeft size={18} /> Back to Buyer Master
+          </button>
 
-      {/* Filter / Search & Export Bar */}
-      <div className="filter-bar">
-        <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexGrow: 1, minWidth: '240px' }}>
-            <Search size={16} className="filter-icon" />
-            <span className="filter-label">Search:</span>
-            <input
-              type="text"
-              className="filter-input"
-              placeholder="Search by Style No, Product Name..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{ flexGrow: 1 }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <span className="filter-label">Export Buyer Master:</span>
-            <select
-              className="filter-input"
-              value={exportBuyerId}
-              onChange={e => setExportBuyerId(e.target.value)}
-              style={{ minWidth: '180px' }}
-            >
-              <option value="">Select Buyer...</option>
-              {buyers.map(b => (
-                <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-              ))}
-            </select>
-            <button
-              onClick={handleDownloadExcel}
-              className="btn-primary"
-              disabled={!exportBuyerId}
-              style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
-            >
-              Download Excel
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Buyer</th>
-              <th>Style No</th>
-              <th>Product Name</th>
-              <th>Wood Type</th>
-              <th>Finish/Color</th>
-              <th>Dimensions</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredMasters.map(bm => (
-              <tr key={bm.id}>
-                <td>
-                  <strong>{bm.buyer_detail?.name}</strong>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
-                </td>
-                <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
-                <td>{bm.product_name}</td>
-                <td>{bm.wood_type}</td>
-                <td>{bm.finish_color}</td>
-                <td>
-                  {bm.size_length && bm.size_breadth && bm.size_height ? (
-                    <span style={{ fontSize: '0.85rem' }}>
-                      {bm.size_length} × {bm.size_breadth} × {bm.size_height} cm
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => openEditModal(bm)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                    <button onClick={() => handleDelete(bm.id, bm.style_no)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredMasters.length === 0 && (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  No styles found in Buyer Master.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingId ? '✏️ Edit Buyer Master Style' : '+ Create Buyer Master Style'}</h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
+          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Buyer Master Style' : '+ Create Buyer Master Style'}</h2>
             </div>
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: 0 }}>
               <form onSubmit={handleSubmit}>
-
                 <div className="form-section">
                   <h3 className="form-section-title">🔗 Linkings</h3>
                   <div className="form-grid-2">
@@ -340,7 +276,7 @@ function BuyerMasters() {
                       <label className="form-label">Finish / Color *</label>
                       <input required type="text" name="finish_color" className="form-input" value={formData.finish_color} onChange={handleChange} placeholder="e.g. Natural Wash" />
                     </div>
-                    <div className="form-group">
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
                       <label className="form-label">Remark</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
                     </div>
@@ -358,13 +294,111 @@ function BuyerMasters() {
                 </div>
 
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                   <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Style'}</button>
                 </div>
               </form>
             </div>
           </div>
         </div>
+      ) : (
+        <>
+          <div className="page-header">
+            <h2>Buyer Master Style Registry</h2>
+            <button onClick={openCreateModal} className="btn-primary">+ Register New Style</button>
+          </div>
+
+          <div className="filter-bar">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexGrow: 1 }}>
+                <Search size={18} color="#64748b" />
+                <input
+                  type="text"
+                  placeholder="Search styles, products, buyers..."
+                  className="filter-input"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{ flexGrow: 1 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <span className="filter-label">Export Buyer Master:</span>
+                <select
+                  className="filter-input"
+                  value={exportBuyerId}
+                  onChange={e => setExportBuyerId(e.target.value)}
+                  style={{ minWidth: '180px' }}
+                >
+                  <option value="">Select Buyer...</option>
+                  {buyers.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleDownloadExcel}
+                  className="btn-primary"
+                  disabled={!exportBuyerId}
+                  style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
+                >
+                  Download Excel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Buyer</th>
+                  <th>Style No</th>
+                  <th>Product Name</th>
+                  <th>Wood Type</th>
+                  <th>Finish/Color</th>
+                  <th>Dimensions</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMasters.map(bm => (
+                  <tr key={bm.id}>
+                    <td>
+                      <strong>{bm.buyer_detail?.name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
+                    </td>
+                    <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
+                    <td>{bm.product_name}</td>
+                    <td>{bm.wood_type}</td>
+                    <td>{bm.finish_color}</td>
+                    <td>
+                      {bm.size_length && bm.size_breadth && bm.size_height ? (
+                        <span style={{ fontSize: '0.85rem' }}>
+                          {bm.size_length} × {bm.size_breadth} × {bm.size_height} cm
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => openEditModal(bm)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                        <button onClick={() => handleDelete(bm.id, bm.style_no)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredMasters.length === 0 && (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      No styles found in Buyer Master.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

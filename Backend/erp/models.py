@@ -79,16 +79,45 @@ class Sample(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sample_id = models.CharField(max_length=50, unique=True)
     style_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Style No.')
-    buyer_code = models.CharField(max_length=50)
+    buyer = models.ForeignKey('Buyer', on_delete=models.SET_NULL, null=True, blank=True, related_name='samples', verbose_name='Buyer')
     product_name = models.CharField(max_length=100)
-    wood_type = models.CharField(max_length=50)
+    material = models.CharField(max_length=150, blank=True, null=True, verbose_name='Material')
     finish_color = models.CharField(max_length=150)
     remark = models.TextField(blank=True, null=True)
+
+    # New fields
+    cbm = models.DecimalField(max_digits=10, decimal_places=4, blank=True, null=True, verbose_name='CBM')
+    usd = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name='Price (USD)')
+    vendor_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Vendor Name')
 
     # Product size in centimetres (L × B × H)
     size_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (cm)')
     size_breadth = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Breadth (cm)')
     size_height = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (cm)')
+
+    # Product size in inches (auto-calculated from cm)
+    size_length_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (in)')
+    size_breadth_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Breadth (in)')
+    size_height_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (in)')
+
+    def save(self, *args, **kwargs):
+        from decimal import Decimal
+        if self.size_length:
+            self.size_length_inch = round(Decimal(str(self.size_length)) / Decimal('2.54'), 2)
+        else:
+            self.size_length_inch = None
+
+        if self.size_breadth:
+            self.size_breadth_inch = round(Decimal(str(self.size_breadth)) / Decimal('2.54'), 2)
+        else:
+            self.size_breadth_inch = None
+
+        if self.size_height:
+            self.size_height_inch = round(Decimal(str(self.size_height)) / Decimal('2.54'), 2)
+        else:
+            self.size_height_inch = None
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.sample_id} - {self.product_name}"
@@ -142,6 +171,17 @@ class PO(models.Model):
 
     units = models.IntegerField(blank=True, null=True, verbose_name='Units')
     remark = models.TextField(blank=True, null=True, verbose_name='Remarks')
+    status = models.CharField(
+        max_length=50,
+        default='Confirmed',
+        choices=[
+            ('Confirmed', 'Confirmed'),
+            ('Production', 'Production'),
+            ('Dispatched', 'Dispatched'),
+            ('Completed', 'Completed'),
+        ],
+        verbose_name='Status'
+    )
 
     # Box size in centimetres (L × B × H)
     box_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Box Length (cm)')

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search } from 'lucide-react';
+import { X, Search, ArrowLeft } from 'lucide-react';
 
 function SizeGroup({ label, prefix, values, onChange }) {
   return (
@@ -35,10 +36,12 @@ function calcBoxCbm(l, b, h) {
 }
 
 function POs() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
   const [pos, setPos] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [buyerMasters, setBuyerMasters] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
@@ -79,7 +82,8 @@ function POs() {
     box_breadth: '',
     box_height: '',
     net_weight: '',
-    gross_weight: ''
+    gross_weight: '',
+    status: 'Confirmed'
   };
   const [formData, setFormData] = useState(emptyForm);
 
@@ -101,6 +105,38 @@ function POs() {
     fetchData();
   }, []);
 
+  // Load PO on id change (routing edit)
+  useEffect(() => {
+    if (id && id !== 'new') {
+      api.get(`/pos/${id}/`)
+        .then(res => {
+          const p = res.data;
+          setFormData({
+            buyer: p.buyer,
+            buyer_master: p.buyer_master,
+            po: p.po || '',
+            units: p.units || '',
+            remark: p.remark || '',
+            cbm: p.cbm || '',
+            price_usd: p.price_usd || '',
+            total_cbm: p.total_cbm || '',
+            total_amount: p.total_amount || '',
+            box_length: p.box_length || '',
+            box_breadth: p.box_breadth || '',
+            box_height: p.box_height || '',
+            net_weight: p.net_weight || '',
+            gross_weight: p.gross_weight || '',
+            status: p.status || 'Confirmed'
+          });
+          setEditingId(p.id);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setFormData(emptyForm);
+      setEditingId(null);
+    }
+  }, [id]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -110,30 +146,15 @@ function POs() {
   };
 
   const openCreateModal = () => {
-    setFormData(emptyForm);
-    setEditingId(null);
-    setIsModalOpen(true);
+    navigate('/pos/new');
   };
 
   const openEditModal = (p) => {
-    setFormData({
-      buyer: p.buyer,
-      buyer_master: p.buyer_master,
-      po: p.po || '',
-      units: p.units || '',
-      remark: p.remark || '',
-      cbm: p.cbm || '',
-      price_usd: p.price_usd || '',
-      total_cbm: p.total_cbm || '',
-      total_amount: p.total_amount || '',
-      box_length: p.box_length || '',
-      box_breadth: p.box_breadth || '',
-      box_height: p.box_height || '',
-      net_weight: p.net_weight || '',
-      gross_weight: p.gross_weight || ''
-    });
-    setEditingId(p.id);
-    setIsModalOpen(true);
+    navigate(`/pos/${p.id}`);
+  };
+
+  const closeModal = () => {
+    navigate('/pos');
   };
 
   const handleSubmit = (e) => {
@@ -144,8 +165,7 @@ function POs() {
 
     request
       .then(() => {
-        setIsModalOpen(false);
-        setEditingId(null);
+        closeModal();
         fetchData();
       })
       .catch(err => console.error(err));
@@ -172,111 +192,33 @@ function POs() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>Purchase Orders (PO)</h2>
-        <button onClick={openCreateModal} className="btn-primary">+ Create New PO</button>
-      </div>
+      {id ? (
+        <div className="new-page-form" style={{ padding: '1rem 0' }}>
+          <button 
+            onClick={closeModal} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              background: 'none', 
+              border: 'none', 
+              color: '#8b5a2b', 
+              fontWeight: 600, 
+              cursor: 'pointer',
+              marginBottom: '1.5rem',
+              padding: 0,
+              fontSize: '1rem'
+            }}
+          >
+            <ArrowLeft size={18} /> Back to POs
+          </button>
 
-      {/* Filter / Search & Export Bar */}
-      <div className="filter-bar">
-        <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexGrow: 1, minWidth: '240px' }}>
-            <Search size={16} className="filter-icon" />
-            <span className="filter-label">Search:</span>
-            <input
-              type="text"
-              className="filter-input"
-              placeholder="Search by PO No, Style No..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{ flexGrow: 1 }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <span className="filter-label">Export POs:</span>
-            <select
-              className="filter-input"
-              value={exportBuyerId}
-              onChange={e => setExportBuyerId(e.target.value)}
-              style={{ minWidth: '180px' }}
-            >
-              <option value="">Select Buyer...</option>
-              {buyers.map(b => (
-                <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-              ))}
-            </select>
-            <button
-              onClick={handleDownloadExcel}
-              className="btn-primary"
-              disabled={!exportBuyerId}
-              style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
-            >
-              Download Excel
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>PO #</th>
-              <th>Buyer</th>
-              <th>Style No</th>
-              <th>Product Name</th>
-              <th>CBM</th>
-              <th>Price (USD)</th>
-              <th>Total CBM</th>
-              <th>Total Amount</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPOs.map(p => (
-              <tr key={p.id}>
-                <td><strong>{p.po || '—'}</strong></td>
-                <td>
-                  <strong>{p.buyer_detail?.name}</strong>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {p.buyer_detail?.code}</div>
-                </td>
-                <td><span className="navbar-role-badge admin-badge">{p.buyer_master_detail?.style_no}</span></td>
-                <td>{p.buyer_master_detail?.product_name}</td>
-                <td>{p.cbm}</td>
-                <td>${p.price_usd}</td>
-                <td>{p.total_cbm}</td>
-                <td>${p.total_amount}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => openEditModal(p)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                    <button onClick={() => handleDelete(p.id, p.po)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredPOs.length === 0 && (
-              <tr>
-                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  No POs found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingId ? '✏️ Edit PO' : '+ Create New PO'}</h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
+          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit PO' : '+ Create New PO'}</h2>
             </div>
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: 0 }}>
               <form onSubmit={handleSubmit}>
-                
                 <div className="form-section">
                   <h3 className="form-section-title">🔗 Linkings</h3>
                   <div className="form-grid-2">
@@ -331,6 +273,15 @@ function POs() {
                       <label className="form-label">Units</label>
                       <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 20" />
                     </div>
+                    <div className="form-group">
+                      <label className="form-label">Status *</label>
+                      <select required name="status" className="form-input" value={formData.status} onChange={handleChange}>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Production">Production</option>
+                        <option value="Dispatched">Dispatched</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </div>
                     <div className="form-group" style={{ gridColumn: 'span 2' }}>
                       <label className="form-label">Remarks</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
@@ -369,13 +320,121 @@ function POs() {
                 </div>
 
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                   <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create PO'}</button>
                 </div>
               </form>
             </div>
           </div>
         </div>
+      ) : (
+        <>
+          <div className="page-header">
+            <h2>Purchase Orders (PO)</h2>
+            <button onClick={openCreateModal} className="btn-primary">+ Create New PO</button>
+          </div>
+
+          {/* Filter / Search & Export Bar */}
+          <div className="filter-bar">
+            <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexGrow: 1, minWidth: '240px' }}>
+                <Search size={16} className="filter-icon" />
+                <span className="filter-label">Search:</span>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="Search by PO No, Style No..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{ flexGrow: 1 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <span className="filter-label">Export POs:</span>
+                <select
+                  className="filter-input"
+                  value={exportBuyerId}
+                  onChange={e => setExportBuyerId(e.target.value)}
+                  style={{ minWidth: '180px' }}
+                >
+                  <option value="">Select Buyer...</option>
+                  {buyers.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleDownloadExcel}
+                  className="btn-primary"
+                  disabled={!exportBuyerId}
+                  style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
+                >
+                  Download Excel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>PO #</th>
+                  <th>Buyer</th>
+                  <th>Style No</th>
+                  <th>Product Name</th>
+                  <th>CBM</th>
+                  <th>Price (USD)</th>
+                  <th>Total CBM</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPOs.map(p => (
+                  <tr key={p.id}>
+                    <td><strong>{p.po || '—'}</strong></td>
+                    <td>
+                      <strong>{p.buyer_detail?.name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {p.buyer_detail?.code}</div>
+                    </td>
+                    <td><span className="navbar-role-badge admin-badge">{p.buyer_master_detail?.style_no}</span></td>
+                    <td>{p.buyer_master_detail?.product_name}</td>
+                    <td>{p.cbm}</td>
+                    <td>${p.price_usd}</td>
+                    <td>{p.total_cbm}</td>
+                    <td>${p.total_amount}</td>
+                    <td>
+                      <span 
+                        className="navbar-role-badge" 
+                        style={{
+                          backgroundColor: p.status === 'Confirmed' ? '#dcfce7' : p.status === 'Production' ? '#dbeafe' : p.status === 'Dispatched' ? '#f3e8ff' : '#f3f4f6',
+                          color: p.status === 'Confirmed' ? '#15803d' : p.status === 'Production' ? '#1d4ed8' : p.status === 'Dispatched' ? '#6b21a8' : '#374151'
+                        }}
+                      >
+                        {p.status || 'Confirmed'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => openEditModal(p)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                        <button onClick={() => handleDelete(p.id, p.po)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredPOs.length === 0 && (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      No POs found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

@@ -288,9 +288,12 @@ function AppLayout() {
 
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/samples" element={<ProtectedRoute><Samples /></ProtectedRoute>} />
+          <Route path="/samples/:id" element={<ProtectedRoute><Samples /></ProtectedRoute>} />
           <Route path="/buyers" element={<ProtectedRoute><Buyers /></ProtectedRoute>} />
           <Route path="/buyer-masters" element={<ProtectedRoute><BuyerMasters /></ProtectedRoute>} />
+          <Route path="/buyer-masters/:id" element={<ProtectedRoute><BuyerMasters /></ProtectedRoute>} />
           <Route path="/pos" element={<ProtectedRoute><POs /></ProtectedRoute>} />
+          <Route path="/pos/:id" element={<ProtectedRoute><POs /></ProtectedRoute>} />
           <Route path="/sales-orders" element={<ProtectedRoute><SalesOrders /></ProtectedRoute>} />
           <Route path="/purchase-imos" element={<ProtectedRoute><PurchaseIMOs /></ProtectedRoute>} />
 

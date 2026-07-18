@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// Use relative path — Vite proxy forwards /api → http://127.0.0.1:8000/api
-const API_BASE = 'https://rohitsaini.pythonanywhere.com/api';
+// Dynamically target local dev server or live pythonanywhere backend
+const API_BASE = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://127.0.0.1:8000/api'
+  : 'https://rohitsaini.pythonanywhere.com/api';
 
 const api = axios.create({
   baseURL: API_BASE,

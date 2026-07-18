@@ -26,8 +26,8 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Sample)
 class SampleAdmin(admin.ModelAdmin):
-    list_display = ['sample_id', 'product_name', 'buyer_code', 'wood_type', 'finish_color']
-    search_fields = ['sample_id', 'product_name', 'buyer_code']
+    list_display = ['sample_id', 'product_name', 'buyer', 'material', 'finish_color']
+    search_fields = ['sample_id', 'product_name', 'buyer__name', 'material']
 
 
 @admin.register(SalesOrder)

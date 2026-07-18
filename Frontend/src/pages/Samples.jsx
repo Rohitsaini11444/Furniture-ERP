@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Upload, ImageIcon, Filter } from 'lucide-react';
+import { X, Upload, ImageIcon, Filter, ArrowLeft } from 'lucide-react';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -8,11 +9,14 @@ import { X, Upload, ImageIcon, Filter } from 'lucide-react';
 const emptyForm = {
   sample_id: '',
   style_no: '',
-  buyer_code: '',
+  buyer: '',
   product_name: '',
-  wood_type: '',
+  material: '',
   finish_color: '',
   remark: '',
+  cbm: '',
+  usd: '',
+  vendor_name: '',
   size_length: '',
   size_breadth: '',
   size_height: '',
@@ -124,8 +128,11 @@ function Lightbox({ images, startIndex, onClose }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function Samples() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
   const [samples, setSamples] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [buyers, setBuyers] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
 
@@ -135,32 +142,81 @@ function Samples() {
 
   // Filters
   const [filterBuyer, setFilterBuyer] = useState('');
-  const [filterWood, setFilterWood] = useState('');
+  const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
+  const fetchBuyers = () => {
+    api.get('/buyers/')
+      .then(res => setBuyers(res.data))
+      .catch(err => console.error(err));
+  };
+
   const fetchSamples = useCallback(() => {
     const params = {};
-    if (filterBuyer) params.buyer_code = filterBuyer;
-    if (filterWood) params.wood_type = filterWood;
+    if (filterBuyer) params.buyer = filterBuyer;
+    if (filterMaterial) params.material = filterMaterial;
     api.get('/samples/', { params })
       .then(res => {
         setSamples(res.data);
         setFiltered(res.data);
       })
       .catch(err => console.error(err));
-  }, [filterBuyer, filterWood]);
+  }, [filterBuyer, filterMaterial]);
+
+  useEffect(() => {
+    fetchBuyers();
+  }, []);
 
   useEffect(() => { fetchSamples(); }, [fetchSamples]);
 
   // Local filter (instant feedback while typing)
   useEffect(() => {
     let f = samples;
-    if (filterBuyer) f = f.filter(s => s.buyer_code.toLowerCase().includes(filterBuyer.toLowerCase()));
-    if (filterWood)  f = f.filter(s => s.wood_type.toLowerCase().includes(filterWood.toLowerCase()));
+    if (filterBuyer) f = f.filter(s => s.buyer === filterBuyer);
+    if (filterMaterial) f = f.filter(s => s.material?.toLowerCase().includes(filterMaterial.toLowerCase()));
     setFiltered(f);
-  }, [filterBuyer, filterWood, samples]);
+  }, [filterBuyer, filterMaterial, samples]);
+
+  // Load sample on id change (routing edit)
+  useEffect(() => {
+    if (id && id !== 'new') {
+      api.get(`/samples/${id}/`)
+        .then(res => {
+          const sample = res.data;
+          setFormData({
+            sample_id: sample.sample_id ?? '',
+            style_no: sample.style_no ?? '',
+            buyer: sample.buyer ?? '',
+            product_name: sample.product_name ?? '',
+            material: sample.material ?? '',
+            finish_color: sample.finish_color ?? '',
+            remark: sample.remark ?? '',
+            cbm: sample.cbm ?? '',
+            usd: sample.usd ?? '',
+            vendor_name: sample.vendor_name ?? '',
+            size_length: sample.size_length ?? '',
+            size_breadth: sample.size_breadth ?? '',
+            size_height: sample.size_height ?? '',
+          });
+          const existingImgs = (sample.images || []).map(img => ({
+            id: img.id,
+            image_url: img.image_url,
+            preview: null,
+            file: null,
+            isNew: false,
+          }));
+          setImages(existingImgs);
+          setEditingId(sample.id);
+        })
+        .catch(err => console.error(err));
+    } else {
+      setFormData(emptyForm);
+      setImages([]);
+      setEditingId(null);
+    }
+  }, [id]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
@@ -197,44 +253,18 @@ function Samples() {
   };
 
   // ── Modal open/close ───────────────────────────────────────────────────────
+  // (Now mapping to routing paths)
 
   const openCreateModal = () => {
-    setFormData(emptyForm);
-    setEditingId(null);
-    setImages([]);
-    setIsModalOpen(true);
+    navigate('/samples/new');
   };
 
   const openEditModal = (sample) => {
-    setFormData({
-      sample_id: sample.sample_id ?? '',
-      style_no: sample.style_no ?? '',
-      buyer_code: sample.buyer_code ?? '',
-      product_name: sample.product_name ?? '',
-      wood_type: sample.wood_type ?? '',
-      finish_color: sample.finish_color ?? '',
-      remark: sample.remark ?? '',
-      size_length: sample.size_length ?? '',
-      size_breadth: sample.size_breadth ?? '',
-      size_height: sample.size_height ?? '',
-    });
-    setEditingId(sample.id);
-    // Load existing server images
-    const existingImgs = (sample.images || []).map(img => ({
-      id: img.id,
-      image_url: img.image_url,
-      preview: null,
-      file: null,
-      isNew: false,
-    }));
-    setImages(existingImgs);
-    setIsModalOpen(true);
+    navigate(`/samples/${sample.id}`);
   };
 
   const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingId(null);
-    setImages([]);
+    navigate('/samples');
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -244,7 +274,9 @@ function Samples() {
     try {
       const submitData = new FormData();
       Object.entries(formData).forEach(([k, v]) => {
-        if (v !== '' && v !== null && v !== undefined) {
+        if (k === 'buyer' && v === '') {
+          submitData.append(k, '');
+        } else if (v !== '' && v !== null && v !== undefined) {
           submitData.append(k, v);
         }
       });
@@ -283,123 +315,42 @@ function Samples() {
 
   return (
     <div>
-      {/* Page Header */}
-      <div className="page-header">
-        <h2>Samples</h2>
-        <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
-      </div>
+      {id ? (
+        <div className="new-page-form" style={{ padding: '1rem 0' }}>
+          <button 
+            onClick={closeModal} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              background: 'none', 
+              border: 'none', 
+              color: '#8b5a2b', 
+              fontWeight: 600, 
+              cursor: 'pointer',
+              marginBottom: '1.5rem',
+              padding: 0,
+              fontSize: '1rem'
+            }}
+          >
+            <ArrowLeft size={18} /> Back to Samples
+          </button>
 
-      {/* Filter Bar */}
-      <div className="filter-bar">
-        <div className="filter-bar-inner">
-          <Filter size={16} className="filter-icon" />
-          <span className="filter-label">Filter:</span>
-          <input
-            type="text"
-            className="filter-input"
-            placeholder="Buyer Code..."
-            value={filterBuyer}
-            onChange={e => setFilterBuyer(e.target.value)}
-          />
-          <input
-            type="text"
-            className="filter-input"
-            placeholder="Wood Type..."
-            value={filterWood}
-            onChange={e => setFilterWood(e.target.value)}
-          />
-          {(filterBuyer || filterWood) && (
-            <button
-              className="filter-clear-btn"
-              onClick={() => { setFilterBuyer(''); setFilterWood(''); }}
-            >
-              <X size={14} /> Clear
-            </button>
-          )}
-          <span className="filter-count">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Images</th>
-              <th>Sample ID</th>
-              <th>Style No.</th>
-              <th>Product Name</th>
-              <th>Buyer Code</th>
-              <th>Wood Type</th>
-              <th>Finish/Color</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(s => (
-              <tr
-                key={s.id}
-                onClick={() => openEditModal(s)}
-                style={{ cursor: 'pointer' }}
-                title="Click to edit"
-              >
-                <td>
-                  <div className="table-image-stack">
-                    {(s.images || []).slice(0, 3).map((img, idx) => (
-                      <img
-                        key={img.id}
-                        src={img.image_url}
-                        alt={s.product_name}
-                        className="table-thumb"
-                        style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
-                      />
-                    ))}
-                    {(s.images || []).length === 0 && (
-                      <div className="table-no-img"><ImageIcon size={14} /></div>
-                    )}
-                    {(s.images || []).length > 3 && (
-                      <div className="table-more-imgs">+{s.images.length - 3}</div>
-                    )}
-                  </div>
-                </td>
-                <td>{s.sample_id}</td>
-                <td>{s.style_no || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                <td><strong>{s.product_name}</strong></td>
-                <td>{s.buyer_code}</td>
-                <td>{s.wood_type}</td>
-                <td>{s.finish_color}</td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                  No samples found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content modal-wide" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editingId ? '✏️ Edit Sample' : '+ Create New Sample'}</h2>
-              <button className="modal-close" onClick={closeModal}><X size={20} /></button>
+          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Sample' : '+ Create New Sample'}</h2>
             </div>
-
-            <div className="modal-body">
+            
+            <div className="modal-body" style={{ padding: 0 }}>
               <form onSubmit={handleSubmit}>
-
                 {/* ── Images ──────────────────────────────────────────── */}
                 <div className="form-section">
                   <h3 className="form-section-title">📷 Images</h3>
                   <ImageGrid
-                  images={images}
-                  onRemove={handleImageRemove}
-                  onPreview={(idx) => setLightboxIndex(idx)}
-                />
+                    images={images}
+                    onRemove={handleImageRemove}
+                    onPreview={(idx) => setLightboxIndex(idx)}
+                  />
                   <label className="image-upload-zone">
                     <Upload size={20} />
                     <span>Click or drag to add images</span>
@@ -426,22 +377,39 @@ function Samples() {
                       <input type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-204" />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Buyer Code *</label>
-                      <input required type="text" name="buyer_code" className="form-input" value={formData.buyer_code} onChange={handleChange} placeholder="e.g. BYR-001" />
+                      <label className="form-label">Buyer</label>
+                      <select name="buyer" className="form-input" value={formData.buyer} onChange={handleChange}>
+                        <option value="">Select Buyer...</option>
+                        {buyers.map(b => (
+                          <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Product Name *</label>
                       <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Walnut Dining Table" />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Wood Type *</label>
-                      <input required type="text" name="wood_type" className="form-input" value={formData.wood_type} onChange={handleChange} placeholder="e.g. Teak, Walnut, Oak" />
+                      <label className="form-label">Material *</label>
+                      <input required type="text" name="material" className="form-input" value={formData.material} onChange={handleChange} placeholder="e.g. Teak, Walnut, Oak" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Finish / Color *</label>
                       <input required type="text" name="finish_color" className="form-input" value={formData.finish_color} onChange={handleChange} placeholder="e.g. Matte Natural" />
                     </div>
                     <div className="form-group">
+                      <label className="form-label">CBM</label>
+                      <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Price (USD)</label>
+                      <input type="number" step="0.01" name="usd" className="form-input" value={formData.usd} onChange={handleChange} placeholder="e.g. 150.00" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Vendor Name</label>
+                      <input type="text" name="vendor_name" className="form-input" value={formData.vendor_name} onChange={handleChange} placeholder="e.g. Raj Artisans" />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
                       <label className="form-label">Remark</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any additional notes..." />
                     </div>
@@ -458,6 +426,28 @@ function Samples() {
                     values={formData}
                     onChange={handleDimChange}
                   />
+
+                  {/* Auto-calculate inches display */}
+                  <div style={{ marginTop: '1rem', display: 'flex', gap: '2rem', fontSize: '0.9rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.75rem', borderRadius: '6px' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Length (in)</span>
+                      <strong style={{ color: 'var(--text-color)' }}>
+                        {formData.size_length ? (parseFloat(formData.size_length) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '2rem' }}>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Breadth (in)</span>
+                      <strong style={{ color: 'var(--text-color)' }}>
+                        {formData.size_breadth ? (parseFloat(formData.size_breadth) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '2rem' }}>
+                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Height (in)</span>
+                      <strong style={{ color: 'var(--text-color)' }}>
+                        {formData.size_height ? (parseFloat(formData.size_height) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                  </div>
                 </div>
 
                 {/* ── Actions ──────────────────────────────────────────── */}
@@ -465,11 +455,133 @@ function Samples() {
                   <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                   <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Sample'}</button>
                 </div>
-
               </form>
             </div>
           </div>
         </div>
+      ) : (
+        <>
+          {/* Page Header */}
+          <div className="page-header">
+            <h2>Samples</h2>
+            <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="filter-bar">
+            <div className="filter-bar-inner">
+              <Filter size={16} className="filter-icon" />
+              <span className="filter-label">Filter:</span>
+              <select
+                className="filter-input"
+                value={filterBuyer}
+                onChange={e => setFilterBuyer(e.target.value)}
+                style={{ minWidth: '150px' }}
+              >
+                <option value="">All Buyers...</option>
+                {buyers.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="filter-input"
+                placeholder="Material..."
+                value={filterMaterial}
+                onChange={e => setFilterMaterial(e.target.value)}
+              />
+              {(filterBuyer || filterMaterial) && (
+                <button
+                  className="filter-clear-btn"
+                  onClick={() => { setFilterBuyer(''); setFilterMaterial(''); }}
+                >
+                  <X size={14} /> Clear
+                </button>
+              )}
+              <span className="filter-count">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Images</th>
+                  <th>Sample ID</th>
+                  <th>Style No.</th>
+                  <th>Product Name</th>
+                  <th>Buyer</th>
+                  <th>Material</th>
+                  <th>Finish/Color</th>
+                  <th>CBM</th>
+                  <th>USD ($)</th>
+                  <th>Vendor</th>
+                  <th>Size (cm)</th>
+                  <th>Size (in)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(s => (
+                  <tr
+                    key={s.id}
+                    onClick={() => openEditModal(s)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to edit"
+                  >
+                    <td>
+                      <div className="table-image-stack">
+                        {(s.images || []).slice(0, 3).map((img, idx) => (
+                          <img
+                            key={img.id}
+                            src={img.image_url}
+                            alt={s.product_name}
+                            className="table-thumb"
+                            style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
+                          />
+                        ))}
+                        {(s.images || []).length === 0 && (
+                          <div className="table-no-img"><ImageIcon size={14} /></div>
+                        )}
+                        {(s.images || []).length > 3 && (
+                          <div className="table-more-imgs">+{s.images.length - 3}</div>
+                        )}
+                      </div>
+                    </td>
+                    <td>{s.sample_id}</td>
+                    <td>{s.style_no || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td><strong>{s.product_name}</strong></td>
+                    <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td>{s.finish_color}</td>
+                    <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                    <td>
+                      {s.size_length && s.size_breadth && s.size_height
+                        ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
+                        : <span style={{color:'var(--text-muted)'}}>—</span>
+                      }
+                    </td>
+                    <td>
+                      {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
+                        ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
+                        : <span style={{color:'var(--text-muted)'}}>—</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan="12" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      No samples found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Lightbox */}
@@ -480,7 +592,6 @@ function Samples() {
           onClose={() => setLightboxIndex(null)}
         />
       )}
-
     </div>
   );
 }
