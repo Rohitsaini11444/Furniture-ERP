@@ -37,6 +37,7 @@ function BuyerMasters() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
 
   const handleDownloadExcel = () => {
     if (!exportBuyerId) return;
@@ -95,6 +96,16 @@ function BuyerMasters() {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleBuyerChange = (e) => {
+    const buyerId = e.target.value;
+    const selectedBuyer = buyers.find(b => b.id === buyerId);
+    setFormData(prev => ({
+      ...prev,
+      buyer: buyerId,
+      buyer_code: selectedBuyer ? selectedBuyer.code : prev.buyer_code,
+    }));
   };
 
   const handleDimChange = (key, val) => {
@@ -192,6 +203,24 @@ function BuyerMasters() {
     }
   };
 
+  const toggleSelectRow = (rowId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedRowIds(new Set(filteredMasters.map(bm => bm.id)));
+    } else {
+      setSelectedRowIds(new Set());
+    }
+  };
+
   const filteredMasters = buyerMasters.filter(bm => 
     bm.style_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
     bm.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -233,7 +262,7 @@ function BuyerMasters() {
                   <div className="form-grid-2">
                     <div className="form-group">
                       <label className="form-label">Buyer *</label>
-                      <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleChange}>
+                      <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleBuyerChange}>
                         <option value="">Select Buyer...</option>
                         {buyers.map(b => (
                           <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
@@ -351,6 +380,14 @@ function BuyerMasters() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredMasters.length > 0 && selectedRowIds.size === filteredMasters.length}
+                      onChange={toggleSelectAll}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </th>
                   <th>Buyer</th>
                   <th>Style No</th>
                   <th>Product Name</th>
@@ -362,7 +399,24 @@ function BuyerMasters() {
               </thead>
               <tbody>
                 {filteredMasters.map(bm => (
-                  <tr key={bm.id}>
+                  <tr
+                    key={bm.id}
+                    onClick={() => openEditModal(bm)}
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor: selectedRowIds.has(bm.id) ? '#dcfce7' : undefined,
+                      transition: 'background-color 0.2s ease',
+                    }}
+                    title="Click to view/edit detail"
+                  >
+                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(bm.id)}
+                        onChange={e => toggleSelectRow(bm.id, e)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                    </td>
                     <td>
                       <strong>{bm.buyer_detail?.name}</strong>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
@@ -380,17 +434,17 @@ function BuyerMasters() {
                         <span style={{ color: 'var(--text-muted)' }}>—</span>
                       )}
                     </td>
-                    <td>
+                    <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => openEditModal(bm)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                        <button onClick={() => handleDelete(bm.id, bm.style_no)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                        <button onClick={(e) => { e.stopPropagation(); openEditModal(bm); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(bm.id, bm.style_no); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredMasters.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No styles found in Buyer Master.
                     </td>
                   </tr>

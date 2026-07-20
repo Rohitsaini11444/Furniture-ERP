@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from decimal import Decimal
 import uuid
 
 
@@ -162,7 +163,8 @@ class BuyerMaster(models.Model):
 class PO(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='pos')
-    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.CASCADE, related_name='pos')
+    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos')
+    buyer_pi = models.ForeignKey('BuyerPI', on_delete=models.SET_NULL, null=True, blank=True, related_name='pos', verbose_name='Performa Invoice')
     po = models.CharField(max_length=100, blank=True, null=True, verbose_name='PO')
     cbm = models.DecimalField(max_digits=10, decimal_places=4, blank=True, null=True, verbose_name='CBM')
     price_usd = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name='Price (USD)')
@@ -335,3 +337,139 @@ class SandingQC(models.Model):
 
     def __str__(self):
         return f"QC [{self.result}] — {self.assignment}"
+
+
+# ─── Performa Invoice Models ──────────────────────────────────────────────────
+
+class PerformaInvoice(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pi_no = models.CharField(max_length=100, unique=True, verbose_name='PI No.')
+    pi_date = models.DateField(null=True, blank=True, verbose_name='PI Date')
+    buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='performa_invoices', verbose_name='Buyer')
+    buyer_order_no = models.CharField(max_length=100, blank=True, null=True, verbose_name="Buyer's Order No.")
+    buyer_order_date = models.DateField(null=True, blank=True, verbose_name="Buyer's Order Date")
+    exporter_ref = models.CharField(max_length=100, blank=True, null=True, verbose_name="Exporter's Ref.")
+    other_references = models.CharField(max_length=200, blank=True, null=True, verbose_name='Other Reference(s)')
+    buyer_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Buyer Name')
+    buyer_other_consignee = models.CharField(max_length=200, blank=True, null=True, verbose_name='Buyer (if other than consignee)')
+    department_no = models.CharField(max_length=50, blank=True, null=True, verbose_name='Department #')
+    
+    pre_carriage_by = models.CharField(max_length=100, default='Trailer', blank=True, null=True, verbose_name='Pre-Carriage by')
+    place_of_receipt = models.CharField(max_length=100, default='Jaipur', blank=True, null=True, verbose_name='Place of Receipt by Pre-carrier')
+    vessel_flight_no = models.CharField(max_length=100, default='By Sea', blank=True, null=True, verbose_name='Vessel / Flight No.')
+    port_of_loading = models.CharField(max_length=100, default='Mundra', blank=True, null=True, verbose_name='Port of Loading')
+    port_of_discharge = models.CharField(max_length=100, blank=True, null=True, verbose_name='Port of Discharge')
+    place_of_delivery = models.CharField(max_length=100, default='UNITED KINGDOM', blank=True, null=True, verbose_name='Place of Delivery')
+    
+    country_of_origin = models.CharField(max_length=100, default='INDIA', blank=True, null=True, verbose_name='Country of Origin')
+    country_final_destination = models.CharField(max_length=100, default='UK', blank=True, null=True, verbose_name='Country of Final Destination')
+    
+    terms_payment = models.CharField(max_length=200, default='Payment: T/T', blank=True, null=True, verbose_name='Terms of Payment')
+    terms_delivery = models.CharField(max_length=200, default='Delivery: 30-July-26 Ex-Factory', blank=True, null=True, verbose_name='Terms of Delivery')
+    category_header = models.CharField(max_length=200, default='Wooden Furniture Items', blank=True, null=True, verbose_name='Category Header')
+    declaration_text = models.TextField(
+        blank=True,
+        null=True,
+        default=(
+            "We declare that this invoice shows that the actual price of the goods and that all particulars are true and correct. "
+            "We are not registered under Central Excise Act 1944 and Rules made there under and no cenvat credit or input stage benefits in any input has been availed by us or supporting manufacturer. "
+            "No duty free input either imported or procured locally has been used in the export product. The value declared is fair and same is equivalent to PMV of the goods. "
+            "The goods are non antique and not art treasure. We further declare that neither red sandors wood nor any oher prohibited wood has been used in the manufacturing of above items."
+        ),
+        verbose_name='Declaration Text'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"PI: {self.pi_no} - {self.buyer.name}"
+
+
+class PerformaInvoiceItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pi = models.ForeignKey(PerformaInvoice, on_delete=models.CASCADE, related_name='items')
+    po = models.ForeignKey(PO, on_delete=models.SET_NULL, null=True, blank=True, related_name='pi_items')
+    style_no = models.CharField(max_length=100, verbose_name='Style No.')
+    description = models.TextField(blank=True, null=True, verbose_name='Description of Goods')
+    image_url = models.CharField(max_length=500, blank=True, null=True, verbose_name='Image URL / Path')
+    
+    dimension_w = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Width (cm)')
+    dimension_d = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Depth (cm)')
+    dimension_h = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Height (cm)')
+    
+    volume_per_pc = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True, verbose_name='Volume Per Pc')
+    qty = models.IntegerField(default=1, verbose_name='Quantity')
+    total_volume = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True, verbose_name='Total Volume')
+    rate_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Rate US$')
+    amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Amount US$')
+
+    def save(self, *args, **kwargs):
+        if self.qty and self.volume_per_pc:
+            self.total_volume = round(Decimal(str(self.qty)) * Decimal(str(self.volume_per_pc)), 4)
+        if self.qty and self.rate_usd:
+            self.amount_usd = round(Decimal(str(self.qty)) * Decimal(str(self.rate_usd)), 2)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.style_no} - Qty {self.qty}"
+
+
+# ─── Buyer Performa Invoice (Pre-PO PI) Models ───────────────────────────────
+
+class BuyerPI(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pi_no = models.CharField(max_length=100, unique=True, verbose_name='PI / PO Ref No.')
+    pi_date = models.DateField(null=True, blank=True, verbose_name='PI Date')
+    ex_factory_date = models.DateField(null=True, blank=True, verbose_name='Ex-Factory Date')
+    payment_terms = models.CharField(max_length=200, default='100% TT 30 Days from BL', blank=True, null=True, verbose_name='Payment Terms')
+    buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='buyer_pis', verbose_name='Buyer')
+    delivered_to_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Delivered To Contact Name')
+    delivered_to_company = models.CharField(max_length=200, blank=True, null=True, verbose_name='Delivered To Company Name')
+    delivered_to_address = models.TextField(blank=True, null=True, verbose_name='Delivered To Address')
+    remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Buyer PI: {self.pi_no} - {self.buyer.name}"
+
+
+class BuyerPIItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    buyer_pi = models.ForeignKey(BuyerPI, on_delete=models.CASCADE, related_name='items')
+    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='pi_items')
+    barcode = models.CharField(max_length=100, blank=True, null=True, verbose_name='Barcode')
+    buyer_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Buyer #')
+    style_no = models.CharField(max_length=100, verbose_name='Style No.')
+    product_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Product Name')
+    size_length = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Length (cm)')
+    size_breadth = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Breadth (cm)')
+    size_height = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Height (cm)')
+    material = models.CharField(max_length=150, blank=True, null=True, verbose_name='Material')
+    finish_color = models.CharField(max_length=150, blank=True, null=True, verbose_name='Finish')
+    cbm = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True, verbose_name='CBM')
+    price_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Price (USD)')
+    units = models.IntegerField(default=1, verbose_name='Units')
+    total_cbm = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True, verbose_name='Total CBM')
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Total Amount')
+    remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
+
+    def save(self, *args, **kwargs):
+        if self.units is not None and self.cbm is not None:
+            self.total_cbm = round(Decimal(str(self.units)) * Decimal(str(self.cbm)), 4)
+        if self.units is not None and self.price_usd is not None:
+            self.total_amount = round(Decimal(str(self.units)) * Decimal(str(self.price_usd)), 2)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.style_no} ({self.units} units)"
+
+

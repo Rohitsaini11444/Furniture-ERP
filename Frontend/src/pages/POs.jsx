@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, ArrowLeft } from 'lucide-react';
 
@@ -38,13 +38,16 @@ function calcBoxCbm(l, b, h) {
 function POs() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [pos, setPos] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [buyerMasters, setBuyerMasters] = useState([]);
+  const [buyerPIs, setBuyerPIs] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
 
   const handleDownloadExcel = () => {
     if (!exportBuyerId) return;
@@ -71,6 +74,7 @@ function POs() {
   const emptyForm = {
     buyer: '',
     buyer_master: '',
+    buyer_pi: '',
     po: '',
     units: '',
     remark: '',
@@ -99,6 +103,10 @@ function POs() {
     api.get('/buyer-masters/')
       .then(res => setBuyerMasters(res.data))
       .catch(err => console.error(err));
+
+    api.get('/buyer-pis/')
+      .then(res => setBuyerPIs(res.data))
+      .catch(err => console.error(err));
   };
 
   useEffect(() => {
@@ -113,7 +121,8 @@ function POs() {
           const p = res.data;
           setFormData({
             buyer: p.buyer,
-            buyer_master: p.buyer_master,
+            buyer_master: p.buyer_master || '',
+            buyer_pi: p.buyer_pi || '',
             po: p.po || '',
             units: p.units || '',
             remark: p.remark || '',
@@ -132,10 +141,26 @@ function POs() {
         })
         .catch(err => console.error(err));
     } else {
-      setFormData(emptyForm);
+      const searchParams = new URLSearchParams(location.search);
+      const piParam = searchParams.get('pi');
+      if (piParam) {
+        api.get(`/buyer-pis/${piParam}/`)
+          .then(res => {
+            const piObj = res.data;
+            setFormData({
+              ...emptyForm,
+              buyer: piObj.buyer || '',
+              buyer_pi: piObj.id || '',
+              po: piObj.pi_no || '',
+            });
+          })
+          .catch(err => console.error(err));
+      } else {
+        setFormData(emptyForm);
+      }
       setEditingId(null);
     }
-  }, [id]);
+  }, [id, location.search]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -176,6 +201,24 @@ function POs() {
       api.delete(`/pos/${id}/`)
         .then(() => fetchData())
         .catch(err => console.error(err));
+    }
+  };
+
+  const toggleSelectRow = (rowId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedRowIds(new Set(filteredPOs.map(p => p.id)));
+    } else {
+      setSelectedRowIds(new Set());
     }
   };
 
@@ -225,7 +268,7 @@ function POs() {
                     <div className="form-group">
                       <label className="form-label">Buyer *</label>
                       <select required name="buyer" className="form-input" value={formData.buyer} onChange={e => {
-                        setFormData({ ...formData, buyer: e.target.value, buyer_master: '' });
+                        setFormData({ ...formData, buyer: e.target.value, buyer_master: '', buyer_pi: '' });
                       }}>
                         <option value="">Select Buyer...</option>
                         {buyers.map(b => (
@@ -235,8 +278,26 @@ function POs() {
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label">Style No *</label>
-                      <select required name="buyer_master" className="form-input" value={formData.buyer_master} onChange={handleChange} disabled={!formData.buyer}>
+                      <label className="form-label">Performa Invoice (PI)</label>
+                      <select name="buyer_pi" className="form-input" value={formData.buyer_pi} onChange={e => {
+                        const piId = e.target.value;
+                        const piObj = buyerPIs.find(p => p.id === piId);
+                        setFormData(prev => ({
+                          ...prev,
+                          buyer_pi: piId,
+                          po: piObj ? piObj.pi_no : prev.po
+                        }));
+                      }} disabled={!formData.buyer}>
+                        <option value="">{formData.buyer ? 'Select Performa Invoice (Optional)...' : 'Please select Buyer first'}</option>
+                        {buyerPIs.filter(p => p.buyer === formData.buyer).map(p => (
+                          <option key={p.id} value={p.id}>{p.pi_no} ({p.pi_date || 'N/A'})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Style No</label>
+                      <select name="buyer_master" className="form-input" value={formData.buyer_master} onChange={handleChange} disabled={!formData.buyer}>
                         <option value="">{formData.buyer ? 'Select Style No...' : 'Please select Buyer first'}</option>
                         {availableStyles.map(bm => (
                           <option key={bm.id} value={bm.id}>{bm.style_no} — {bm.product_name}</option>
@@ -379,6 +440,14 @@ function POs() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredPOs.length > 0 && selectedRowIds.size === filteredPOs.length}
+                      onChange={toggleSelectAll}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </th>
                   <th>PO #</th>
                   <th>Buyer</th>
                   <th>Style No</th>
@@ -393,7 +462,24 @@ function POs() {
               </thead>
               <tbody>
                 {filteredPOs.map(p => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    onClick={() => openEditModal(p)}
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor: selectedRowIds.has(p.id) ? '#dcfce7' : undefined,
+                      transition: 'background-color 0.2s ease',
+                    }}
+                    title="Click to view/edit detail"
+                  >
+                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(p.id)}
+                        onChange={e => toggleSelectRow(p.id, e)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                    </td>
                     <td><strong>{p.po || '—'}</strong></td>
                     <td>
                       <strong>{p.buyer_detail?.name}</strong>
@@ -416,17 +502,17 @@ function POs() {
                         {p.status || 'Confirmed'}
                       </span>
                     </td>
-                    <td>
+                    <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => openEditModal(p)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                        <button onClick={() => handleDelete(p.id, p.po)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                        <button onClick={(e) => { e.stopPropagation(); openEditModal(p); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.po); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filteredPOs.length === 0 && (
                   <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No POs found.
                     </td>
                   </tr>

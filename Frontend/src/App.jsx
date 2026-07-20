@@ -16,6 +16,8 @@ import Sanding        from './pages/Sanding';
 import Buyers         from './pages/Buyers';
 import BuyerMasters   from './pages/BuyerMasters';
 import POs            from './pages/POs';
+import PIs            from './pages/PIs';
+import BuyerPIs       from './pages/BuyerPIs';
 
 import pinkcityLogo from './assets/Logo_2.png';
 
@@ -294,6 +296,12 @@ function AppLayout() {
           <Route path="/buyer-masters/:id" element={<ProtectedRoute><BuyerMasters /></ProtectedRoute>} />
           <Route path="/pos" element={<ProtectedRoute><POs /></ProtectedRoute>} />
           <Route path="/pos/:id" element={<ProtectedRoute><POs /></ProtectedRoute>} />
+          <Route path="/performa-invoices" element={<ProtectedRoute><BuyerPIs /></ProtectedRoute>} />
+          <Route path="/performa-invoices/:id" element={<ProtectedRoute><BuyerPIs /></ProtectedRoute>} />
+          <Route path="/invoices" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
+          <Route path="/invoices/:id" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
+          <Route path="/pis" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
+          <Route path="/pis/:id" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
           <Route path="/sales-orders" element={<ProtectedRoute><SalesOrders /></ProtectedRoute>} />
           <Route path="/purchase-imos" element={<ProtectedRoute><PurchaseIMOs /></ProtectedRoute>} />
 

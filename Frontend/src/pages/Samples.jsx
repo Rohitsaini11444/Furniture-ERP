@@ -144,6 +144,7 @@ function Samples() {
   const [filterBuyer, setFilterBuyer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -178,6 +179,24 @@ function Samples() {
     if (filterMaterial) f = f.filter(s => s.material?.toLowerCase().includes(filterMaterial.toLowerCase()));
     setFiltered(f);
   }, [filterBuyer, filterMaterial, samples]);
+
+  const toggleSelectRow = (rowId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedRowIds(new Set(filtered.map(s => s.id)));
+    } else {
+      setSelectedRowIds(new Set());
+    }
+  };
 
   // Load sample on id change (routing edit)
   useEffect(() => {
@@ -507,6 +526,14 @@ function Samples() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && selectedRowIds.size === filtered.length}
+                      onChange={toggleSelectAll}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </th>
                   <th>Images</th>
                   <th>Sample ID</th>
                   <th>Style No.</th>
@@ -526,9 +553,21 @@ function Samples() {
                   <tr
                     key={s.id}
                     onClick={() => openEditModal(s)}
-                    style={{ cursor: 'pointer' }}
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor: selectedRowIds.has(s.id) ? '#dcfce7' : undefined,
+                      transition: 'background-color 0.2s ease',
+                    }}
                     title="Click to edit"
                   >
+                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(s.id)}
+                        onChange={e => toggleSelectRow(s.id, e)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                    </td>
                     <td>
                       <div className="table-image-stack">
                         {(s.images || []).slice(0, 3).map((img, idx) => (
@@ -573,7 +612,7 @@ function Samples() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan="12" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="13" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No samples found.
                     </td>
                   </tr>

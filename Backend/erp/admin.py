@@ -3,6 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     User, Sample, SalesOrder, PurchaseIMO,
     SandingBatch, SandingAssignment, SandingQC,
+    PerformaInvoice, PerformaInvoiceItem,
 )
 
 
@@ -61,3 +62,16 @@ class SandingQCAdmin(admin.ModelAdmin):
     list_display = ['assignment', 'checked_by', 'result', 'checked_at']
     list_filter = ['result', 'checked_by']
     search_fields = ['assignment__batch__sample__sample_id']
+
+
+class PerformaInvoiceItemInline(admin.TabularInline):
+    model = PerformaInvoiceItem
+    extra = 1
+
+
+@admin.register(PerformaInvoice)
+class PerformaInvoiceAdmin(admin.ModelAdmin):
+    list_display = ['pi_no', 'pi_date', 'buyer', 'buyer_order_no', 'created_at']
+    search_fields = ['pi_no', 'buyer__name', 'buyer_order_no']
+    inlines = [PerformaInvoiceItemInline]
+

@@ -7,7 +7,8 @@ from .views import (
     UserViewSet,
     SampleViewSet, SampleImageViewSet, SalesOrderViewSet, PurchaseIMOViewSet,
     SandingBatchViewSet, SandingAssignmentViewSet, SandingQCViewSet,
-    BuyerViewSet, BuyerMasterViewSet, POViewSet,
+    BuyerViewSet, BuyerMasterViewSet, POViewSet, PerformaInvoiceViewSet,
+    BuyerPIViewSet,
 )
 
 router = DefaultRouter()
@@ -17,7 +18,9 @@ router.register(r'samples', SampleViewSet, basename='sample')
 router.register(r'sample-images', SampleImageViewSet, basename='sample-image')
 router.register(r'buyers', BuyerViewSet, basename='buyer')
 router.register(r'buyer-masters', BuyerMasterViewSet, basename='buyer-master')
+router.register(r'buyer-pis', BuyerPIViewSet, basename='buyer-pi')
 router.register(r'pos', POViewSet, basename='po')
+router.register(r'performa-invoices', PerformaInvoiceViewSet, basename='performa-invoice')
 router.register(r'sales-orders', SalesOrderViewSet)
 router.register(r'purchase-imos', PurchaseIMOViewSet)
 

@@ -5,7 +5,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import (
     User, Sample, SampleImage, SalesOrder, PurchaseIMO,
     SandingBatch, SandingAssignment, SandingQC,
-    Buyer, BuyerMaster, PO,
+    Buyer, BuyerMaster, PO, PerformaInvoice, PerformaInvoiceItem,
+    BuyerPI, BuyerPIItem,
 )
 
 
@@ -145,10 +146,20 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
 class POSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
     buyer_master_detail = BuyerMasterSerializer(source='buyer_master', read_only=True)
+    buyer_pi_detail = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = PO
         fields = '__all__'
+
+    def get_buyer_pi_detail(self, obj):
+        if obj.buyer_pi:
+            return {
+                'id': str(obj.buyer_pi.id),
+                'pi_no': obj.buyer_pi.pi_no,
+                'pi_date': str(obj.buyer_pi.pi_date) if obj.buyer_pi.pi_date else None,
+            }
+        return None
 
 
 class SalesOrderSerializer(serializers.ModelSerializer):
@@ -260,3 +271,100 @@ class SandingQCSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['checked_by'] = self.context['request'].user
         return super().create(validated_data)
+
+
+# ─── Performa Invoice Serializers ─────────────────────────────────────────────
+
+class PerformaInvoiceItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PerformaInvoiceItem
+        fields = '__all__'
+        read_only_fields = ['id', 'pi']
+
+
+class PerformaInvoiceSerializer(serializers.ModelSerializer):
+    items = PerformaInvoiceItemSerializer(many=True, required=False)
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = PerformaInvoice
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        pi = PerformaInvoice.objects.create(**validated_data)
+        for item_data in items_data:
+            item_data.pop('pi', None)
+            PerformaInvoiceItem.objects.create(pi=pi, **item_data)
+        return pi
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                item_data.pop('pi', None)
+                PerformaInvoiceItem.objects.create(pi=instance, **item_data)
+        return instance
+
+
+# ─── Buyer PI (Pre-PO Performa Invoice) Serializers ───────────────────────────
+
+class BuyerPIItemSerializer(serializers.ModelSerializer):
+    buyer_master_detail = BuyerMasterSerializer(source='buyer_master', read_only=True)
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BuyerPIItem
+        fields = '__all__'
+        read_only_fields = ['id', 'buyer_pi']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.buyer_master and obj.buyer_master.sample:
+            sample_imgs = obj.buyer_master.sample.images.all()
+            if sample_imgs.exists():
+                img = sample_imgs.first()
+                if request and img.image:
+                    return request.build_absolute_uri(img.image.url)
+                elif img.image:
+                    return img.image.url
+        return None
+
+
+class BuyerPISerializer(serializers.ModelSerializer):
+    items = BuyerPIItemSerializer(many=True, required=False)
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = BuyerPI
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        pi = BuyerPI.objects.create(**validated_data)
+        for item_data in items_data:
+            item_data.pop('buyer_pi', None)
+            BuyerPIItem.objects.create(buyer_pi=pi, **item_data)
+        return pi
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                item_data.pop('buyer_pi', None)
+                BuyerPIItem.objects.create(buyer_pi=instance, **item_data)
+        return instance
+
+
