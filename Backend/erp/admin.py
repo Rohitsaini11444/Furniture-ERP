@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
-    User, Sample, SalesOrder, PurchaseIMO,
+    User, Sample,
     SandingBatch, SandingAssignment, SandingQC,
     PerformaInvoice, PerformaInvoiceItem,
 )
@@ -29,18 +29,6 @@ class UserAdmin(BaseUserAdmin):
 class SampleAdmin(admin.ModelAdmin):
     list_display = ['sample_id', 'product_name', 'buyer', 'material', 'finish_color']
     search_fields = ['sample_id', 'product_name', 'buyer__name', 'material']
-
-
-@admin.register(SalesOrder)
-class SalesOrderAdmin(admin.ModelAdmin):
-    list_display = ['sales_order_no', 'sample', 'buyer_name', 'order_date', 'po_no']
-    search_fields = ['sales_order_no', 'buyer_name', 'po_no']
-
-
-@admin.register(PurchaseIMO)
-class PurchaseIMOAdmin(admin.ModelAdmin):
-    list_display = ['purchase_no', 'supplier_name', 'material_name', 'purchase_date', 'grn_status']
-    search_fields = ['purchase_no', 'supplier_name', 'material_name']
 
 
 @admin.register(SandingBatch)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon } from 'lucide-react';
 import api from './api/axios';
@@ -9,13 +9,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login          from './pages/Login';
 import Dashboard      from './pages/Dashboard';
 import Samples        from './pages/Samples';
-import SalesOrders    from './pages/SalesOrders';
-import PurchaseIMOs   from './pages/PurchaseIMOs';
 import UserManagement from './pages/UserManagement';
 import Sanding        from './pages/Sanding';
 import Buyers         from './pages/Buyers';
 import BuyerMasters   from './pages/BuyerMasters';
 import POs            from './pages/POs';
+import GateEntry      from './pages/GateEntry';
 import PIs            from './pages/PIs';
 import BuyerPIs       from './pages/BuyerPIs';
 
@@ -32,6 +31,43 @@ function Navbar() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const fetchNotifications = useCallback(() => {
+    if (user) {
+      api.get('/notifications/')
+        .then(res => setNotifications(res.data))
+        .catch(err => console.error(err));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000); // poll every 30s
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const markAllAsRead = () => {
+    api.post('/notifications/mark_all_read/')
+      .then(() => fetchNotifications())
+      .catch(err => console.error(err));
+  };
+
+  const handleNotificationClick = async (n) => {
+    if (!n.is_read) {
+      try {
+        await api.patch(`/notifications/${n.id}/mark_read/`);
+        setNotifications(prev => prev.filter(notif => notif.id !== n.id));
+      } catch (err) {
+        console.error('Failed to mark read', err);
+      }
+    }
+    if (n.link) {
+      navigate(n.link);
+      setShowNotifications(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -62,6 +98,76 @@ function Navbar() {
     }
   }, []);
 
+  const notifRefDesktop = useRef(null);
+  const notifRefMobile = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        (notifRefDesktop.current && !notifRefDesktop.current.contains(event.target)) &&
+        (notifRefMobile.current && !notifRefMobile.current.contains(event.target))
+      ) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const renderBell = (ref, containerClass) => (
+    <div ref={ref} className={containerClass} style={{ position: 'relative' }}>
+      <div 
+        style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+        onClick={() => setShowNotifications(!showNotifications)}
+      >
+        <Bell size={28} color="#0f172a" className="navbar-action-icon" />
+        {notifications.filter(n => !n.is_read).length > 0 && (
+          <span style={{
+            position: 'absolute', top: '0', right: '-2px',
+            backgroundColor: '#ef4444', color: 'white',
+            fontSize: '0.6rem', fontWeight: 'bold',
+            width: '16px', height: '16px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: '50%'
+          }}>
+            {notifications.filter(n => !n.is_read).length}
+          </span>
+        )}
+      </div>
+      
+      {showNotifications && (
+        <div style={{
+          position: 'absolute', top: '100%', right: '-10px', marginTop: '12px',
+          width: '320px', backgroundColor: 'white',
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+          borderRadius: '8px', border: '1px solid #e2e8f0', zIndex: 50,
+          maxHeight: '400px', overflowY: 'auto'
+        }}>
+          <div style={{ padding: '10px 15px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#0f172a' }}>Notifications</h4>
+            <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}>Mark all read</button>
+          </div>
+          {notifications.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>No notifications</div>
+          ) : (
+            <div>
+              {notifications.map(n => (
+                <div key={n.id} onClick={() => handleNotificationClick(n)}
+                  style={{
+                    padding: '12px 15px', borderBottom: '1px solid #f1f5f9', cursor: n.link ? 'pointer' : 'default',
+                    backgroundColor: n.is_read ? 'white' : '#f0fdf4'
+                  }}>
+                  <p style={{ margin: '0 0 4px', fontSize: '0.85rem', color: '#334155', fontWeight: n.is_read ? 'normal' : '600' }}>{n.message}</p>
+                  <small style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{new Date(n.created_at).toLocaleString()}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const handleLogout = () => {
     logout();
     setMobileMenuOpen(false);
@@ -76,14 +182,20 @@ function Navbar() {
           <span className="navbar-brand-text">Pinkcity Imports ERP</span>
         </Link>
 
-        {/* Mobile menu toggle */}
-        <button 
-          className="navbar-toggle-btn" 
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle menu"
-        >
-          {mobileMenuOpen ? <X size={24} color="#64748b" /> : <Menu size={24} color="#64748b" />}
-        </button>
+        {/* Notification & Mobile toggle wrapper */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Mobile Notification Bell */}
+          {renderBell(notifRefMobile, "mobile-only")}
+
+          {/* Mobile menu toggle */}
+          <button 
+            className="navbar-toggle-btn" 
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X size={24} color="#64748b" /> : <Menu size={24} color="#64748b" />}
+          </button>
+        </div>
 
         {/* Navbar links & actions */}
         <div className={`navbar-menu ${mobileMenuOpen ? 'is-open' : ''}`}>
@@ -100,7 +212,8 @@ function Navbar() {
           {/* Action buttons & User profile info */}
           <div className="navbar-actions">
             <div className="navbar-action-icons">
-              <Bell size={20} color="#64748b" className="navbar-action-icon" />
+              {/* Desktop Notification Bell */}
+              {renderBell(notifRefDesktop, "desktop-only")}
               <Clock size={20} color="#64748b" className="navbar-action-icon" />
             </div>
 
@@ -289,21 +402,24 @@ function AppLayout() {
           <Route path="/login" element={<Login />} />
 
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/samples" element={<ProtectedRoute><Samples /></ProtectedRoute>} />
-          <Route path="/samples/:id" element={<ProtectedRoute><Samples /></ProtectedRoute>} />
-          <Route path="/buyers" element={<ProtectedRoute><Buyers /></ProtectedRoute>} />
-          <Route path="/buyer-masters" element={<ProtectedRoute><BuyerMasters /></ProtectedRoute>} />
-          <Route path="/buyer-masters/:id" element={<ProtectedRoute><BuyerMasters /></ProtectedRoute>} />
-          <Route path="/pos" element={<ProtectedRoute><POs /></ProtectedRoute>} />
-          <Route path="/pos/:id" element={<ProtectedRoute><POs /></ProtectedRoute>} />
-          <Route path="/performa-invoices" element={<ProtectedRoute><BuyerPIs /></ProtectedRoute>} />
-          <Route path="/performa-invoices/:id" element={<ProtectedRoute><BuyerPIs /></ProtectedRoute>} />
-          <Route path="/invoices" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
-          <Route path="/invoices/:id" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
-          <Route path="/pis" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
-          <Route path="/pis/:id" element={<ProtectedRoute><PIs /></ProtectedRoute>} />
-          <Route path="/sales-orders" element={<ProtectedRoute><SalesOrders /></ProtectedRoute>} />
-          <Route path="/purchase-imos" element={<ProtectedRoute><PurchaseIMOs /></ProtectedRoute>} />
+          <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
+          <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
+          <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
+          <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+          <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+          <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+          <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+          
+          {/* Gate Entry */}
+          <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+          <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+
+          <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
+          <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
+          <Route path="/invoices" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+          <Route path="/invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+          <Route path="/pis" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+          <Route path="/pis/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
 
           {/* Sanding — accessible to Supervisor (sanding), Contractor, and Admin */}
           <Route

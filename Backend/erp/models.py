@@ -156,45 +156,138 @@ class BuyerMaster(models.Model):
     size_height = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (cm)')
     remark = models.TextField(blank=True, null=True)
 
+    # Extended details
+    vendor_details = models.TextField(blank=True, null=True, verbose_name='Vendor Details')
+    vendor_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Vendor Price')
+    costing = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Costing')
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Purchase Price')
+    cbm = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True, verbose_name='CBM')
+    net_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Net Weight')
+    gross_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Gross Weight')
+    box_size = models.CharField(max_length=150, blank=True, null=True, verbose_name='Box Size')
+    packaging_image = models.ImageField(upload_to='buyer_masters/packaging/', blank=True, null=True, verbose_name='Packaging Image')
+
     def __str__(self):
         return f"{self.style_no} - {self.product_name} ({self.buyer.code})"
 
 
-class PO(models.Model):
+class BuyerMasterFinishingImage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='pos')
-    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos')
-    buyer_pi = models.ForeignKey('BuyerPI', on_delete=models.SET_NULL, null=True, blank=True, related_name='pos', verbose_name='Performa Invoice')
-    po = models.CharField(max_length=100, blank=True, null=True, verbose_name='PO')
-    cbm = models.DecimalField(max_digits=10, decimal_places=4, blank=True, null=True, verbose_name='CBM')
-    price_usd = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name='Price (USD)')
-    total_cbm = models.DecimalField(max_digits=12, decimal_places=4, blank=True, null=True, verbose_name='Total CBM')
-    total_amount = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True, verbose_name='Total Amount')
+    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.CASCADE, related_name='finishing_images')
+    image = models.ImageField(upload_to='buyer_masters/finishing/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 
-    units = models.IntegerField(blank=True, null=True, verbose_name='Units')
-    remark = models.TextField(blank=True, null=True, verbose_name='Remarks')
-    status = models.CharField(
-        max_length=50,
-        default='Confirmed',
-        choices=[
-            ('Confirmed', 'Confirmed'),
-            ('Production', 'Production'),
-            ('Dispatched', 'Dispatched'),
-            ('Completed', 'Completed'),
-        ],
-        verbose_name='Status'
-    )
+# ─── Supplier & Supplier PO Models ──────────────────────────────────────────
 
-    # Box size in centimetres (L × B × H)
-    box_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Box Length (cm)')
-    box_breadth = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Box Breadth (cm)')
-    box_height = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Box Height (cm)')
+class Supplier(models.Model):
+    """Master list of raw-material suppliers."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200, verbose_name='Supplier Name')
+    address = models.TextField(blank=True, null=True, verbose_name='Address')
+    phone = models.CharField(max_length=50, blank=True, null=True, verbose_name='Phone')
+    gstin = models.CharField(max_length=50, blank=True, null=True, verbose_name='GSTIN/UIN')
+    state_name = models.CharField(max_length=100, blank=True, null=True, verbose_name='State Name')
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    net_weight = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Net Weight (kg)')
-    gross_weight = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Gross Weight (kg)')
+    class Meta:
+        ordering = ['name']
 
     def __str__(self):
-        return f"PO: {self.po or 'N/A'} - {self.buyer.code}"
+        return self.name
+
+
+class SupplierPO(models.Model):
+    """
+    A Purchase Order issued BY our company TO a supplier.
+    One PO → one supplier, but many line items that may fulfill
+    quantities from different buyer orders.
+    """
+    PO_STATUS_CHOICES = [
+        ('Draft', 'Draft'),
+        ('Confirmed', 'Confirmed'),
+        ('Received', 'Received'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    po_number = models.CharField(max_length=100, unique=True, verbose_name='PO Number')
+    po_date = models.DateField(verbose_name='PO Date')
+    due_date = models.DateField(null=True, blank=True, verbose_name='PO Due Date')
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.PROTECT,
+        related_name='purchase_orders',
+        verbose_name='Supplier',
+    )
+    mode_of_payment = models.CharField(max_length=150, blank=True, null=True, verbose_name='Mode of Payment')
+    terms_of_delivery = models.TextField(blank=True, null=True, verbose_name='Terms of Delivery')
+    supervisor = models.CharField(max_length=100, blank=True, null=True, verbose_name='Supervisor')
+    nku_refs = models.CharField(max_length=300, blank=True, null=True, verbose_name='NKU Reference Numbers')
+    remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
+    status = models.CharField(
+        max_length=20,
+        choices=PO_STATUS_CHOICES,
+        default='Draft',
+        verbose_name='Status',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.po_number} → {self.supplier.name}"
+
+    @property
+    def total_amount(self):
+        return sum(item.amount or Decimal('0') for item in self.items.all())
+
+
+class SupplierPOItem(models.Model):
+    """
+    One line item in a Supplier PO.
+    Each item can reference a specific buyer (and optionally a BuyerPI)
+    to show which buyer order is being fulfilled.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplier_po = models.ForeignKey(
+        SupplierPO,
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name='Supplier PO',
+    )
+    buyer = models.ForeignKey(
+        Buyer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='supplier_po_items',
+        verbose_name='Buyer (Order Reference)',
+    )
+    buyer_pi = models.ForeignKey(
+        'BuyerPI',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='supplier_po_items',
+        verbose_name='Buyer PI Reference',
+    )
+    description = models.TextField(verbose_name='Description of Goods')
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Quantity')
+    passed_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Passed Quantity')
+    unit = models.CharField(max_length=30, default='pcs', verbose_name='Unit (pcs/mtr/Ft²)')
+    rate = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Rate (INR)')
+    amount = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True, verbose_name='Amount (INR)')
+    remark = models.TextField(blank=True, null=True, verbose_name='Remark')
+
+    def save(self, *args, **kwargs):
+        if self.quantity is not None and self.rate is not None:
+            self.amount = round(Decimal(str(self.quantity)) * Decimal(str(self.rate)), 2)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.description[:50]} — {self.quantity} {self.unit}"
 
 
 class SampleImage(models.Model):
@@ -210,33 +303,6 @@ class SampleImage(models.Model):
     def __str__(self):
         return f"Image for {self.sample.sample_id}"
 
-
-class SalesOrder(models.Model):
-    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, related_name='sales_orders')
-    sales_order_no = models.CharField(max_length=50, unique=True)
-    order_date = models.DateField()
-    buyer_name = models.CharField(max_length=100)
-    po_no = models.CharField(max_length=50)
-
-    def __str__(self):
-        return self.sales_order_no
-
-
-class PurchaseIMO(models.Model):
-    purchase_no = models.CharField(max_length=50, unique=True)
-    purchase_date = models.DateField()
-    supplier_name = models.CharField(max_length=100)
-    material_name = models.CharField(max_length=100)
-    rate = models.DecimalField(max_digits=10, decimal_places=2)
-    total = models.DecimalField(max_digits=12, decimal_places=2)
-    expected_delivery_date = models.DateField()
-    warehouse = models.CharField(max_length=100)
-    grn_status = models.CharField(max_length=50)
-    invoice_number = models.CharField(max_length=50)
-    remark = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return self.purchase_no
 
 
 # ─── Sanding Workflow Models ──────────────────────────────────────────────────
@@ -392,7 +458,8 @@ class PerformaInvoice(models.Model):
 class PerformaInvoiceItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     pi = models.ForeignKey(PerformaInvoice, on_delete=models.CASCADE, related_name='items')
-    po = models.ForeignKey(PO, on_delete=models.SET_NULL, null=True, blank=True, related_name='pi_items')
+    # Legacy FK to old PO model — kept as null for compatibility; use SupplierPO going forward
+    po_ref = models.CharField(max_length=100, blank=True, null=True, verbose_name='Legacy PO Ref')
     style_no = models.CharField(max_length=100, verbose_name='Style No.')
     description = models.TextField(blank=True, null=True, verbose_name='Description of Goods')
     image_url = models.CharField(max_length=500, blank=True, null=True, verbose_name='Image URL / Path')
@@ -473,3 +540,37 @@ class BuyerPIItem(models.Model):
         return f"{self.style_no} ({self.units} units)"
 
 
+class SupplierPOItemDefect(models.Model):
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.CASCADE, related_name='defects')
+    reported_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, help_text="Number of defective pieces")
+    defective_image = models.ImageField(upload_to='po_defects/', null=True, blank=True)
+    remark = models.TextField(blank=True, null=True)
+    admin_reply = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Defect for {self.po_item} - {self.quantity} pcs"
+
+
+class SupplierPOItemDefectImage(models.Model):
+    defect = models.ForeignKey(SupplierPOItemDefect, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='po_defects/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Image for {self.defect}"
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    message = models.CharField(max_length=255)
+    link = models.CharField(max_length=255, blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Notification for {self.user.username}: {self.message}"

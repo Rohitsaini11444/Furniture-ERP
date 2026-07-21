@@ -3,9 +3,10 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
-    User, Sample, SampleImage, SalesOrder, PurchaseIMO,
+    User, Sample, SampleImage,
     SandingBatch, SandingAssignment, SandingQC,
-    Buyer, BuyerMaster, PO, PerformaInvoice, PerformaInvoiceItem,
+    Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
+    PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
 )
 
@@ -134,44 +135,129 @@ class SampleSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'images', 'buyer_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
 
 
+class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BuyerMasterFinishingImage
+        fields = ['id', 'buyer_master', 'image', 'image_url', 'uploaded_at']
+        read_only_fields = ['id', 'uploaded_at']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+
 class BuyerMasterSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
     sample_detail = SampleSerializer(source='sample', read_only=True)
+    finishing_images = BuyerMasterFinishingImageSerializer(many=True, read_only=True)
+    packaging_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerMaster
         fields = '__all__'
 
-
-class POSerializer(serializers.ModelSerializer):
-    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
-    buyer_master_detail = BuyerMasterSerializer(source='buyer_master', read_only=True)
-    buyer_pi_detail = serializers.SerializerMethodField(read_only=True)
-
-    class Meta:
-        model = PO
-        fields = '__all__'
-
-    def get_buyer_pi_detail(self, obj):
-        if obj.buyer_pi:
-            return {
-                'id': str(obj.buyer_pi.id),
-                'pi_no': obj.buyer_pi.pi_no,
-                'pi_date': str(obj.buyer_pi.pi_date) if obj.buyer_pi.pi_date else None,
-            }
+    def get_packaging_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.packaging_image:
+            if request:
+                return request.build_absolute_uri(obj.packaging_image.url)
+            return obj.packaging_image.url
         return None
 
 
-class SalesOrderSerializer(serializers.ModelSerializer):
+class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SalesOrder
+        model = Supplier
         fields = '__all__'
+        read_only_fields = ['id', 'created_at']
 
 
-class PurchaseIMOSerializer(serializers.ModelSerializer):
+class SupplierPOItemDefectSerializer(serializers.ModelSerializer):
+    reported_by_name = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
     class Meta:
-        model = PurchaseIMO
+        model = SupplierPOItemDefect
         fields = '__all__'
+        read_only_fields = ['id', 'reported_by', 'created_at']
+
+    def get_reported_by_name(self, obj):
+        if obj.reported_by:
+            return obj.reported_by.get_full_name() or obj.reported_by.username
+        return None
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.defective_image:
+            if request:
+                return request.build_absolute_uri(obj.defective_image.url)
+            return obj.defective_image.url
+        return None
+
+    def get_images(self, obj):
+        request = self.context.get('request')
+        imgs = []
+        if obj.defective_image:
+            imgs.append(request.build_absolute_uri(obj.defective_image.url) if request else obj.defective_image.url)
+        for d_img in obj.images.all():
+            imgs.append(request.build_absolute_uri(d_img.image.url) if request else d_img.image.url)
+        return imgs
+
+    def create(self, validated_data):
+        validated_data['reported_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class SupplierPOItemSerializer(serializers.ModelSerializer):
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+    defects = SupplierPOItemDefectSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SupplierPOItem
+        fields = '__all__'
+        read_only_fields = ['id', 'supplier_po', 'amount']
+
+
+class SupplierPOSerializer(serializers.ModelSerializer):
+    items = SupplierPOItemSerializer(many=True, required=False)
+    supplier_detail = SupplierSerializer(source='supplier', read_only=True)
+    total_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupplierPO
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_total_amount(self, obj):
+        from decimal import Decimal
+        return sum(item.amount or Decimal('0') for item in obj.items.all())
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        po = SupplierPO.objects.create(**validated_data)
+        for item_data in items_data:
+            item_data.pop('supplier_po', None)
+            SupplierPOItem.objects.create(supplier_po=po, **item_data)
+        return po
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                item_data.pop('supplier_po', None)
+                SupplierPOItem.objects.create(supplier_po=instance, **item_data)
+        return instance
 
 
 # ─── Sanding Serializers ──────────────────────────────────────────────────────
@@ -368,3 +454,9 @@ class BuyerPISerializer(serializers.ModelSerializer):
         return instance
 
 
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import Notification
+        model = Notification
+        fields = '__all__'
+        read_only_fields = ['id', 'user', 'created_at']

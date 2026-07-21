@@ -38,13 +38,19 @@ function BuyerMasters() {
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [showExportOptions, setShowExportOptions] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [packagingImage, setPackagingImage] = useState(null);
+  const [finishingImages, setFinishingImages] = useState([]);
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = (withDetails = false) => {
     if (!exportBuyerId) return;
     const selectedBuyer = buyers.find(b => b.id === exportBuyerId);
     if (!selectedBuyer) return;
 
-    api.get(`/buyer-masters/export-excel/?buyer=${exportBuyerId}`, { responseType: 'blob' })
+    setShowExportOptions(false);
+
+    api.get(`/buyer-masters/export-excel/?buyer=${exportBuyerId}&with_details=${withDetails}`, { responseType: 'blob' })
       .then(res => {
         const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
         const link = document.createElement('a');
@@ -72,7 +78,15 @@ function BuyerMasters() {
     size_length: '',
     size_breadth: '',
     size_height: '',
-    remark: ''
+    remark: '',
+    vendor_details: '',
+    vendor_price: '',
+    costing: '',
+    purchase_price: '',
+    cbm: '',
+    net_weight: '',
+    gross_weight: '',
+    box_size: ''
   };
   const [formData, setFormData] = useState(emptyForm);
 
@@ -154,14 +168,31 @@ function BuyerMasters() {
             size_length: bm.size_length || '',
             size_breadth: bm.size_breadth || '',
             size_height: bm.size_height || '',
-            remark: bm.remark || ''
+            remark: bm.remark || '',
+            vendor_details: bm.vendor_details || '',
+            vendor_price: bm.vendor_price || '',
+            costing: bm.costing || '',
+            purchase_price: bm.purchase_price || '',
+            cbm: bm.cbm || '',
+            net_weight: bm.net_weight || '',
+            gross_weight: bm.gross_weight || '',
+            box_size: bm.box_size || ''
           });
           setEditingId(bm.id);
+          setShowMoreDetails(
+            !!bm.vendor_details || !!bm.vendor_price || !!bm.costing || 
+            !!bm.purchase_price || !!bm.cbm || !!bm.net_weight || 
+            !!bm.gross_weight || !!bm.box_size || !!bm.packaging_image || 
+            (bm.finishing_images && bm.finishing_images.length > 0)
+          );
         })
         .catch(err => console.error(err));
     } else {
       setFormData(emptyForm);
       setEditingId(null);
+      setShowMoreDetails(false);
+      setPackagingImage(null);
+      setFinishingImages([]);
     }
   }, [id]);
 
@@ -179,13 +210,28 @@ function BuyerMasters() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // For Django foreign keys, empty string sample must be null
-    const payload = { ...formData };
-    if (!payload.sample) payload.sample = null;
+    
+    const formDataPayload = new FormData();
+    Object.keys(formData).forEach(key => {
+      let val = formData[key];
+      if (val === null || val === undefined) val = '';
+      if (key === 'sample' && !val) return; // Skip empty foreign keys
+      formDataPayload.append(key, val);
+    });
+
+    if (packagingImage) {
+      formDataPayload.append('packaging_image', packagingImage);
+    }
+    
+    finishingImages.forEach(file => {
+      formDataPayload.append('finishing_images', file);
+    });
+
+    const config = { headers: { 'Content-Type': 'multipart/form-data' } };
 
     const request = editingId
-      ? api.put(`/buyer-masters/${editingId}/`, payload)
-      : api.post('/buyer-masters/', payload);
+      ? api.put(`/buyer-masters/${editingId}/`, formDataPayload, config)
+      : api.post('/buyer-masters/', formDataPayload, config);
 
     request
       .then(() => {
@@ -322,6 +368,64 @@ function BuyerMasters() {
                   />
                 </div>
 
+                <div className="form-section">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 className="form-section-title" style={{ margin: 0 }}>➕ More Details (Optional)</h3>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowMoreDetails(!showMoreDetails)}
+                      style={{ background: 'none', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                    >
+                      {showMoreDetails ? 'Hide details' : 'Show details'}
+                    </button>
+                  </div>
+
+                  {showMoreDetails && (
+                    <div className="form-grid-2">
+                      <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                        <label className="form-label">Vendor Details</label>
+                        <textarea name="vendor_details" className="form-input" rows="2" value={formData.vendor_details} onChange={handleChange} placeholder="Vendor name, contact, etc..."></textarea>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Vendor Price</label>
+                        <input type="number" step="0.01" name="vendor_price" className="form-input" value={formData.vendor_price} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Costing</label>
+                        <input type="number" step="0.01" name="costing" className="form-input" value={formData.costing} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Purchase Price</label>
+                        <input type="number" step="0.01" name="purchase_price" className="form-input" value={formData.purchase_price} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">CBM</label>
+                        <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Net Weight (kg)</label>
+                        <input type="number" step="0.01" name="net_weight" className="form-input" value={formData.net_weight} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Gross Weight (kg)</label>
+                        <input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Box Size</label>
+                        <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100x50x50 cm" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Packaging Image</label>
+                        <input type="file" accept="image/*" className="form-input" onChange={e => setPackagingImage(e.target.files[0])} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Finishing Images</label>
+                        <input type="file" accept="image/*" multiple className="form-input" onChange={e => setFinishingImages(Array.from(e.target.files))} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                   <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                   <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Style'}</button>
@@ -364,14 +468,32 @@ function BuyerMasters() {
                     <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
                   ))}
                 </select>
-                <button
-                  onClick={handleDownloadExcel}
-                  className="btn-primary"
-                  disabled={!exportBuyerId}
-                  style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
-                >
-                  Download Excel
-                </button>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => exportBuyerId && setShowExportOptions(!showExportOptions)}
+                    className="btn-primary"
+                    disabled={!exportBuyerId}
+                    style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
+                  >
+                    Download Excel
+                  </button>
+                  {showExportOptions && (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 10, minWidth: '200px' }}>
+                      <button 
+                        onClick={() => handleDownloadExcel(false)}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #f1f5f9' }}
+                      >
+                        Standard Download
+                      </button>
+                      <button 
+                        onClick={() => handleDownloadExcel(true)}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#334155' }}
+                      >
+                        Download With More Details
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

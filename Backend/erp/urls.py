@@ -5,10 +5,15 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     LoginView, LogoutView, CurrentUserView,
     UserViewSet,
-    SampleViewSet, SampleImageViewSet, SalesOrderViewSet, PurchaseIMOViewSet,
+    SampleViewSet, SampleImageViewSet,
     SandingBatchViewSet, SandingAssignmentViewSet, SandingQCViewSet,
-    BuyerViewSet, BuyerMasterViewSet, POViewSet, PerformaInvoiceViewSet,
+    BuyerViewSet, BuyerMasterViewSet,
+    SupplierViewSet, SupplierPOViewSet,
+    PerformaInvoiceViewSet,
     BuyerPIViewSet,
+    SupplierPOItemDefectViewSet,
+    SupplierPOItemViewSet,
+    NotificationViewSet,
 )
 
 router = DefaultRouter()
@@ -19,13 +24,18 @@ router.register(r'sample-images', SampleImageViewSet, basename='sample-image')
 router.register(r'buyers', BuyerViewSet, basename='buyer')
 router.register(r'buyer-masters', BuyerMasterViewSet, basename='buyer-master')
 router.register(r'buyer-pis', BuyerPIViewSet, basename='buyer-pi')
-router.register(r'pos', POViewSet, basename='po')
-router.register(r'performa-invoices', PerformaInvoiceViewSet, basename='performa-invoice')
-router.register(r'sales-orders', SalesOrderViewSet)
-router.register(r'purchase-imos', PurchaseIMOViewSet)
 
-# Users (Admin only)
+# New Supplier PO routes (replaces old /pos/)
+router.register(r'suppliers', SupplierViewSet, basename='supplier')
+router.register(r'supplier-pos', SupplierPOViewSet, basename='supplier-po')
+router.register(r'supplier-po-items', SupplierPOItemViewSet, basename='supplier-po-item')
+router.register(r'supplier-po-defects', SupplierPOItemDefectViewSet, basename='supplier-po-defect')
+
+router.register(r'performa-invoices', PerformaInvoiceViewSet, basename='performa-invoice')
+
+# Users (Admin only) & Notifications
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'notifications', NotificationViewSet, basename='notification')
 
 # Sanding Workflow
 router.register(r'sanding/batches', SandingBatchViewSet, basename='sanding-batch')

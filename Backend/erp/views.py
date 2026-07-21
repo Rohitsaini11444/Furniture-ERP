@@ -13,19 +13,23 @@ from openpyxl.drawing.image import Image as OpenpyxlImage
 from PIL import Image as PILImage
 import tempfile
 import os
+from decimal import Decimal
+from num2words import num2words
 
 from django.conf import settings
 from .models import (
-    User, Sample, SampleImage, SalesOrder, PurchaseIMO,
+    User, Sample, SampleImage,
     SandingBatch, SandingAssignment, SandingQC,
-    Buyer, BuyerMaster, PO, PerformaInvoice, PerformaInvoiceItem,
+    Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
+    PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
-    SampleSerializer, SampleImageSerializer, SalesOrderSerializer, PurchaseIMOSerializer,
+    SampleSerializer, SampleImageSerializer,
     SandingBatchSerializer, SandingAssignmentSerializer, SandingQCSerializer,
-    BuyerSerializer, BuyerMasterSerializer, POSerializer,
+    BuyerSerializer, BuyerMasterSerializer,
+    SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer,
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
     BuyerPISerializer, BuyerPIItemSerializer,
 )
@@ -159,7 +163,7 @@ class SampleViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
 
@@ -182,7 +186,7 @@ class SampleImageViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
     def get_serializer_context(self):
@@ -199,7 +203,7 @@ class BuyerViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
     def destroy(self, request, *args, **kwargs):
@@ -227,8 +231,22 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        buyer_master = serializer.save()
+        images = self.request.FILES.getlist('finishing_images')
+        from .models import BuyerMasterFinishingImage
+        for img in images:
+            BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
+
+    def perform_update(self, serializer):
+        buyer_master = serializer.save()
+        images = self.request.FILES.getlist('finishing_images')
+        from .models import BuyerMasterFinishingImage
+        for img in images:
+            BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
 
     @action(detail=False, methods=['get'], url_path='export-excel')
     def export_excel(self, request):
@@ -249,11 +267,19 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         
         ws.views.sheetView[0].showGridLines = True
         
+        with_details = request.query_params.get('with_details') == 'true'
+        
         headers = [
             'S. No.', 'Buyer Name', 'Buyer Code', 'Style No', 'Sample ID', 'Picture', 'Product Name', 
             'Wood Type', 'Finish Color', 'Size Length (cm)', 
             'Size Breadth (cm)', 'Size Height (cm)', 'Remark'
         ]
+        
+        if with_details:
+            headers.extend([
+                'Vendor Details', 'Vendor Price', 'Costing', 'Purchase Price', 
+                'CBM', 'Net Weight', 'Gross Weight', 'Box Size'
+            ])
         
         ws.append(headers)
         
@@ -311,6 +337,18 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 bm.remark or ""
             ]
             
+            if with_details:
+                row_data.extend([
+                    bm.vendor_details or "",
+                    float(bm.vendor_price) if bm.vendor_price else "",
+                    float(bm.costing) if bm.costing else "",
+                    float(bm.purchase_price) if bm.purchase_price else "",
+                    float(bm.cbm) if bm.cbm else "",
+                    float(bm.net_weight) if bm.net_weight else "",
+                    float(bm.gross_weight) if bm.gross_weight else "",
+                    bm.box_size or ""
+                ])
+            
             for col_idx, val in enumerate(row_data, 1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=val)
                 cell.alignment = data_align
@@ -358,184 +396,11 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         return response
 
 
-class POViewSet(viewsets.ModelViewSet):
-    queryset = PO.objects.select_related('buyer', 'buyer_master').all()
-    serializer_class = POSerializer
-    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        buyer_id = self.request.query_params.get('buyer')
-        if buyer_id:
-            qs = qs.filter(buyer_id=buyer_id)
-        return qs
-
-    def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
-        return [IsAuthenticated()]
-
-    @action(detail=False, methods=['get'], url_path='export-excel')
-    def export_excel(self, request):
-        buyer_id = request.query_params.get('buyer')
-        if not buyer_id:
-            return HttpResponse("Buyer ID is required", status=400)
-        
-        try:
-            buyer = Buyer.objects.get(id=buyer_id)
-        except Buyer.DoesNotExist:
-            return HttpResponse("Buyer not found", status=404)
-        
-        pos_list = self.get_queryset().filter(buyer=buyer)
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = f"{buyer.code}_POs"
-        
-        ws.views.sheetView[0].showGridLines = True
-        
-        headers = [
-            'S. No.', 'PO #', 'Buyer #', 'Style No.', 'Picture', 'Name', 
-            'Size Length (cm)', 'Size Breadth (cm)', 'Size Height (cm)', 
-            'Material', 'Finish', 'CBM', 'Price USD', 'Units', 'Total CBM', 'Total Amount', 
-            'Remarks', 'Box CBM', 'Box Length (cm)', 'Box Breadth (cm)', 'Box Height (cm)', 
-            'Net Weight (kg)', 'Gross Weight (kg)'
-        ]
-        
-        ws.append(headers)
-        
-        header_fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
-        header_font = Font(name="Calibri", size=11, bold=True, color="000000")
-        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        
-        border_medium = Side(style='medium', color='000000')
-        header_border = Border(left=border_medium, right=border_medium, top=border_medium, bottom=border_medium)
-        
-        data_border = Border(
-            left=Side(style='thin', color='000000'),
-            right=Side(style='thin', color='000000'),
-            top=Side(style='thin', color='000000'),
-            bottom=Side(style='thin', color='000000')
-        )
-        
-        data_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        
-        ws.row_dimensions[1].height = 28
-        for col_idx in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col_idx)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = header_align
-            cell.border = header_border
-            
-        temp_files = []
-        
-        for idx, po_item in enumerate(pos_list, 1):
-            row_idx = idx + 1
-            ws.row_dimensions[row_idx].height = 80
-            
-            bm = po_item.buyer_master
-            sample_image_path = ""
-            if bm and bm.sample:
-                first_img = bm.sample.images.first()
-                if first_img and first_img.image and os.path.exists(first_img.image.path):
-                    sample_image_path = first_img.image.path
-            
-            box_cbm_val = ""
-            if po_item.box_length and po_item.box_breadth and po_item.box_height:
-                try:
-                    fl = float(po_item.box_length)
-                    fb = float(po_item.box_breadth)
-                    fh = float(po_item.box_height)
-                    box_cbm_val = round((fl * fb * fh) / 1000000, 6)
-                except:
-                    pass
-            
-            row_data = [
-                idx,
-                po_item.po or "",
-                buyer.code,
-                bm.style_no if bm else "",
-                "", # Picture column
-                bm.product_name if bm else "",
-                float(bm.size_length) if bm and bm.size_length else "",
-                float(bm.size_breadth) if bm and bm.size_breadth else "",
-                float(bm.size_height) if bm and bm.size_height else "",
-                bm.wood_type if bm else "",
-                bm.finish_color if bm else "",
-                float(po_item.cbm) if po_item.cbm else "",
-                float(po_item.price_usd) if po_item.price_usd else "",
-                po_item.units if po_item.units else "",
-                float(po_item.total_cbm) if po_item.total_cbm else "",
-                float(po_item.total_amount) if po_item.total_amount else "",
-                po_item.remark or "",
-                box_cbm_val,
-                float(po_item.box_length) if po_item.box_length else "",
-                float(po_item.box_breadth) if po_item.box_breadth else "",
-                float(po_item.box_height) if po_item.box_height else "",
-                float(po_item.net_weight) if po_item.net_weight else "",
-                float(po_item.gross_weight) if po_item.gross_weight else ""
-            ]
-            
-            for col_idx, val in enumerate(row_data, 1):
-                cell = ws.cell(row=row_idx, column=col_idx, value=val)
-                cell.alignment = data_align
-                cell.border = data_border
-                
-            if sample_image_path:
-                try:
-                    pil_img = PILImage.open(sample_image_path)
-                    if pil_img.mode in ('RGBA', 'LA', 'P'):
-                        pil_img = pil_img.convert('RGB')
-                    pil_img.thumbnail((100, 100))
-                    
-                    tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-                    pil_img.save(tmp_f.name, format='JPEG', quality=85)
-                    tmp_f.close()
-                    temp_files.append(tmp_f.name)
-                    
-                    xl_img = OpenpyxlImage(tmp_f.name)
-                    ws.add_image(xl_img, f"E{row_idx}")
-                except Exception as e:
-                    print(f"Error drawing image in PO: {e}")
-                    
-        for col in ws.columns:
-            max_len = 0
-            col_letter = get_column_letter(col[0].column)
-            if col_letter == 'E':
-                ws.column_dimensions[col_letter].width = 16
-                continue
-            for cell in col:
-                val_str = str(cell.value or '')
-                if len(val_str) > max_len:
-                    max_len = len(val_str)
-            ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
-            
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="{buyer.code}_POs.xlsx"'
-        wb.save(response)
-        
-        for f in temp_files:
-            try:
-                os.remove(f)
-            except:
-                pass
-                
-        return response
-class SalesOrderViewSet(viewsets.ModelViewSet):
-    queryset = SalesOrder.objects.all()
-    serializer_class = SalesOrderSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
-        return [IsAuthenticated()]
-
-
-class PurchaseIMOViewSet(viewsets.ModelViewSet):
-    queryset = PurchaseIMO.objects.all()
-    serializer_class = PurchaseIMOSerializer
+class SupplierViewSet(viewsets.ModelViewSet):
+    """CRUD for Supplier master list."""
+    queryset = Supplier.objects.all()
+    serializer_class = SupplierSerializer
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
@@ -543,6 +408,449 @@ class PurchaseIMOViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
+
+class SupplierPOViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Supplier Purchase Orders.
+    Each PO goes to one supplier and has multiple line items
+    referencing different buyer orders.
+    """
+    queryset = SupplierPO.objects.select_related('supplier').prefetch_related('items__buyer').all()
+    serializer_class = SupplierPOSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        supplier_id = self.request.query_params.get('supplier')
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        status_f = self.request.query_params.get('status')
+        if status_f:
+            qs = qs.filter(status=status_f)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def download_pdf(self, request, pk=None):
+        """
+        Low-level canvas PDF that matches the reference Purchase Order layout.
+        Uses absolute positioning exclusively — no Platypus Tables.
+        Business logic / queries / serializers are untouched.
+        """
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from decimal import Decimal
+        from num2words import num2words
+        from io import BytesIO
+        import math
+
+        po  = self.get_object()
+        buf = BytesIO()
+
+        # ── Page setup ────────────────────────────────────────────────────────
+        PW, PH = A4          # 595.28 × 841.89 pt
+        ML = 13.0 * mm       # left margin
+        MR = 13.0 * mm       # right margin
+        MT = 10.0 * mm       # top margin
+        MB = 10.0 * mm       # bottom margin
+        CW = PW - ML - MR    # content width
+
+        c = rl_canvas.Canvas(buf, pagesize=A4)
+        c.setTitle(f'Purchase Order {po.po_number}')
+
+        # ── Drawing primitives ─────────────────────────────────────────────────
+        def ds(x, y, text, font='Helvetica', size=8):
+            c.setFont(font, size)
+            c.setFillColor(colors.black)
+            c.drawString(x, y, str(text))
+
+        def dr(x, y, text, font='Helvetica', size=8):
+            c.setFont(font, size)
+            c.setFillColor(colors.black)
+            c.drawRightString(x, y, str(text))
+
+        def dc(x, y, text, font='Helvetica', size=8):
+            c.setFont(font, size)
+            c.setFillColor(colors.black)
+            c.drawCentredString(x, y, str(text))
+
+        def hline(x1, y, x2, lw=0.5):
+            c.setLineWidth(lw)
+            c.setStrokeColor(colors.black)
+            c.line(x1, y, x2, y)
+
+        def vline(x, y1, y2, lw=0.5):
+            c.setLineWidth(lw)
+            c.setStrokeColor(colors.black)
+            c.line(x, y1, x, y2)
+
+        def box(x, y, w, h, lw=0.75):
+            c.setLineWidth(lw)
+            c.setStrokeColor(colors.black)
+            c.rect(x, y, w, h, stroke=1, fill=0)
+
+        def sw(text, font, size):
+            c.setFont(font, size)
+            return c.stringWidth(str(text), font, size)
+
+        def wrap_line(text, font, size, max_w):
+            """Split one paragraph of text into lines that fit within max_w."""
+            words = str(text).split()
+            lines, cur = [], ''
+            for word in words:
+                candidate = (cur + ' ' + word).strip()
+                if sw(candidate, font, size) <= max_w:
+                    cur = candidate
+                else:
+                    if cur:
+                        lines.append(cur)
+                    cur = word
+            if cur:
+                lines.append(cur)
+            return lines if lines else ['']
+
+        # ── Business data ──────────────────────────────────────────────────────
+        CNAME  = 'PINKCITY ENTERPRISES'
+        CADDR1 = 'G-78, EPIP, Indl. Area Sitapura,'
+        CADDR2 = 'JAIPUR'
+        CIEC   = 'IEC CODE :  1397002620'
+        CGSTIN = 'GSTIN/UIN: 08ABXPS4077R1Z8'
+        CSTATE = 'State Name : Rajasthan, Code : 08'
+        CPAN   = 'ABXPS4077R'
+
+        sup = po.supplier
+
+        def fmt_s(d):   # "15-Jul-26"
+            return d.strftime('%d-%b-%y').lstrip('0') if d else ''
+
+        def fmt_l(d):   # "05 Sept 2026"
+            return d.strftime('%d %b %Y') if d else ''
+
+        po_date_str  = fmt_s(po.po_date)
+        due_date_str = fmt_l(po.due_date)
+
+        items_qs  = list(po.items.select_related('buyer').all())
+        total_amt = sum(it.amount or Decimal('0') for it in items_qs)
+
+        try:
+            ip = int(total_amt)
+            dp = int(round((total_amt - Decimal(str(ip))) * 100))
+            ww = num2words(ip, lang='en').replace(',', '').title()
+            if dp:
+                ww += f' And {num2words(dp, lang="en").title()} Paise'
+            words_text = f'INR {ww} Only'
+        except Exception:
+            words_text = f'Rs. {float(total_amt):,.2f}'
+
+        # ── Layout constants (all in pt) ───────────────────────────────────────
+        P   = 2.0 * mm    # general inner padding
+
+        # ─ Bottom sections (built upward from MB) ─
+        FOOTER_Y  = MB + 3.0 * mm
+        DECL_H    = 44.0 * mm
+        DECL_BOT  = MB + 8.0 * mm
+        DECL_TOP  = DECL_BOT + DECL_H
+        WORDS_H   = 17.0 * mm
+        WORDS_BOT = DECL_TOP
+        WORDS_TOP = WORDS_BOT + WORDS_H
+
+        # ─ Header ─
+        TITLE_Y  = PH - MT - 4.5 * mm      # baseline of PURCHASE ORDER text
+        HDR_TOP  = TITLE_Y - 5.5 * mm
+        HDR_H    = 68.0 * mm
+        HDR_BOT  = HDR_TOP - HDR_H
+
+        # ─ Items table ─
+        ITEM_TOP = HDR_BOT
+        ITEM_BOT = WORDS_TOP
+        ITEM_H   = ITEM_TOP - ITEM_BOT
+
+        # ─ Header left / right split ─
+        LEFT_W  = CW * 0.48
+        RIGHT_W = CW * 0.52
+        SPX     = ML + LEFT_W              # x of the vertical divider in header
+
+        # ─ Items column layout (proportions must add to 1) ─
+        col_pct = [0.05, 0.56, 0.11, 0.10, 0.05, 0.13]
+        col_w   = [CW * p for p in col_pct]
+        col_x   = []
+        _cx = ML
+        for _w in col_w:
+            col_x.append(_cx)
+            _cx += _w
+
+        ITEM_HDR_H = 8.5 * mm
+        ITEM_ROW_H = 6.5 * mm
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 1. TITLE
+        # ═══════════════════════════════════════════════════════════════════════
+        dc(PW / 2, TITLE_Y, 'PURCHASE ORDER', 'Helvetica-Bold', 18)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 2. HEADER BOX
+        # ═══════════════════════════════════════════════════════════════════════
+        box(ML, HDR_BOT, CW, HDR_H, lw=0.75)     # outer border
+        vline(SPX, HDR_BOT, HDR_TOP)              # left | right divider
+
+        # ── LEFT column ──────────────────────────────────────────────────────
+        LX      = ML + P
+        LOGO_W  = 16.0 * mm
+        LOGO_H  = 14.0 * mm
+        logo_x  = ML + P
+        logo_y  = HDR_TOP - P - LOGO_H
+
+        # Stylised 'pe' logo box
+        c.setLineWidth(1.0)
+        c.rect(logo_x, logo_y, LOGO_W, LOGO_H, stroke=1, fill=0)
+        # Horizontal overline above 'e' (reference shows a bar above the letter)
+        bar_y = logo_y + LOGO_H - 3.2*mm
+        c.setLineWidth(1.2)
+        c.line(logo_x + 6.5*mm, bar_y, logo_x + LOGO_W - 1.0*mm, bar_y)
+        c.setLineWidth(0.5)
+        ds(logo_x + 1.0*mm, logo_y + 3.5*mm,  'p', 'Helvetica-Bold', 11)
+        ds(logo_x + 6.5*mm, logo_y + 3.5*mm,  'e', 'Helvetica-Bold', 11)
+
+        # "Invoice To" label beside logo
+        ds(logo_x + LOGO_W + 1.5*mm, logo_y + LOGO_H - 2.5*mm,
+           'Invoice To', 'Helvetica', 7)
+
+        # Company details below logo
+        cy = logo_y - 1.5*mm
+        ds(logo_x + LOGO_W + 1.5*mm, cy, CNAME,  'Helvetica-Bold', 13);  cy -= 4.5*mm
+        
+        # Now switch to full width for address
+        cy -= 1.0*mm
+        ds(LX, cy, CADDR1, 'Helvetica', 8);        cy -= 3.5*mm
+        ds(LX, cy, CADDR2, 'Helvetica', 8);        cy -= 3.5*mm
+        ds(LX, cy, CIEC,   'Helvetica', 8);        cy -= 3.5*mm
+        ds(LX, cy, CGSTIN, 'Helvetica', 8);        cy -= 3.5*mm
+        ds(LX, cy, CSTATE, 'Helvetica', 8);        cy -= 3.5*mm
+
+        # Horizontal divider between company and supplier
+        div_y = cy - 1.5*mm
+        hline(ML, div_y, SPX, lw=0.5)
+
+        # Supplier block
+        cy = div_y - 3.5*mm
+        ds(LX, cy, 'Supplier (Bill from)', 'Helvetica', 7);  cy -= 4.0*mm
+        ds(LX, cy, sup.name, 'Helvetica-Bold', 10);          cy -= 4.5*mm
+
+        sup_max_w = LEFT_W - 3.0*mm
+        if sup.address:
+            for addr_seg in sup.address.split('\n'):
+                addr_seg = addr_seg.strip()
+                if not addr_seg:
+                    continue
+                for wl in wrap_line(addr_seg, 'Helvetica', 8, sup_max_w):
+                    ds(LX, cy, wl, 'Helvetica', 8);  cy -= 3.5*mm
+        if sup.phone:
+            ds(LX, cy, f'(M) {sup.phone}',           'Helvetica', 8);  cy -= 3.5*mm
+        if sup.gstin:
+            ds(LX, cy, f'GSTIN/UIN   :   {sup.gstin}', 'Helvetica', 8);  cy -= 3.5*mm
+        if sup.state_name:
+            ds(LX, cy, f'State Name  :   {sup.state_name}', 'Helvetica', 8)
+
+        # ── RIGHT column grid ─────────────────────────────────────────────────
+        R_MID  = SPX + RIGHT_W / 2      # inner vertical divider of right grid
+        vline(R_MID, HDR_TOP - 20.0*mm, HDR_TOP)  # draw it partially height (only top 3 rows)
+
+        R_LABEL_H = 3.8 * mm
+        R_VALUE_H = 6.2 * mm
+        R_ROW_H   = R_LABEL_H + R_VALUE_H
+
+        def right_row(top_y, label_l, label_r, val_l, val_r):
+            """Draw one label+value row in the right header grid."""
+            bot_y = top_y - R_ROW_H
+            hline(SPX, bot_y, SPX + RIGHT_W)
+            ds(SPX + P, top_y - R_LABEL_H,  label_l, 'Helvetica', 7)
+            ds(R_MID + P, top_y - R_LABEL_H, label_r, 'Helvetica', 7)
+            if val_l:
+                ds(SPX + P, bot_y + 1.5*mm, val_l, 'Helvetica-Bold', 10)
+            if val_r:
+                ds(R_MID + P, bot_y + 1.5*mm, val_r, 'Helvetica-Bold', 10)
+            return bot_y
+
+        r1_bot = right_row(HDR_TOP,
+                           'Purchase Order No.', 'Dated',
+                           po.po_number, po_date_str)
+
+        r2_bot = right_row(r1_bot,
+                           'PO Due Date', 'Mode/Terms of Payment',
+                           due_date_str,
+                           po.mode_of_payment or '')
+
+        # 3rd row: Terms of delivery / Supervisor
+        # Note: We do NOT draw bottom line here if it's the open NKU space
+        r3_top_y = r2_bot
+        r3_bot_y = r3_top_y - R_ROW_H
+        # hline(SPX, r3_bot_y, SPX + RIGHT_W) # Do not draw line
+        ds(SPX + P, r3_top_y - R_LABEL_H,  'Terms of Delivery', 'Helvetica', 7)
+        ds(R_MID + P, r3_top_y - R_LABEL_H, 'Supervisor', 'Helvetica', 7)
+        if po.terms_of_delivery:
+             ds(SPX + P, r3_bot_y + 1.5*mm, po.terms_of_delivery, 'Helvetica-Bold', 10)
+        if po.supervisor:
+             ds(R_MID + P, r3_bot_y + 1.5*mm, po.supervisor, 'Helvetica', 10)
+        
+        # NKU refs — large open area, no middle divider
+        if po.nku_refs:
+            nku_y = r3_bot_y - 2.0*mm
+            for ref_ln in po.nku_refs.split('\n'):
+                ref_ln = ref_ln.strip()
+                if ref_ln:
+                    ds(SPX + P, nku_y, ref_ln, 'Helvetica-Bold', 10)
+                    nku_y -= 4.5*mm
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 3. ITEMS TABLE
+        # ═══════════════════════════════════════════════════════════════════════
+        box(ML, ITEM_BOT, CW, ITEM_H, lw=0.75)   # outer box
+
+        # Vertical column dividers run the full height of the table
+        for ci in range(1, len(col_x)):
+            vline(col_x[ci], ITEM_BOT, ITEM_TOP)
+
+        # Header row (bottom border is the separator)
+        HDR_ROW_BOT = ITEM_TOP - ITEM_HDR_H
+        hline(ML, HDR_ROW_BOT, ML + CW, lw=0.75)
+
+        # Header labels
+        ds(col_x[0] + 1.0*mm, HDR_ROW_BOT + 4.5*mm, 'Sl',  'Helvetica', 8)
+        ds(col_x[0] + 1.0*mm, HDR_ROW_BOT + 1.5*mm, 'No.', 'Helvetica', 8)
+        dc(col_x[1] + col_w[1]/2, HDR_ROW_BOT + 2.5*mm,
+           'Description of Goods', 'Helvetica', 8)
+        dc(col_x[2] + col_w[2]/2, HDR_ROW_BOT + 2.5*mm, 'Quantity', 'Helvetica', 8)
+        dc(col_x[3] + col_w[3]/2, HDR_ROW_BOT + 2.5*mm, 'Rate',     'Helvetica', 8)
+        dc(col_x[4] + col_w[4]/2, HDR_ROW_BOT + 2.5*mm, 'per',      'Helvetica', 8)
+        dc(col_x[5] + col_w[5]/2, HDR_ROW_BOT + 2.5*mm, 'Amount',   'Helvetica', 8)
+
+        # Data rows (only where actual items exist)
+        IY = HDR_ROW_BOT
+        for idx, item in enumerate(items_qs, 1):
+            buyer_ref = f' [{item.buyer.name}]' if item.buyer else ''
+            raw_desc  = str(item.description) + buyer_ref
+            desc_lines = []
+            for para in raw_desc.split('\n'):
+                desc_lines.extend(
+                    wrap_line(para.strip(), 'Helvetica-Bold', 9, col_w[1] - 2.5*mm)
+                )
+            if item.remark:
+                for para in str(item.remark).split('\n'):
+                    desc_lines.extend(
+                        wrap_line(para.strip(), 'Helvetica-Bold', 9, col_w[1] - 2.5*mm)
+                    )
+
+            row_h   = max(ITEM_ROW_H, len(desc_lines) * 3.5*mm + 2.0*mm)
+            row_bot = IY - row_h
+
+            # Row bottom separator (thin, only between real rows)
+            # NO horizontal lines between items according to reference
+            # hline(ML, row_bot, ML + CW, lw=0.5)
+
+            # SI number – vertically centred in row
+            mid_y = IY - 4.0*mm
+            dc(col_x[0] + col_w[0]/2, mid_y, str(idx), 'Helvetica', 9)
+
+            # Description – top-aligned, multi-line
+            dly = IY - 1.0*mm
+            for dl in desc_lines:
+                dly -= 4.0*mm
+                ds(col_x[1] + 1.0*mm, dly, dl, 'Helvetica-Bold', 9)
+
+            # Quantity
+            qty_str = f'{float(item.quantity):.2f} {item.unit}'
+            dr(col_x[2] + col_w[2] - 1.0*mm, mid_y, qty_str, 'Helvetica-Bold', 9)
+
+            # Rate (right-aligned inside column)
+            dr(col_x[3] + col_w[3] - 1.0*mm, mid_y,
+               f'{float(item.rate):.2f}', 'Helvetica', 9)
+
+            # Per
+            dc(col_x[4] + col_w[4]/2, mid_y, str(item.unit), 'Helvetica', 9)
+
+            # Amount (right-aligned, bold)
+            amt = float(item.amount or 0)
+            dr(ML + CW - 1.0*mm, mid_y, f'{amt:,.2f}', 'Helvetica-Bold', 9)
+
+            IY = row_bot
+
+        # Total row — single line at the bottom of the items box
+        TOTAL_LINE_Y = ITEM_BOT + 6.0*mm
+        hline(ML, TOTAL_LINE_Y, ML + CW, lw=0.75)
+        dr(col_x[2] - 2.0*mm, ITEM_BOT + 2.0*mm, 'Total', 'Helvetica', 8)
+        dr(ML + CW - 1.0*mm, ITEM_BOT + 1.5*mm,
+           f'Rs. {float(total_amt):,.2f}', 'Helvetica-Bold', 11)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 4. AMOUNT IN WORDS
+        # ═══════════════════════════════════════════════════════════════════════
+        box(ML, WORDS_BOT, CW, WORDS_H, lw=0.75)
+        ds(ML + P, WORDS_TOP - 3.5*mm,
+           'Amount Chargeable (in words)', 'Helvetica', 8)
+        dr(ML + CW - P, WORDS_TOP - 3.5*mm, 'E. & O.E', 'Helvetica-Oblique', 8)
+        ds(ML + P, WORDS_BOT + 4.5*mm, words_text, 'Helvetica-Bold', 9)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 5. DECLARATION
+        # ═══════════════════════════════════════════════════════════════════════
+        box(ML, DECL_BOT, CW, DECL_H, lw=0.75)
+        DECL_SPX = ML + CW * 0.62
+        # Right aligned inner rectangle
+        c.rect(DECL_SPX, DECL_BOT, CW - CW * 0.62, DECL_H/2.5, stroke=1, fill=0)
+
+        # Left side: PAN + declaration text
+        dy = DECL_TOP - 4.5*mm
+        ds(ML + P, dy, f"Company's PAN", 'Helvetica', 8)
+        ds(ML + 25*mm, dy, f":   {CPAN}", 'Helvetica-Bold', 9)
+        dy -= 4.0*mm
+        ds(ML + P, dy, 'Declaration', 'Helvetica', 8)
+        dy -= 3.5*mm
+
+        decl_max_w = CW * 0.62 - 3.0*mm
+        decl_body  = (
+            'Please Write the PO and Item Number in Delivery Challan as '
+            'well as Invoice. Penalty will be apply for late delivery if '
+            'your material recieved after due date to :'
+        )
+        for wl in wrap_line(decl_body, 'Helvetica', 8, decl_max_w):
+            ds(ML + P, dy, wl, 'Helvetica', 8)
+            dy -= 3.5*mm
+
+        for penalty in [
+            '1. One Week @ 10%.',
+            '2. Two Week @ 25%.',
+            '3. Three Week@ 50% deduct.',
+            'Note:- Order poora hone par hi bhugtaan kiya jaavega !',
+        ]:
+            ds(ML + P, dy, penalty, 'Helvetica', 8)
+            dy -= 3.5*mm
+
+        # Right side: company name + Authorised Signatory
+        dr(ML + CW - P, DECL_TOP - 4.0*mm,
+           f'for {CNAME}', 'Helvetica-Bold', 9)
+        dr(ML + CW - P, DECL_BOT + 2.5*mm,
+           'Authorised Signatory', 'Helvetica', 9)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # 6. FOOTER
+        # ═══════════════════════════════════════════════════════════════════════
+        dc(PW / 2, FOOTER_Y,
+           'This is a Computer Generated Document', 'Helvetica', 8)
+
+        # Render page
+        c.save()
+        pdf_bytes = buf.getvalue()
+        buf.close()
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{po.po_number}.pdf"'
+        return response
 
 # ─── Sanding Workflow ViewSets ────────────────────────────────────────────────
 
@@ -739,7 +1047,7 @@ class PerformaInvoiceViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
     @action(detail=True, methods=['get'], url_path='export-excel')
@@ -1118,7 +1426,7 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSupervisor()]
+            return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
     @action(detail=True, methods=['get'], url_path='export-excel')
@@ -1395,3 +1703,90 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
         return response
 
 
+class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
+    from .models import SupplierPOItemDefect
+    from .serializers import SupplierPOItemDefectSerializer
+    queryset = SupplierPOItemDefect.objects.all()
+    serializer_class = SupplierPOItemDefectSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        po_item_id = self.request.query_params.get('po_item')
+        if po_item_id:
+            qs = qs.filter(po_item_id=po_item_id)
+        return qs
+
+    def get_permissions(self):
+        # We allow supervisors and admins to create/update
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), IsAdminOrSupervisor()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        from .models import Notification, User, SupplierPOItemDefectImage
+        defect = serializer.save()
+        
+        # Save multiple images if uploaded
+        images = self.request.FILES.getlist('images')
+        for img in images:
+            SupplierPOItemDefectImage.objects.create(defect=defect, image=img)
+            
+        # Notify admins
+        admins = User.objects.filter(role='admin')
+        for admin in admins:
+            if admin != self.request.user:
+                Notification.objects.create(
+                    user=admin,
+                    message=f"New defect reported by {self.request.user.username} on PO Item.",
+                    link=f'/gate-entry/{defect.po_item.supplier_po.id}'
+                )
+
+    def perform_update(self, serializer):
+        from .models import Notification
+        old_defect = self.get_object()
+        new_defect = serializer.save()
+        
+        # If admin_reply changed (was empty and is now filled, or just changed by admin)
+        if new_defect.admin_reply and new_defect.admin_reply != old_defect.admin_reply:
+            if new_defect.reported_by and new_defect.reported_by != self.request.user:
+                Notification.objects.create(
+                    user=new_defect.reported_by,
+                    message=f"Admin replied to your defect report on PO Item.",
+                    link=f'/gate-entry/{new_defect.po_item.supplier_po.id}'
+                )
+
+class SupplierPOItemViewSet(viewsets.ModelViewSet):
+    from .models import SupplierPOItem
+    from .serializers import SupplierPOItemSerializer
+    queryset = SupplierPOItem.objects.all()
+    serializer_class = SupplierPOItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), IsAdminOrSupervisor()]
+        return [IsAuthenticated()]
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    from .models import Notification
+    from .serializers import NotificationSerializer
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import Notification
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        from .models import Notification
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'ok'})
+
+    @action(detail=True, methods=['patch'])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({'status': 'ok'})

@@ -1,527 +1,685 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft, Plus, Trash2, Search, Download, FileText,
+  ChevronDown, Package, Building2, Calendar, MoreVertical,
+  CheckCircle, Clock, XCircle, TruckIcon, Eye
+} from 'lucide-react';
 
-function SizeGroup({ label, prefix, values, onChange }) {
+// ─── Status badge helpers ──────────────────────────────────────────────────────
+const STATUS_STYLES = {
+  Draft:      { bg: '#f1f5f9', color: '#64748b', icon: <Clock size={12}/> },
+  Confirmed:  { bg: '#dcfce7', color: '#15803d', icon: <CheckCircle size={12}/> },
+  Received:   { bg: '#dbeafe', color: '#1d4ed8', icon: <TruckIcon size={12}/> },
+  Cancelled:  { bg: '#fee2e2', color: '#dc2626', icon: <XCircle size={12}/> },
+};
+
+function StatusBadge({ status }) {
+  const s = STATUS_STYLES[status] || STATUS_STYLES.Draft;
   return (
-    <div className="size-group">
-      <label className="form-label">{label}</label>
-      <div className="size-inputs">
-        {['length', 'breadth', 'height'].map(dim => (
-          <div key={dim} className="size-field">
-            <span className="size-dim-label">{dim[0].toUpperCase()}</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="form-input"
-              placeholder={`${dim.charAt(0).toUpperCase() + dim.slice(1)} cm`}
-              value={values[`${prefix}_${dim}`] || ''}
-              onChange={e => onChange(`${prefix}_${dim}`, e.target.value)}
-            />
-          </div>
-        ))}
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      backgroundColor: s.bg, color: s.color,
+      padding: '3px 10px', borderRadius: '999px',
+      fontSize: '0.75rem', fontWeight: 600,
+    }}>
+      {s.icon}{status}
+    </span>
+  );
+}
+
+// ─── Empty line item template ──────────────────────────────────────────────────
+function emptyItem() {
+  return { buyer: '', buyer_pi: '', description: '', quantity: '', unit: 'pcs', rate: '', amount: '' };
+}
+
+// ─── Format INR ───────────────────────────────────────────────────────────────
+function fmtINR(val) {
+  if (!val && val !== 0) return '—';
+  return `₹${parseFloat(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+}
+
+// ─── Supplier Form Modal (inline quick-create) ─────────────────────────────────
+function SupplierModal({ onClose, onSaved }) {
+  const [form, setForm] = useState({ name: '', address: '', phone: '', gstin: '', state_name: '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await api.post('/suppliers/', form);
+      onSaved(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>➕ Add New Supplier</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid-2">
+              {[
+                { key: 'name', label: 'Supplier Name *', req: true },
+                { key: 'phone', label: 'Phone', req: false },
+                { key: 'gstin', label: 'GSTIN/UIN', req: false },
+                { key: 'state_name', label: 'State Name', req: false },
+              ].map(f => (
+                <div className="form-group" key={f.key}>
+                  <label className="form-label">{f.label}</label>
+                  <input required={f.req} type="text" className="form-input"
+                    value={form[f.key]} onChange={e => setForm({...form, [f.key]: e.target.value})} />
+                </div>
+              ))}
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <label className="form-label">Address</label>
+                <textarea rows={3} className="form-input"
+                  value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+              <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save Supplier'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
 
-function calcBoxCbm(l, b, h) {
-  const fl = parseFloat(l), fb = parseFloat(b), fh = parseFloat(h);
-  if (fl > 0 && fb > 0 && fh > 0) {
-    return ((fl * fb * fh) / 1_000_000).toFixed(6);
-  }
-  return '';
-}
+// ─── PO Form (Create / Edit) ───────────────────────────────────────────────────
+function POForm({ poId, onBack, onSaved }) {
+  const isNew = !poId;
+  const [loading, setLoading] = useState(!isNew);
+  const [saving, setSaving] = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
 
-function POs() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const [pos, setPos] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [buyers, setBuyers] = useState([]);
-  const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyerPIs, setBuyerPIs] = useState([]);
-  const [editingId, setEditingId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [exportBuyerId, setExportBuyerId] = useState('');
-  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
 
-  const handleDownloadExcel = () => {
-    if (!exportBuyerId) return;
-    const selectedBuyer = buyers.find(b => b.id === exportBuyerId);
-    if (!selectedBuyer) return;
+  const [header, setHeader] = useState({
+    po_number: '',
+    po_date: new Date().toISOString().slice(0, 10),
+    due_date: '',
+    supplier: '',
+    mode_of_payment: '',
+    terms_of_delivery: '',
+    supervisor: '',
+    nku_refs: '',
+    remarks: '',
+    status: 'Draft',
+  });
 
-    api.get(`/pos/export-excel/?buyer=${exportBuyerId}`, { responseType: 'blob' })
-      .then(res => {
-        const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `${selectedBuyer.code}_POs.xlsx`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-      })
-      .catch(err => {
-        console.error('Failed to export excel', err);
-        alert('Failed to download Excel. Please try again.');
-      });
-  };
+  const [items, setItems] = useState([emptyItem()]);
 
-  const emptyForm = {
-    buyer: '',
-    buyer_master: '',
-    buyer_pi: '',
-    po: '',
-    units: '',
-    remark: '',
-    cbm: '',
-    price_usd: '',
-    total_cbm: '',
-    total_amount: '',
-    box_length: '',
-    box_breadth: '',
-    box_height: '',
-    net_weight: '',
-    gross_weight: '',
-    status: 'Confirmed'
-  };
-  const [formData, setFormData] = useState(emptyForm);
-
-  const fetchData = () => {
-    api.get('/pos/')
-      .then(res => setPos(res.data))
-      .catch(err => console.error(err));
-
-    api.get('/buyers/')
-      .then(res => setBuyers(res.data))
-      .catch(err => console.error(err));
-
-    api.get('/buyer-masters/')
-      .then(res => setBuyerMasters(res.data))
-      .catch(err => console.error(err));
-
-    api.get('/buyer-pis/')
-      .then(res => setBuyerPIs(res.data))
-      .catch(err => console.error(err));
-  };
-
+  // Load reference data
   useEffect(() => {
-    fetchData();
+    Promise.all([
+      api.get('/suppliers/'),
+      api.get('/buyers/'),
+      api.get('/buyer-pis/'),
+    ]).then(([s, b, p]) => {
+      setSuppliers(s.data);
+      setBuyers(b.data);
+      setBuyerPIs(p.data);
+    });
   }, []);
 
-  // Load PO on id change (routing edit)
+  // Load existing PO for edit
   useEffect(() => {
-    if (id && id !== 'new') {
-      api.get(`/pos/${id}/`)
+    if (!isNew && poId) {
+      setLoading(true);
+      api.get(`/supplier-pos/${poId}/`)
         .then(res => {
-          const p = res.data;
-          setFormData({
-            buyer: p.buyer,
-            buyer_master: p.buyer_master || '',
-            buyer_pi: p.buyer_pi || '',
-            po: p.po || '',
-            units: p.units || '',
-            remark: p.remark || '',
-            cbm: p.cbm || '',
-            price_usd: p.price_usd || '',
-            total_cbm: p.total_cbm || '',
-            total_amount: p.total_amount || '',
-            box_length: p.box_length || '',
-            box_breadth: p.box_breadth || '',
-            box_height: p.box_height || '',
-            net_weight: p.net_weight || '',
-            gross_weight: p.gross_weight || '',
-            status: p.status || 'Confirmed'
+          const d = res.data;
+          setHeader({
+            po_number: d.po_number,
+            po_date: d.po_date,
+            due_date: d.due_date || '',
+            supplier: d.supplier,
+            mode_of_payment: d.mode_of_payment || '',
+            terms_of_delivery: d.terms_of_delivery || '',
+            supervisor: d.supervisor || '',
+            nku_refs: d.nku_refs || '',
+            remarks: d.remarks || '',
+            status: d.status,
           });
-          setEditingId(p.id);
+          const loadedItems = (d.items || []).map(it => ({
+            id: it.id,
+            buyer: it.buyer || '',
+            buyer_pi: it.buyer_pi || '',
+            description: it.description,
+            quantity: it.quantity,
+            unit: it.unit,
+            rate: it.rate,
+            amount: it.amount,
+          }));
+          setItems(loadedItems.length ? loadedItems : [emptyItem()]);
         })
-        .catch(err => console.error(err));
-    } else {
-      const searchParams = new URLSearchParams(location.search);
-      const piParam = searchParams.get('pi');
-      if (piParam) {
-        api.get(`/buyer-pis/${piParam}/`)
-          .then(res => {
-            const piObj = res.data;
-            setFormData({
-              ...emptyForm,
-              buyer: piObj.buyer || '',
-              buyer_pi: piObj.id || '',
-              po: piObj.pi_no || '',
-            });
-          })
-          .catch(err => console.error(err));
-      } else {
-        setFormData(emptyForm);
+        .finally(() => setLoading(false));
+    }
+  }, [poId]);
+
+  const updateHeader = (key, val) => setHeader(h => ({ ...h, [key]: val }));
+
+  const updateItem = (idx, key, val) => {
+    setItems(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: val };
+      // Auto-calculate amount
+      if (key === 'quantity' || key === 'rate') {
+        const q = parseFloat(key === 'quantity' ? val : next[idx].quantity) || 0;
+        const r = parseFloat(key === 'rate' ? val : next[idx].rate) || 0;
+        next[idx].amount = q && r ? (q * r).toFixed(2) : '';
       }
-      setEditingId(null);
-    }
-  }, [id, location.search]);
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleDimChange = (key, val) => {
-    setFormData(prev => ({ ...prev, [key]: val }));
-  };
-
-  const openCreateModal = () => {
-    navigate('/pos/new');
-  };
-
-  const openEditModal = (p) => {
-    navigate(`/pos/${p.id}`);
-  };
-
-  const closeModal = () => {
-    navigate('/pos');
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const request = editingId
-      ? api.put(`/pos/${editingId}/`, formData)
-      : api.post('/pos/', formData);
-
-    request
-      .then(() => {
-        closeModal();
-        fetchData();
-      })
-      .catch(err => console.error(err));
-  };
-
-  const handleDelete = (id, poNum) => {
-    if (window.confirm(`Are you sure you want to delete PO "${poNum}"?`)) {
-      api.delete(`/pos/${id}/`)
-        .then(() => fetchData())
-        .catch(err => console.error(err));
-    }
-  };
-
-  const toggleSelectRow = (rowId, e) => {
-    if (e) e.stopPropagation();
-    setSelectedRowIds(prev => {
-      const next = new Set(prev);
-      if (next.has(rowId)) next.delete(rowId);
-      else next.add(rowId);
       return next;
     });
   };
 
-  const toggleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedRowIds(new Set(filteredPOs.map(p => p.id)));
-    } else {
-      setSelectedRowIds(new Set());
+  const addItem = () => setItems(prev => [...prev, emptyItem()]);
+  const removeItem = (idx) => setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+
+  const totalAmount = items.reduce((acc, it) => acc + (parseFloat(it.amount) || 0), 0);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      ...header,
+      items: items.map(it => ({
+        ...(it.id ? { id: it.id } : {}),
+        buyer: it.buyer || null,
+        buyer_pi: it.buyer_pi || null,
+        description: it.description,
+        quantity: it.quantity,
+        unit: it.unit,
+        rate: it.rate,
+        remark: it.remark || '',
+      })),
+    };
+    try {
+      if (isNew) {
+        await api.post('/supplier-pos/', payload);
+      } else {
+        await api.put(`/supplier-pos/${poId}/`, payload);
+      }
+      onSaved();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save PO. Check console for details.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  // Filter buyer masters based on selected buyer in form
-  const availableStyles = buyerMasters.filter(bm => bm.buyer === formData.buyer);
+  const handleSupplierAdded = (newSupplier) => {
+    setSuppliers(prev => [newSupplier, ...prev]);
+    setHeader(h => ({ ...h, supplier: newSupplier.id }));
+    setShowSupplierModal(false);
+  };
 
-  const filteredPOs = pos.filter(p => 
-    (p.po && p.po.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.buyer_detail && p.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.buyer_master_detail && p.buyer_master_detail.style_no.toLowerCase().includes(searchTerm.toLowerCase()))
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>Loading…</div>
+    </div>
   );
 
-  const autoBoxCbm = calcBoxCbm(formData.box_length, formData.box_breadth, formData.box_height);
-
   return (
-    <div>
-      {id ? (
-        <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <button 
-            onClick={closeModal} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              background: 'none', 
-              border: 'none', 
-              color: '#8b5a2b', 
-              fontWeight: 600, 
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '1rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to POs
-          </button>
+    <div className="new-page-form" style={{ padding: '1rem 0' }}>
+      {showSupplierModal && (
+        <SupplierModal onClose={() => setShowSupplierModal(false)} onSaved={handleSupplierAdded} />
+      )}
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit PO' : '+ Create New PO'}</h2>
-            </div>
-            <div className="modal-body" style={{ padding: 0 }}>
-              <form onSubmit={handleSubmit}>
-                <div className="form-section">
-                  <h3 className="form-section-title">🔗 Linkings</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Buyer *</label>
-                      <select required name="buyer" className="form-input" value={formData.buyer} onChange={e => {
-                        setFormData({ ...formData, buyer: e.target.value, buyer_master: '', buyer_pi: '' });
-                      }}>
-                        <option value="">Select Buyer...</option>
-                        {buyers.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                        ))}
-                      </select>
-                    </div>
+      <button
+        onClick={onBack}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem', padding: 0, fontSize: '1rem' }}
+      >
+        <ArrowLeft size={18} /> Back to Purchase Orders
+      </button>
 
-                    <div className="form-group">
-                      <label className="form-label">Performa Invoice (PI)</label>
-                      <select name="buyer_pi" className="form-input" value={formData.buyer_pi} onChange={e => {
-                        const piId = e.target.value;
-                        const piObj = buyerPIs.find(p => p.id === piId);
-                        setFormData(prev => ({
-                          ...prev,
-                          buyer_pi: piId,
-                          po: piObj ? piObj.pi_no : prev.po
-                        }));
-                      }} disabled={!formData.buyer}>
-                        <option value="">{formData.buyer ? 'Select Performa Invoice (Optional)...' : 'Please select Buyer first'}</option>
-                        {buyerPIs.filter(p => p.buyer === formData.buyer).map(p => (
-                          <option key={p.id} value={p.id}>{p.pi_no} ({p.pi_date || 'N/A'})</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Style No</label>
-                      <select name="buyer_master" className="form-input" value={formData.buyer_master} onChange={handleChange} disabled={!formData.buyer}>
-                        <option value="">{formData.buyer ? 'Select Style No...' : 'Please select Buyer first'}</option>
-                        {availableStyles.map(bm => (
-                          <option key={bm.id} value={bm.id}>{bm.style_no} — {bm.product_name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">💼 Order Details</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">PO No *</label>
-                      <input required type="text" name="po" className="form-input" value={formData.po} onChange={handleChange} placeholder="e.g. PO-8902" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">CBM</label>
-                      <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="0.0000" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Price (USD)</label>
-                      <input type="number" step="0.01" name="price_usd" className="form-input" value={formData.price_usd} onChange={handleChange} placeholder="0.00" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Total CBM</label>
-                      <input type="number" step="0.0001" name="total_cbm" className="form-input" value={formData.total_cbm} onChange={handleChange} placeholder="0.0000" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Total Amount</label>
-                      <input type="number" step="0.01" name="total_amount" className="form-input" value={formData.total_amount} onChange={handleChange} placeholder="0.00" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Units</label>
-                      <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 20" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Status *</label>
-                      <select required name="status" className="form-input" value={formData.status} onChange={handleChange}>
-                        <option value="Confirmed">Confirmed</option>
-                        <option value="Production">Production</option>
-                        <option value="Dispatched">Dispatched</option>
-                        <option value="Completed">Completed</option>
-                      </select>
-                    </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                      <label className="form-label">Remarks</label>
-                      <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">📦 Packing & Weight</h3>
-                  <div className="form-grid-2">
-                    <SizeGroup
-                      label="Box Size (cm)"
-                      prefix="box"
-                      values={formData}
-                      onChange={handleDimChange}
-                    />
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Net Weight (kg)</label>
-                        <input type="number" step="0.01" name="net_weight" className="form-input" value={formData.net_weight} onChange={handleChange} placeholder="0.00" />
-                      </div>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Gross Weight (kg)</label>
-                        <input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} placeholder="0.00" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {autoBoxCbm && (
-                    <div className="cbm-auto-display">
-                      <span>Calculated Box CBM:</span>
-                      <strong>{autoBoxCbm} m³</strong>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                  <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create PO'}</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="page-header">
-            <h2>Purchase Orders (PO)</h2>
-            <button onClick={openCreateModal} className="btn-primary">+ Create New PO</button>
+      <form onSubmit={handleSubmit}>
+        <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+          <div className="modal-header" style={{ padding: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FileText size={20} color="#8b5a2b"/>
+              {isNew ? 'Create New Purchase Order' : `Edit PO — ${header.po_number}`}
+            </h2>
           </div>
 
-          {/* Filter / Search & Export Bar */}
-          <div className="filter-bar">
-            <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexGrow: 1, minWidth: '240px' }}>
-                <Search size={16} className="filter-icon" />
-                <span className="filter-label">Search:</span>
-                <input
-                  type="text"
-                  className="filter-input"
-                  placeholder="Search by PO No, Style No..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flexGrow: 1 }}
-                />
+          {/* ── PO Header Details ── */}
+          <div className="form-section">
+            <h3 className="form-section-title">📋 PO Details</h3>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">PO Number *</label>
+                <input required type="text" className="form-input" placeholder="e.g. PO-14489"
+                  value={header.po_number} onChange={e => updateHeader('po_number', e.target.value)} />
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <span className="filter-label">Export POs:</span>
-                <select
-                  className="filter-input"
-                  value={exportBuyerId}
-                  onChange={e => setExportBuyerId(e.target.value)}
-                  style={{ minWidth: '180px' }}
-                >
-                  <option value="">Select Buyer...</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
+              <div className="form-group">
+                <label className="form-label">Status *</label>
+                <select required className="form-input" value={header.status} onChange={e => updateHeader('status', e.target.value)}>
+                  {['Draft','Confirmed','Received','Cancelled'].map(s => (
+                    <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
-                <button
-                  onClick={handleDownloadExcel}
-                  className="btn-primary"
-                  disabled={!exportBuyerId}
-                  style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
-                >
-                  Download Excel
-                </button>
+              </div>
+              <div className="form-group">
+                <label className="form-label">PO Date *</label>
+                <input required type="date" className="form-input"
+                  value={header.po_date} onChange={e => updateHeader('po_date', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">PO Due Date</label>
+                <input type="date" className="form-input"
+                  value={header.due_date} onChange={e => updateHeader('due_date', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Mode of Payment</label>
+                <input type="text" className="form-input" placeholder="e.g. Bank Transfer / Cheque"
+                  value={header.mode_of_payment} onChange={e => updateHeader('mode_of_payment', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Supervisor</label>
+                <input type="text" className="form-input" placeholder="Supervisor name"
+                  value={header.supervisor} onChange={e => updateHeader('supervisor', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Terms of Delivery</label>
+                <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
+                  value={header.terms_of_delivery} onChange={e => updateHeader('terms_of_delivery', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">NKU Reference Numbers</label>
+                <input type="text" className="form-input" placeholder="e.g. NKU # P0010167N1"
+                  value={header.nku_refs} onChange={e => updateHeader('nku_refs', e.target.value)} />
+              </div>
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <label className="form-label">Remarks</label>
+                <textarea rows={2} className="form-input" placeholder="Any special instructions..."
+                  value={header.remarks} onChange={e => updateHeader('remarks', e.target.value)} />
               </div>
             </div>
           </div>
 
-          <div className="table-container">
-            <table className="data-table">
+          {/* ── Supplier ── */}
+          <div className="form-section">
+            <h3 className="form-section-title">🏭 Supplier (Bill From)</h3>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                <label className="form-label">Supplier *</label>
+                <select required className="form-input" value={header.supplier} onChange={e => updateHeader('supplier', e.target.value)}>
+                  <option value="">Select Supplier...</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" className="btn-secondary" onClick={() => setShowSupplierModal(true)}
+                style={{ padding: '0.5rem 1rem', whiteSpace: 'nowrap', height: '42px' }}>
+                + New Supplier
+              </button>
+            </div>
+            {header.supplier && (() => {
+              const sup = suppliers.find(s => s.id === header.supplier);
+              if (!sup) return null;
+              return (
+                <div style={{ marginTop: '0.75rem', background: '#f8fafc', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.82rem', color: 'var(--text-muted)', border: '1px solid #e2e8f0' }}>
+                  <strong style={{ color: 'var(--text-color)' }}>{sup.name}</strong>
+                  {sup.address && <div>{sup.address}</div>}
+                  {sup.phone && <div>📞 {sup.phone}</div>}
+                  {sup.gstin && <div>GSTIN: {sup.gstin}</div>}
+                  {sup.state_name && <div>State: {sup.state_name}</div>}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* ── Line Items ── */}
+        <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <h3 className="form-section-title" style={{ margin: 0 }}>📦 Line Items</h3>
+            <button type="button" className="btn-secondary" onClick={addItem}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+              <Plus size={15}/> Add Item
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
-                <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={filteredPOs.length > 0 && selectedRowIds.size === filteredPOs.length}
-                      onChange={toggleSelectAll}
-                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                    />
-                  </th>
-                  <th>PO #</th>
-                  <th>Buyer</th>
-                  <th>Style No</th>
-                  <th>Product Name</th>
-                  <th>CBM</th>
-                  <th>Price (USD)</th>
-                  <th>Total CBM</th>
-                  <th>Total Amount</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)',''].map(h => (
+                    <th key={h} style={{ padding: '10px 10px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredPOs.map(p => (
-                  <tr
-                    key={p.id}
-                    onClick={() => openEditModal(p)}
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor: selectedRowIds.has(p.id) ? '#dcfce7' : undefined,
-                      transition: 'background-color 0.2s ease',
-                    }}
-                    title="Click to view/edit detail"
-                  >
-                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.has(p.id)}
-                        onChange={e => toggleSelectRow(p.id, e)}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                      />
+                {items.map((item, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{idx + 1}</td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <select className="form-input" style={{ minWidth: '140px', fontSize: '0.82rem', padding: '6px 8px' }}
+                        value={item.buyer} onChange={e => updateItem(idx, 'buyer', e.target.value)}>
+                        <option value="">No buyer ref</option>
+                        {buyers.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                      </select>
                     </td>
-                    <td><strong>{p.po || '—'}</strong></td>
-                    <td>
-                      <strong>{p.buyer_detail?.name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {p.buyer_detail?.code}</div>
+                    <td style={{ padding: '6px 8px' }}>
+                      <select className="form-input" style={{ minWidth: '130px', fontSize: '0.82rem', padding: '6px 8px' }}
+                        value={item.buyer_pi} onChange={e => updateItem(idx, 'buyer_pi', e.target.value)}
+                        disabled={!item.buyer}>
+                        <option value="">None</option>
+                        {buyerPIs.filter(p => !item.buyer || p.buyer === item.buyer).map(p => (
+                          <option key={p.id} value={p.id}>{p.pi_no}</option>
+                        ))}
+                      </select>
                     </td>
-                    <td><span className="navbar-role-badge admin-badge">{p.buyer_master_detail?.style_no}</span></td>
-                    <td>{p.buyer_master_detail?.product_name}</td>
-                    <td>{p.cbm}</td>
-                    <td>${p.price_usd}</td>
-                    <td>{p.total_cbm}</td>
-                    <td>${p.total_amount}</td>
-                    <td>
-                      <span 
-                        className="navbar-role-badge" 
-                        style={{
-                          backgroundColor: p.status === 'Confirmed' ? '#dcfce7' : p.status === 'Production' ? '#dbeafe' : p.status === 'Dispatched' ? '#f3e8ff' : '#f3f4f6',
-                          color: p.status === 'Confirmed' ? '#15803d' : p.status === 'Production' ? '#1d4ed8' : p.status === 'Dispatched' ? '#6b21a8' : '#374151'
-                        }}
-                      >
-                        {p.status || 'Confirmed'}
-                      </span>
+                    <td style={{ padding: '6px 8px' }}>
+                      <textarea rows={2} required className="form-input"
+                        style={{ minWidth: '220px', fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }}
+                        placeholder="e.g. Natural Jute Fabric / 2601-068SBWWKW"
+                        value={item.description}
+                        onChange={e => updateItem(idx, 'description', e.target.value)} />
                     </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={(e) => { e.stopPropagation(); openEditModal(p); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.po); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                      </div>
+                    <td style={{ padding: '6px 8px' }}>
+                      <input required type="number" step="0.01" min="0" className="form-input"
+                        style={{ width: '90px', fontSize: '0.82rem', padding: '6px 8px' }}
+                        placeholder="0.00" value={item.quantity}
+                        onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <select className="form-input" style={{ minWidth: '70px', fontSize: '0.82rem', padding: '6px 8px' }}
+                        value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
+                        {['pcs','mtr','Ft²','kg','nos','set'].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <input required type="number" step="0.01" min="0" className="form-input"
+                        style={{ width: '100px', fontSize: '0.82rem', padding: '6px 8px' }}
+                        placeholder="0.00" value={item.rate}
+                        onChange={e => updateItem(idx, 'rate', e.target.value)} />
+                    </td>
+                    <td style={{ padding: '6px 8px', fontWeight: 600, color: '#8b5a2b', whiteSpace: 'nowrap', minWidth: '100px' }}>
+                      {item.amount ? `₹${parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                    </td>
+                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                      <button type="button" onClick={() => removeItem(idx)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}>
+                        <Trash2 size={16}/>
+                      </button>
                     </td>
                   </tr>
                 ))}
-                {filteredPOs.length === 0 && (
-                  <tr>
-                    <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                      No POs found.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
-        </>
-      )}
+
+          {/* Total */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '2px solid #e2e8f0' }}>
+            <div style={{ background: 'linear-gradient(135deg, #8b5a2b22, #8b5a2b11)', borderRadius: '10px', padding: '0.75rem 1.5rem', textAlign: 'right' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Total Amount</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#8b5a2b' }}>
+                ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button type="button" className="btn-secondary" onClick={onBack}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {saving ? 'Saving…' : isNew ? '✓ Create PO' : '✓ Save Changes'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Main POs List Page ─────────────────────────────────────────────────────────
+function POs() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [pos, setPos] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(null);
+
+  const fetchPOs = useCallback(() => {
+    setLoading(true);
+    api.get('/supplier-pos/')
+      .then(res => setPos(res.data))
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
+
+  const handleDelete = (poItem, e) => {
+    e.stopPropagation();
+    if (window.confirm(`Delete PO "${poItem.po_number}"? This cannot be undone.`)) {
+      api.delete(`/supplier-pos/${poItem.id}/`)
+        .then(fetchPOs)
+        .catch(err => console.error(err));
+    }
+  };
+
+  const handleDownloadPDF = async (poItem, e) => {
+    e.stopPropagation();
+    setDownloading(poItem.id);
+    try {
+      const res = await api.get(`/supplier-pos/${poItem.id}/pdf/`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${poItem.po_number}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to download PDF.');
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  // If we're on a detail/create route
+  if (id) {
+    return (
+      <POForm
+        poId={id === 'new' ? null : id}
+        onBack={() => navigate('/pos')}
+        onSaved={() => { navigate('/pos'); fetchPOs(); }}
+      />
+    );
+  }
+
+  const filteredPOs = pos.filter(p => {
+    const matchSearch = !searchTerm ||
+      p.po_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.supplier_detail?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = !statusFilter || p.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  // Stats
+  const stats = {
+    total: pos.length,
+    confirmed: pos.filter(p => p.status === 'Confirmed').length,
+    draft: pos.filter(p => p.status === 'Draft').length,
+    received: pos.filter(p => p.status === 'Received').length,
+    totalValue: pos.reduce((s, p) => s + parseFloat(p.total_amount || 0), 0),
+  };
+
+  return (
+    <div>
+      {/* ── Page Header ── */}
+      <div className="page-header">
+        <div>
+          <h2 style={{ margin: 0 }}>Purchase Orders</h2>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Supplier POs for raw furniture material procurement
+          </p>
+        </div>
+        <button className="btn-primary" onClick={() => navigate('/pos/new')}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Plus size={16}/> Create New PO
+        </button>
+      </div>
+
+      {/* ── Stat Cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {[
+          { label: 'Total POs', value: stats.total, color: '#8b5a2b', bg: '#8b5a2b15' },
+          { label: 'Draft', value: stats.draft, color: '#64748b', bg: '#64748b15' },
+          { label: 'Confirmed', value: stats.confirmed, color: '#15803d', bg: '#dcfce7' },
+          { label: 'Received', value: stats.received, color: '#1d4ed8', bg: '#dbeafe' },
+          { label: 'Total Value', value: `₹${stats.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`, color: '#8b5a2b', bg: '#8b5a2b15' },
+        ].map(card => (
+          <div key={card.label} style={{ background: card.bg, borderRadius: '12px', padding: '1rem 1.25rem', border: `1px solid ${card.color}22` }}>
+            <div style={{ fontSize: '0.75rem', color: card.color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: card.color, marginTop: '4px' }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filter Bar ── */}
+      <div className="filter-bar">
+        <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 220 }}>
+            <Search size={15} className="filter-icon"/>
+            <input
+              type="text"
+              className="filter-input"
+              placeholder="Search by PO number or supplier..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ flex: 1 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="filter-label">Status:</span>
+            <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              style={{ minWidth: 140 }}>
+              <option value="">All Statuses</option>
+              {['Draft','Confirmed','Received','Cancelled'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Table ── */}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>PO Number</th>
+              <th>Supplier</th>
+              <th>PO Date</th>
+              <th>Due Date</th>
+              <th>Items</th>
+              <th>Total Amount</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
+            ) : filteredPOs.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+                  <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+                  <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                    {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
+                  </div>
+                </td>
+              </tr>
+            ) : filteredPOs.map(p => (
+              <tr
+                key={p.id}
+                onClick={() => navigate(`/pos/${p.id}`)}
+                style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                title="Click to view/edit"
+              >
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <FileText size={15} color="#8b5a2b"/>
+                    </div>
+                    <strong>{p.po_number}</strong>
+                  </div>
+                </td>
+                <td>
+                  <div style={{ fontWeight: 600 }}>{p.supplier_detail?.name || '—'}</div>
+                  {p.supplier_detail?.state_name && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.supplier_detail.state_name}</div>
+                  )}
+                </td>
+                <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                <td>
+                  <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
+                    {(p.items || []).length} item{(p.items || []).length !== 1 ? 's' : ''}
+                  </span>
+                </td>
+                <td style={{ fontWeight: 700, color: '#8b5a2b' }}>{fmtINR(p.total_amount)}</td>
+                <td><StatusBadge status={p.status}/></td>
+                <td onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                    <button
+                      className="btn-secondary"
+                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
+                    >
+                      <Eye size={13}/> Edit
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+                      onClick={e => handleDownloadPDF(p, e)}
+                      disabled={downloading === p.id}
+                      title="Download PDF"
+                    >
+                      <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
+                    </button>
+                    <button
+                      className="btn-secondary"
+                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                      onClick={e => handleDelete(p, e)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
