@@ -181,8 +181,17 @@ class SampleViewSet(viewsets.ModelViewSet):
     Samples — accessible to all authenticated users.
     Admins & Supervisors can create/edit; Contractors read-only.
     """
-    serializer_class = SampleSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            if self.request.query_params.get('nopage') == 'true':
+                from .serializers import SampleDropdownSerializer
+                return SampleDropdownSerializer
+            from .serializers import SampleListSerializer
+            return SampleListSerializer
+        from .serializers import SampleSerializer
+        return SampleSerializer
 
     def get_queryset(self):
         qs = Sample.objects.select_related('buyer').prefetch_related('images').all()
@@ -233,8 +242,14 @@ class SampleImageViewSet(viewsets.ModelViewSet):
         return context
 
 class BuyerViewSet(viewsets.ModelViewSet):
-    serializer_class = BuyerSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list' and self.request.query_params.get('nopage') == 'true':
+            from .serializers import BuyerDropdownSerializer
+            return BuyerDropdownSerializer
+        from .serializers import BuyerSerializer
+        return BuyerSerializer
 
     def get_queryset(self):
         return Buyer.objects.filter(is_deleted=False).order_by('name')
@@ -257,8 +272,14 @@ class BuyerViewSet(viewsets.ModelViewSet):
 
 class BuyerMasterViewSet(viewsets.ModelViewSet):
     queryset = BuyerMaster.objects.select_related('buyer', 'sample').all()
-    serializer_class = BuyerMasterSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            from .serializers import BuyerMasterListSerializer
+            return BuyerMasterListSerializer
+        from .serializers import BuyerMasterSerializer
+        return BuyerMasterSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -454,8 +475,14 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
     referencing different buyer orders.
     """
     queryset = SupplierPO.objects.select_related('supplier').prefetch_related('items__buyer').all()
-    serializer_class = SupplierPOSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            from .serializers import SupplierPOListSerializer
+            return SupplierPOListSerializer
+        from .serializers import SupplierPOSerializer
+        return SupplierPOSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1450,8 +1477,14 @@ class PerformaInvoiceViewSet(viewsets.ModelViewSet):
 
 class BuyerPIViewSet(viewsets.ModelViewSet):
     queryset = BuyerPI.objects.prefetch_related('items', 'items__buyer_master', 'items__buyer_master__sample').select_related('buyer').all()
-    serializer_class = BuyerPISerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            from .serializers import BuyerPIListSerializer
+            return BuyerPIListSerializer
+        from .serializers import BuyerPISerializer
+        return BuyerPISerializer
 
     def get_queryset(self):
         qs = super().get_queryset()

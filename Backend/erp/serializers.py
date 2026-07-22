@@ -118,6 +118,11 @@ class BuyerSerializer(serializers.ModelSerializer):
         model = Buyer
         fields = '__all__'
 
+class BuyerDropdownSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Buyer
+        fields = ['id', 'name']
+
 
 class SampleSerializer(serializers.ModelSerializer):
     images = SampleImageSerializer(many=True, read_only=True)
@@ -134,6 +139,39 @@ class SampleSerializer(serializers.ModelSerializer):
             'images',
         ]
         read_only_fields = ['id', 'images', 'buyer_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
+
+
+class BuyerCodeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Buyer
+        fields = ['code']
+
+class SampleDropdownSerializer(serializers.ModelSerializer):
+    buyer_detail = BuyerCodeSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = Sample
+        fields = [
+            'id', 'sample_id', 'style_no', 'buyer_detail', 'product_name',
+            'material', 'finish_color', 'remark',
+            'size_length', 'size_breadth', 'size_height'
+        ]
+
+class SampleListSerializer(serializers.ModelSerializer):
+    images = SampleImageSerializer(many=True, read_only=True)
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = Sample
+        fields = [
+            'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
+            'material', 'finish_color',
+            'cbm', 'usd', 'vendor_name',
+            'size_length', 'size_breadth', 'size_height',
+            'size_length_inch', 'size_breadth_inch', 'size_height_inch',
+            'images',
+        ]
+        read_only_fields = fields
 
 
 class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
@@ -170,6 +208,17 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.packaging_image.url)
             return obj.packaging_image.url
         return None
+
+class BuyerMasterListSerializer(serializers.ModelSerializer):
+    buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = BuyerMaster
+        fields = [
+            'id', 'buyer', 'buyer_detail', 'style_no', 'product_name', 
+            'wood_type', 'finish_color', 
+            'size_length', 'size_breadth', 'size_height'
+        ]
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -225,6 +274,32 @@ class SupplierPOItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'supplier_po', 'amount']
 
+
+class SupplierDropdownSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = ['id', 'name', 'state_name']
+
+class SupplierPOItemMinimalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplierPOItem
+        fields = ['id']
+
+class SupplierPOListSerializer(serializers.ModelSerializer):
+    items = SupplierPOItemMinimalSerializer(many=True, read_only=True)
+    supplier_detail = SupplierDropdownSerializer(source='supplier', read_only=True)
+    total_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupplierPO
+        fields = [
+            'id', 'po_number', 'po_date', 'due_date', 
+            'supplier', 'supplier_detail', 'total_amount', 'status', 'items'
+        ]
+
+    def get_total_amount(self, obj):
+        from decimal import Decimal
+        return sum(item.amount or Decimal('0') for item in obj.items.all())
 
 class SupplierPOSerializer(serializers.ModelSerializer):
     items = SupplierPOItemSerializer(many=True, required=False)
@@ -432,6 +507,22 @@ class BuyerPISerializer(serializers.ModelSerializer):
         model = BuyerPI
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+class BuyerPIItemSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BuyerPIItem
+        fields = ['units', 'total_amount']
+
+class BuyerPIListSerializer(serializers.ModelSerializer):
+    items = BuyerPIItemSummarySerializer(many=True, read_only=True)
+    buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
+
+    class Meta:
+        model = BuyerPI
+        fields = [
+            'id', 'pi_no', 'pi_date', 'buyer', 'buyer_detail', 
+            'delivered_to_name', 'delivered_to_company', 'ex_factory_date', 'items'
+        ]
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
