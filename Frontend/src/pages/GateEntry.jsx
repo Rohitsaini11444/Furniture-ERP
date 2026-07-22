@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
-  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle
+  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -27,11 +27,14 @@ function StatusBadge({ status }) {
   );
 }
 
-// ─── Defect Details Modal ─────────────────────────────────────────────────────
-function DefectDetailsModal({ item, onClose, onReplySaved }) {
+// ─── Inline Defect Logs ───────────────────────────────────────────────────────
+function InlineDefectLogs({ item, onClose, onReplySaved }) {
   const { isAdmin } = useAuth();
   const [replies, setReplies] = useState({});
   const [savingReply, setSavingReply] = useState({});
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const defects = item.defects || [];
 
   const handleReplyChange = (defectId, text) => {
     setReplies(prev => ({ ...prev, [defectId]: text }));
@@ -52,80 +55,93 @@ function DefectDetailsModal({ item, onClose, onReplySaved }) {
     }
   };
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#dc2626' }}>Defect Logs: {item.description}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-          {item.defects?.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No defects logged.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {item.defects.map(d => (
-                <div key={d.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', background: '#f8fafc' }}>
-                  <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-                    <strong>Rejected Qty:</strong> <span style={{ color: '#dc2626', fontWeight: 600 }}>{d.quantity} pcs</span>
-                  </div>
-                  <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-                    <strong>Reported By:</strong> {d.reported_by_name || 'Unknown'}
-                  </div>
-                  <div style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-                    <strong>Remark:</strong> {d.remark}
-                  </div>
-                  <div style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>
-                    <strong>Date :</strong> {new Date(d.created_at).toLocaleDateString('en-GB')}
-                  </div>
-                  
-                  {/* Images */}
-                  {d.images && d.images.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1rem' }}>
-                      {d.images.map((imgUrl, i) => (
-                        <img key={i} src={imgUrl} alt={`Defect ${i}`} style={{ width: '100%', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                      ))}
-                    </div>
-                  ) : d.image_url && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <img src={d.image_url} alt="Defect" style={{ maxWidth: '100%', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
-                    </div>
-                  )}
+  if (defects.length === 0) {
+    return <div style={{ padding: '1rem', color: 'var(--text-muted)' }}>No defects logged.</div>;
+  }
 
-                  {/* Admin Reply Section */}
-                  {d.admin_reply ? (
-                    <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#e0f2fe', borderRadius: '4px', borderLeft: '4px solid #0ea5e9' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>Admin Reply:</div>
-                      <div style={{ fontSize: '0.9rem' }}>{d.admin_reply}</div>
-                    </div>
-                  ) : isAdmin ? (
-                    <div style={{ marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Write a reply (Admin only):</label>
-                      <textarea
-                        rows={2}
-                        className="form-input"
-                        placeholder="Type your reply here..."
-                        value={replies[d.id] || ''}
-                        onChange={e => handleReplyChange(d.id, e.target.value)}
-                        style={{ marginBottom: '0.5rem' }}
-                      />
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <button 
-                          className="btn-primary" 
-                          style={{ padding: '4px 12px', fontSize: '0.8rem', background: '#0ea5e9' }}
-                          onClick={() => submitReply(d.id)}
-                          disabled={savingReply[d.id] || !replies[d.id]}
-                        >
-                          {savingReply[d.id] ? 'Saving...' : 'Submit Reply'}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
+  const d = defects[currentIndex];
+
+  return (
+    <div style={{ background: '#fff1f2', border: '1px solid #fee2e2', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <XCircle size={18} color="#dc2626" />
+          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>Rejected Logs ({defects.length})</h4>
         </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}>
+          <ChevronUp size={20} color="#1e293b" />
+        </button>
+      </div>
+
+      <div>
+        <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          <strong style={{ color: '#1e293b' }}>Rejected Qty:</strong> <span style={{ color: '#dc2626', fontWeight: 700 }}>{d.quantity} pcs</span>
+        </div>
+        <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          <strong style={{ color: '#1e293b' }}>Reported By:</strong> <span style={{ color: '#334155' }}>{d.reported_by_name || 'Unknown'}</span>
+        </div>
+        <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+          <strong style={{ color: '#1e293b' }}>Remark:</strong> <span style={{ color: '#334155' }}>{d.remark}</span>
+        </div>
+        <div style={{ fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+          <strong style={{ color: '#1e293b' }}>Date:</strong> <span style={{ color: '#334155' }}>{new Date(d.created_at).toLocaleDateString('en-GB')}</span>
+        </div>
+        
+        {d.images && d.images.length > 0 ? (
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+            {d.images.map((imgUrl, i) => (
+              <img key={i} src={imgUrl} alt={`Defect ${i}`} style={{ height: '100px', width: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'cover' }} />
+            ))}
+          </div>
+        ) : d.image_url && (
+          <div style={{ marginBottom: '1.25rem' }}>
+            <img src={d.image_url} alt="Defect" style={{ height: '100px', width: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', objectFit: 'cover' }} />
+          </div>
+        )}
+
+        {/* Admin Reply Section */}
+        {d.admin_reply ? (
+          <div style={{ padding: '0.75rem', background: '#e0f2fe', borderRadius: '8px', borderLeft: '4px solid #0ea5e9' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0369a1', marginBottom: '4px' }}>Admin Reply:</div>
+            <div style={{ fontSize: '0.9rem', color: '#1e293b' }}>{d.admin_reply}</div>
+          </div>
+        ) : isAdmin ? (
+          <div style={{ borderTop: '1px solid #fecaca', paddingTop: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.5rem' }}>Write a reply (Admin only):</label>
+            <textarea
+              rows={2}
+              className="form-input"
+              placeholder="Type your reply here..."
+              value={replies[d.id] || ''}
+              onChange={e => handleReplyChange(d.id, e.target.value)}
+              style={{ marginBottom: '0.5rem', borderColor: '#fecaca' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                className="btn-primary" 
+                style={{ padding: '4px 12px', fontSize: '0.8rem', background: '#0ea5e9' }}
+                onClick={() => submitReply(d.id)}
+                disabled={savingReply[d.id] || !replies[d.id]}
+              >
+                {savingReply[d.id] ? 'Saving...' : 'Submit Reply'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {defects.length > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', borderTop: '1px dashed #fecaca', paddingTop: '1rem' }}>
+            <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Showing {currentIndex + 1} of {defects.length} log{defects.length !== 1 ? 's' : ''}</span>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: currentIndex === 0 ? 'not-allowed' : 'pointer', color: currentIndex === 0 ? '#cbd5e1' : '#64748b' }}>
+                <ArrowLeft size={16} />
+              </button>
+              <button onClick={() => setCurrentIndex(prev => Math.min(defects.length - 1, prev + 1))} disabled={currentIndex === defects.length - 1} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: currentIndex === defects.length - 1 ? 'not-allowed' : 'pointer', color: currentIndex === defects.length - 1 ? '#cbd5e1' : '#64748b' }}>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -392,7 +408,9 @@ function QCForm({ poId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [rejectItemData, setRejectItemData] = useState(null);
   const [passItemData, setPassItemData] = useState(null);
-  const [viewDefectItem, setViewDefectItem] = useState(null);
+  const [expandedLogs, setExpandedLogs] = useState({});
+
+  const toggleLogs = (itemId) => setExpandedLogs(prev => ({ ...prev, [itemId]: !prev[itemId] }));
 
   const loadPO = useCallback(() => {
     setLoading(true);
@@ -424,95 +442,177 @@ function QCForm({ poId, onBack }) {
           onSaved={() => { setPassItemData(null); loadPO(); }}
         />
       )}
-      {viewDefectItem && (
-        <DefectDetailsModal
-          item={viewDefectItem}
-          onClose={() => setViewDefectItem(null)}
-          onReplySaved={loadPO}
-        />
-      )}
 
       <button onClick={onBack}
         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: '#14b8a6', fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem', padding: 0, fontSize: '1rem' }}>
         <ArrowLeft size={18} /> Back to Gate Entry List
       </button>
 
-      <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-          <div>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ClipboardCheck size={24} color="#14b8a6"/>
+      <div className="pi-form-container" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ClipboardCheck size={22} color="#0284c7"/>
+            </div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#1e293b' }}>
               Gate Entry / Quality Check
             </h2>
-            <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              PO Number: <strong>{po.po_number}</strong> | Supplier: <strong>{po.supplier_detail?.name}</strong>
-            </div>
           </div>
           <StatusBadge status={po.status} />
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>#</th>
-                <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Description</th>
-                <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ordered Qty</th>
-                <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Passed Qty</th>
-                <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rejected Qty</th>
-                <th style={{ padding: '10px', textAlign: 'right', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(po.items || []).map((item, idx) => {
-                const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
-                const passedTotal = parseFloat(item.passed_quantity || 0);
-                const ordered = parseFloat(item.quantity || 0);
-                const remaining = ordered - passedTotal - rejectedTotal;
-
-                return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px 10px', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
-                    <td style={{ padding: '12px 10px' }}>
-                      {item.description}
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit}</div>
-                    </td>
-                    <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600 }}>{item.quantity} {item.unit}</td>
-                    <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#16a34a' }}>
-                      {passedTotal}
-                    </td>
-                    <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>
-                      {rejectedTotal}
-                      {item.defects?.length > 0 && (
-                        <div 
-                          style={{ fontSize: '0.75rem', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', marginTop: '4px' }}
-                          onClick={() => setViewDefectItem(item)}
-                        >
-                          View {item.defects.length} log(s)
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                        <button type="button" onClick={() => setPassItemData({ item, remaining })}
-                          disabled={remaining <= 0}
-                          style={{ background: remaining > 0 ? '#dcfce7' : '#f1f5f9', border: remaining > 0 ? '1px solid #86efac' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#16a34a' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          Pass
-                        </button>
-                        <button type="button" onClick={() => setRejectItemData({ item, remaining })}
-                          disabled={remaining <= 0}
-                          style={{ background: remaining > 0 ? '#fee2e2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fca5a5' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6' }}>
+          <div>PO Number: <strong style={{ color: '#1e293b', fontWeight: 700 }}>{po.po_number}</strong></div>
+          <div>Supplier: <strong style={{ color: '#1e293b', fontWeight: 700 }}>{po.supplier_detail?.name}</strong></div>
         </div>
       </div>
+
+      <div style={{ padding: '0 0.5rem' }}>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginBottom: '1rem', marginTop: '0.5rem' }}>Item Details</h3>
+      </div>
+
+        <div className="po-desktop-table">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>#</th>
+                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Description</th>
+                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ordered Qty</th>
+                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Passed Qty</th>
+                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rejected Qty</th>
+                  <th style={{ padding: '10px', textAlign: 'right', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(po.items || []).map((item, idx) => {
+                  const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
+                  const passedTotal = parseFloat(item.passed_quantity || 0);
+                  const ordered = parseFloat(item.quantity || 0);
+                  const remaining = ordered - passedTotal - rejectedTotal;
+
+                  return (
+                    <React.Fragment key={item.id}>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px 10px', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
+                        <td style={{ padding: '12px 10px' }}>
+                          {item.description}
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit}</div>
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600 }}>{item.quantity} {item.unit}</td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#16a34a' }}>
+                          {passedTotal}
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>
+                          {rejectedTotal}
+                          {item.defects?.length > 0 && (
+                            <div 
+                              style={{ fontSize: '0.75rem', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', marginTop: '4px' }}
+                              onClick={() => toggleLogs(item.id)}
+                            >
+                              View {item.defects.length} log(s)
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                            <button type="button" onClick={() => setPassItemData({ item, remaining })}
+                              disabled={remaining <= 0}
+                              style={{ background: remaining > 0 ? '#dcfce7' : '#f1f5f9', border: remaining > 0 ? '1px solid #86efac' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#16a34a' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              Pass
+                            </button>
+                            <button type="button" onClick={() => setRejectItemData({ item, remaining })}
+                              disabled={remaining <= 0}
+                              style={{ background: remaining > 0 ? '#fee2e2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fca5a5' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedLogs[item.id] && (
+                        <tr>
+                          <td colSpan={6} style={{ padding: '0 1rem 1rem 1rem', borderBottom: '1px solid #f1f5f9' }}>
+                            <InlineDefectLogs item={item} onClose={() => toggleLogs(item.id)} onReplySaved={loadPO} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
+          {(po.items || []).map((item, idx) => {
+            const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
+            const passedTotal = parseFloat(item.passed_quantity || 0);
+            const ordered = parseFloat(item.quantity || 0);
+            const remaining = ordered - passedTotal - rejectedTotal;
+
+            return (
+              <div key={item.id} className="po-mobile-card" style={{ display: 'flex', flexDirection: 'column', padding: '1.25rem', gap: '1.25rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                     <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                       <Package size={24} color="#8b5a2b"/>
+                     </div>
+                     <div>
+                       <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1rem', marginBottom: '0.2rem' }}>{item.description}</div>
+                       <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit}</div>
+                     </div>
+                   </div>
+                   <div style={{ background: '#f1f5f9', color: '#334155', fontWeight: 700, fontSize: '0.8rem', padding: '4px 10px', borderRadius: '999px' }}>
+                     #{idx + 1}
+                   </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #e2e8f0', borderBottom: '1px dashed #e2e8f0', padding: '1rem 0', margin: '0 -0.25rem' }}>
+                   <div style={{ flex: 1, padding: '0 0.5rem', borderRight: '1px solid #e2e8f0' }}>
+                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Ordered</div>
+                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>{item.quantity} {item.unit}</div>
+                   </div>
+                   <div style={{ flex: 1, padding: '0 0.5rem', borderRight: '1px solid #e2e8f0', textAlign: 'center' }}>
+                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Passed</div>
+                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#059669' }}>{passedTotal}</div>
+                   </div>
+                   <div style={{ flex: 1, padding: '0 0.5rem', textAlign: 'center' }}>
+                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Rejected</div>
+                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{rejectedTotal}</div>
+                   </div>
+                   <div style={{ paddingLeft: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                     {item.defects?.length > 0 && (
+                        <div 
+                          style={{ fontSize: '0.75rem', color: '#dc2626', textDecoration: 'underline', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', paddingRight: '0.5rem' }}
+                          onClick={() => toggleLogs(item.id)}
+                        >
+                          <FileText size={14}/> View {item.defects.length} log(s)
+                        </div>
+                      )}
+                   </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setPassItemData({ item, remaining })}
+                    disabled={remaining <= 0}
+                    style={{ background: remaining > 0 ? '#ecfdf5' : '#f1f5f9', border: remaining > 0 ? '1px solid #a7f3d0' : '1px solid #cbd5e1', borderRadius: '8px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#059669' : '#94a3b8', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <CheckCircle size={16}/> Pass
+                  </button>
+                  <button type="button" onClick={() => setRejectItemData({ item, remaining })}
+                    disabled={remaining <= 0}
+                    style={{ background: remaining > 0 ? '#fef2f2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fecaca' : '1px solid #cbd5e1', borderRadius: '8px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <XCircle size={16}/> Reject
+                  </button>
+                </div>
+
+                {expandedLogs[item.id] && (
+                  <InlineDefectLogs item={item} onClose={() => toggleLogs(item.id)} onReplySaved={loadPO} />
+                )}
+              </div>
+            );
+          })}
+        </div>
     </div>
   );
 }
@@ -605,44 +705,105 @@ export default function GateEntry() {
         </div>
       </div>
 
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>PO Number</th>
-              <th>Supplier</th>
-              <th>PO Date</th>
-              <th>Items count</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
-            ) : filteredPOs.length === 0 ? (
+      <div className="po-desktop-table">
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
-                  <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
-                </td>
+                <th>PO Number</th>
+                <th>Supplier</th>
+                <th>PO Date</th>
+                <th>Items count</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
-            ) : filteredPOs.map(p => (
-              <tr key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', transition: 'background 0.15s' }}>
-                <td style={{ fontWeight: 600 }}>{p.po_number}</td>
-                <td>{p.supplier_detail?.name || '—'}</td>
-                <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
-                <td>{(p.items || []).length}</td>
-                <td><StatusBadge status={p.status}/></td>
-                <td>
-                  <button className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#14b8a6', borderColor: '#ccfbf1' }} onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}>
-                    Start QC
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
+              ) : filteredPOs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
+                    <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
+                  </td>
+                </tr>
+              ) : filteredPOs.map(p => (
+                <tr key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', transition: 'background 0.15s' }}>
+                  <td style={{ fontWeight: 600 }}>{p.po_number}</td>
+                  <td>{p.supplier_detail?.name || '—'}</td>
+                  <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
+                  <td>{(p.items || []).length}</td>
+                  <td><StatusBadge status={p.status}/></td>
+                  <td>
+                    <button className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#14b8a6', borderColor: '#ccfbf1' }} onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}>
+                      Start QC
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</div>
+        ) : filteredPOs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
+            <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
+          </div>
+        ) : filteredPOs.map(p => (
+          <div className="po-mobile-card" key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <FileText size={24} color="#8b5a2b"/>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem', marginBottom: '0.2rem' }}>{p.po_number}</div>
+                  <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
+                </div>
+              </div>
+              <ChevronRight size={20} color="#64748b" />
+            </div>
+
+            <div style={{ height: '1px', background: '#e2e8f0', margin: '0' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-start' }}>
+                <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Package size={18} color="#059669" />
+                  <div>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEM COUNT</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>{(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''}</div>
+                  </div>
+                </div>
+                <StatusBadge status={p.status} />
+              </div>
+
+              <button
+                className="btn-secondary"
+                onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                style={{
+                  padding: '0.6rem 1rem',
+                  fontSize: '0.9rem',
+                  color: '#14b8a6',
+                  borderColor: '#99f6e4',
+                  borderRadius: '10px',
+                  background: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontWeight: 600
+                }}
+              >
+                Start QC
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Pagination 

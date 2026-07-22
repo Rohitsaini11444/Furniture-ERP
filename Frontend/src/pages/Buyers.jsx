@@ -189,19 +189,8 @@ function Buyers() {
           </button>
 
           {/* Profile Card */}
-          <div style={{
-            backgroundColor: '#fff',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1.5rem',
-            marginBottom: '2rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '300px' }}>
+          <div className="buyer-profile-card">
+            <div className="buyer-profile-info">
               <div style={{
                 width: '64px',
                 height: '64px',
@@ -229,7 +218,7 @@ function Buyers() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem', flex: 1, justifyContent: 'center', minWidth: '200px' }}>
+            <div className="buyer-profile-details">
               <div>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Buyer Code</span>
                 <strong style={{ fontSize: '1.05rem', color: 'var(--text-color)' }}>{selectedBuyer.code}</strong>
@@ -240,7 +229,7 @@ function Buyers() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div className="buyer-profile-actions">
               <button 
                 onClick={() => openEditModal(selectedBuyer)} 
                 className="btn-secondary" 
@@ -348,7 +337,7 @@ function Buyers() {
                   </div>
 
                   {/* Left & Right Section Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', alignItems: 'start' }}>
+                  <div className="buyer-detail-grid">
                     {/* Recent POs Table */}
                     <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>

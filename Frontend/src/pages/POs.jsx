@@ -133,9 +133,9 @@ function POForm({ poId, onBack, onSaved }) {
       api.get('/buyers/'),
       api.get('/buyer-pis/'),
     ]).then(([s, b, p]) => {
-      setSuppliers(s.data);
-      setBuyers(b.data);
-      setBuyerPIs(p.data);
+      setSuppliers(s.data.results || s.data);
+      setBuyers(b.data.results || b.data);
+      setBuyerPIs(p.data.results || p.data);
     });
   }, []);
 
@@ -252,18 +252,19 @@ function POForm({ poId, onBack, onSaved }) {
       </button>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
           <div className="modal-header" style={{ padding: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 className="pi-form-title" style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
               <FileText size={20} color="#8b5a2b"/>
-              {isNew ? 'Create New Purchase Order' : `Edit PO — ${header.po_number}`}
+              {isNew ? 'Create New PO' : 'Edit PO'}
+              {!isNew && <span style={{ backgroundColor: '#fff3e0', color: '#b45309', padding: '0.2rem 0.6rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 700 }}>{header.po_number}</span>}
             </h2>
           </div>
 
           {/* ── PO Header Details ── */}
           <div className="form-section">
             <h3 className="form-section-title">📋 PO Details</h3>
-            <div className="form-grid-2">
+            <div className="pi-info-grid">
               <div className="form-group">
                 <label className="form-label">PO Number *</label>
                 <input required type="text" className="form-input" placeholder="e.g. PO-14489"
@@ -297,17 +298,17 @@ function POForm({ poId, onBack, onSaved }) {
                 <input type="text" className="form-input" placeholder="Supervisor name"
                   value={header.supervisor} onChange={e => updateHeader('supervisor', e.target.value)} />
               </div>
-              <div className="form-group">
+              <div className="form-group full-width">
                 <label className="form-label">Terms of Delivery</label>
                 <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
                   value={header.terms_of_delivery} onChange={e => updateHeader('terms_of_delivery', e.target.value)} />
               </div>
-              <div className="form-group">
+              <div className="form-group full-width">
                 <label className="form-label">NKU Reference Numbers</label>
                 <input type="text" className="form-input" placeholder="e.g. NKU # P0010167N1"
                   value={header.nku_refs} onChange={e => updateHeader('nku_refs', e.target.value)} />
               </div>
-              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <div className="form-group full-width">
                 <label className="form-label">Remarks</label>
                 <textarea rows={2} className="form-input" placeholder="Any special instructions..."
                   value={header.remarks} onChange={e => updateHeader('remarks', e.target.value)} />
@@ -337,12 +338,17 @@ function POForm({ poId, onBack, onSaved }) {
               const sup = suppliers.find(s => s.id === header.supplier);
               if (!sup) return null;
               return (
-                <div style={{ marginTop: '0.75rem', background: '#f8fafc', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.82rem', color: 'var(--text-muted)', border: '1px solid #e2e8f0' }}>
-                  <strong style={{ color: 'var(--text-color)' }}>{sup.name}</strong>
-                  {sup.address && <div>{sup.address}</div>}
-                  {sup.phone && <div>📞 {sup.phone}</div>}
-                  {sup.gstin && <div>GSTIN: {sup.gstin}</div>}
-                  {sup.state_name && <div>State: {sup.state_name}</div>}
+                <div style={{ marginTop: '1rem', background: '#f8fafc', borderRadius: '12px', padding: '1rem', border: '1px solid #e2e8f0', display: 'flex', gap: '1rem' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                    <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block', marginBottom: '0.25rem' }}>{sup.name}</strong>
+                    {sup.address && <div>{sup.address}</div>}
+                    {sup.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>📞 {sup.phone}</div>}
+                    {sup.gstin && <div style={{ marginTop: '0.2rem' }}>GSTIN: {sup.gstin}</div>}
+                    {sup.state_name && <div>State: {sup.state_name}</div>}
+                  </div>
                 </div>
               );
             })()}
@@ -350,7 +356,7 @@ function POForm({ poId, onBack, onSaved }) {
         </div>
 
         {/* ── Line Items ── */}
-        <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
             <h3 className="form-section-title" style={{ margin: 0 }}>📦 Line Items</h3>
             <button type="button" className="btn-secondary" onClick={addItem}
@@ -430,10 +436,10 @@ function POForm({ poId, onBack, onSaved }) {
           </div>
 
           {/* Total */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', paddingTop: '1rem', borderTop: '2px solid #e2e8f0' }}>
-            <div style={{ background: 'linear-gradient(135deg, #8b5a2b22, #8b5a2b11)', borderRadius: '10px', padding: '0.75rem 1.5rem', textAlign: 'right' }}>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Total Amount</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#8b5a2b' }}>
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+            <div style={{ background: '#fcfaf6', borderRadius: '12px', padding: '1.25rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.85rem', color: '#9a3412', marginBottom: '0.25rem', fontWeight: 600 }}>Total Amount</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5a2b' }}>
                 ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
             </div>
@@ -441,11 +447,11 @@ function POForm({ poId, onBack, onSaved }) {
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <button type="button" className="btn-secondary" onClick={onBack}>Cancel</button>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+          <button type="button" className="btn-secondary" onClick={onBack} style={{ flex: 1, margin: 0, justifyContent: 'center' }}>Cancel</button>
           <button type="submit" className="btn-primary" disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {saving ? 'Saving…' : isNew ? '✓ Create PO' : '✓ Save Changes'}
+            style={{ flex: 1, margin: 0, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {saving ? 'Saving…' : isNew ? 'Create PO' : 'Save Changes'}
           </button>
         </div>
       </form>
@@ -583,8 +589,8 @@ function POs() {
 
       {/* ── Filter Bar ── */}
       <div className="filter-bar">
-        <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 220 }}>
+        <div className="filter-bar-inner" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
             <Search size={15} className="filter-icon"/>
             <input
               type="text"
@@ -595,23 +601,21 @@ function POs() {
               style={{ flex: 1 }}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="filter-label">Status:</span>
-            <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              style={{ minWidth: 140 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', maxWidth: '300px' }}>
+            <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Status:</span>
+            <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: '100%' }}>
               <option value="">All Statuses</option>
               {['Draft','Confirmed','Received','Cancelled'].map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            <span className="filter-label">Order By:</span>
+
+            <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Order By:</span>
             <select
               className="filter-input"
               value={ordering}
               onChange={e => setOrdering(e.target.value)}
-              style={{ minWidth: '130px' }}
+              style={{ width: '100%' }}
             >
               <option value="-id">Latest First</option>
               <option value="id">Oldest First</option>
@@ -622,9 +626,10 @@ function POs() {
         </div>
       </div>
 
-      {/* ── Table ── */}
-      <div className="table-container">
-        <table className="data-table">
+      {/* ── Desktop Table & Mobile Cards ── */}
+      <div className="po-desktop-table">
+        <div className="table-container">
+          <table className="data-table">
           <thead>
             <tr>
               <th>PO Number</th>
@@ -711,6 +716,64 @@ function POs() {
             ))}
           </tbody>
         </table>
+        </div>
+      </div>
+
+      <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</div>
+        ) : filteredPOs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+            <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+          </div>
+        ) : filteredPOs.map(p => (
+          <div className="po-mobile-card" key={p.id} onClick={() => navigate(`/pos/${p.id}`)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <FileText size={24} color="#8b5a2b"/>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>{p.po_number}</div>
+                  <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>
+                </div>
+              </div>
+              
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>TOTAL AMOUNT</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b' }}>
+                  {fmtINR(p.total_amount)}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '1rem' }}>
+              <button
+                onClick={e => handleDownloadPDF(p, e)}
+                disabled={downloading === p.id}
+                style={{
+                  background: '#fff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '0.75rem 0.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.35rem',
+                  color: '#3b82f6',
+                  cursor: 'pointer',
+                  minWidth: '60px'
+                }}
+              >
+                <Download size={22}/>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{downloading === p.id ? '...' : 'PDF'}</span>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Pagination 

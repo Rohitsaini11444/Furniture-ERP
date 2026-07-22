@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import {
   Users, UserPlus, Edit2, Trash2, X, ChevronDown,
-  Shield, Briefcase, Hammer, CheckCircle, AlertCircle,
+  Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor,
 } from 'lucide-react';
 
 const ROLE_CONFIG = {
@@ -40,6 +40,18 @@ function UserManagement() {
   const [croppedImageBlob, setCroppedImageBlob] = useState(null);
   const [cropPreviewUrl, setCropPreviewUrl] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
+
+  // Active Devices State
+  const [activeDevices, setActiveDevices] = useState([]);
+  const [showDevicesModal, setShowDevicesModal] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.get('/auth/devices/')
+        .then(res => setActiveDevices(res.data))
+        .catch(err => console.error("Failed to load devices", err));
+    }
+  }, [isAdmin]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -219,10 +231,22 @@ function UserManagement() {
           <h1 className="um-title">User Management</h1>
           <p className="um-subtitle">Manage system users, roles, and assignments</p>
         </div>
-        <button className="btn-primary um-add-btn" onClick={openCreate}>
-          <UserPlus size={16} />
-          Add User
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          {activeDevices.length > 0 && (
+            <button 
+              className="btn-primary"
+              onClick={() => setShowDevicesModal(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+            >
+              <Monitor size={16} />
+              Logged into {activeDevices.length} device{activeDevices.length > 1 ? 's' : ''}
+            </button>
+          )}
+          <button className="btn-primary um-add-btn" onClick={openCreate}>
+            <UserPlus size={16} />
+            Add User
+          </button>
+        </div>
       </div>
 
       {/* Stats Row */}

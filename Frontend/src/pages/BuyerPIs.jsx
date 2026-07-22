@@ -390,20 +390,20 @@ function BuyerPIs() {
             <ArrowLeft size={18} /> Back to Performa Invoices
           </button>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div className="pi-form-container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+              <h2 className="pi-form-title" style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, paddingRight: '1rem' }}>
                 {editingId ? `✏️ Edit Performa Invoice (${formData.pi_no})` : '+ Create New Performa Invoice (PI)'}
               </h2>
               {editingId && (
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="pi-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={() => navigate(`/pos/new?pi=${editingId}`)}
                     className="btn-secondary"
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderColor: '#14b8a6', color: '#0d9488' }}
                   >
-                    <ShoppingBag size={16} /> Create PO from PI
+                    <ShoppingBag size={16} /> <span>Create PO from PI</span>
                   </button>
                   <button
                     type="button"
@@ -411,7 +411,7 @@ function BuyerPIs() {
                     className="btn-primary"
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#16a34a' }}
                   >
-                    <Download size={16} /> Download PI Excel
+                    <Download size={16} /> <span>Download PI Excel</span>
                   </button>
                 </div>
               )}
@@ -421,8 +421,8 @@ function BuyerPIs() {
               {/* Header Info */}
               <div className="form-section">
                 <h3 className="form-section-title">🏢 Buyer & Exporter Info</h3>
-                <div className="form-grid-2">
-                  <div className="form-group">
+                <div className="pi-info-grid">
+                  <div className="form-group full-width">
                     <label className="form-label">Buyer *</label>
                     <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleBuyerChange}>
                       <option value="">Select Buyer...</option>
@@ -449,37 +449,33 @@ function BuyerPIs() {
 
                   <div className="form-group">
                     <label className="form-label">Payment Terms</label>
-                    <input type="text" name="payment_terms" className="form-input" value={formData.payment_terms} onChange={handleFormChange} placeholder="e.g. 100% TT 30 Days from BL" />
+                    <input type="text" name="payment_terms" className="form-input" value={formData.payment_terms} onChange={handleFormChange} />
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group full-width">
                     <label className="form-label">Delivered To: Contact Person</label>
-                    <input type="text" name="delivered_to_name" className="form-input" value={formData.delivered_to_name} onChange={handleFormChange} placeholder="e.g. Nick Hannaford-Hill" />
+                    <input type="text" name="delivered_to_name" className="form-input" value={formData.delivered_to_name} onChange={handleFormChange} />
                   </div>
-                </div>
 
-                <div className="form-grid-2" style={{ marginTop: '1rem' }}>
-                  <div className="form-group">
+                  <div className="form-group full-width">
                     <label className="form-label">Delivered To: Company Name</label>
-                    <input type="text" name="delivered_to_company" className="form-input" value={formData.delivered_to_company} onChange={handleFormChange} placeholder="e.g. Nkuku Ltd" />
+                    <input type="text" name="delivered_to_company" className="form-input" value={formData.delivered_to_company} onChange={handleFormChange} />
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group full-width">
                     <label className="form-label">Delivered To: Full Address</label>
-                    <textarea rows="2" name="delivered_to_address" className="form-input" value={formData.delivered_to_address} onChange={handleFormChange} placeholder="Gowerton Road, Blackmills Industrial Estate Northampton NN4 7BN" />
+                    <textarea name="delivered_to_address" className="form-input" value={formData.delivered_to_address} onChange={handleFormChange} rows="3"></textarea>
                   </div>
                 </div>
               </div>
 
-              {/* Line Items */}
-              <div className="form-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                  <h3 className="form-section-title" style={{ margin: 0 }}>📦 Performa Invoice Items</h3>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button type="button" onClick={handleAddManualItem} className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}>
-                      + Add Manual Item
-                    </button>
-                  </div>
+              {/* Items */}
+              <div className="form-section" style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                  <h3 className="form-section-title" style={{ marginBottom: 0 }}>📦 Performa Invoice Items</h3>
+                  <button type="button" onClick={handleAddManualItem} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                    <Plus size={16} /> Add Manual Item
+                  </button>
                 </div>
 
                 {/* Import from Buyer Master */}
@@ -488,11 +484,11 @@ function BuyerPIs() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 600, color: '#334155' }}>
                       <Layers size={18} /> Select Styles from Buyer Master to Populate PI
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
                       <select
                         multiple
                         className="form-input"
-                        style={{ height: '90px', flexGrow: 1 }}
+                        style={{ height: '180px', width: '100%' }}
                         value={selectedMasterIds}
                         onChange={e => {
                           const options = Array.from(e.target.selectedOptions, option => option.value);
@@ -500,7 +496,7 @@ function BuyerPIs() {
                         }}
                       >
                         {buyerMasters.map(bm => (
-                          <option key={bm.id} value={bm.id}>
+                          <option key={bm.id} value={bm.id} style={{ padding: '0.25rem 0.5rem', borderBottom: '1px solid #f1f5f9' }}>
                             Style: {bm.style_no} — {bm.product_name} ({bm.wood_type} | {bm.finish_color})
                           </option>
                         ))}
@@ -510,12 +506,12 @@ function BuyerPIs() {
                         onClick={handleImportBuyerMasters}
                         className="btn-primary"
                         disabled={selectedMasterIds.length === 0}
-                        style={{ height: '40px', padding: '0 1rem', fontSize: '0.85rem' }}
+                        style={{ height: '40px', padding: '0 1rem', fontSize: '0.9rem', alignSelf: 'flex-start' }}
                       >
                         Import Selected Styles
                       </button>
                     </div>
-                    <small style={{ color: '#64748b', marginTop: '0.25rem', display: 'block' }}>Hold Ctrl (or Cmd) to select multiple Buyer Master styles to add into this Performa Invoice.</small>
+                    <small style={{ color: '#64748b', marginTop: '0.75rem', display: 'block' }}>Hold Ctrl (or Cmd) to select multiple Buyer Master styles to add into this Performa Invoice.</small>
                   </div>
                 )}
 
@@ -611,14 +607,17 @@ function BuyerPIs() {
                 </div>
 
                 {/* Summary */}
-                <div style={{ marginTop: '1rem', backgroundColor: '#f1f5f9', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>
-                    <span>PI Totals Summary:</span>
-                    <span>Total Units: {totalUnits} | Total CBM: {totalCbm.toFixed(4)} m³ | Total Amount: ${totalAmt.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                <div className="pi-totals-summary" style={{ marginTop: '1.5rem', backgroundColor: '#f0f9ff', padding: '1.25rem', borderRadius: '12px' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#1e3a8a', fontSize: '1.05rem', fontWeight: 700 }}>PI Totals Summary:</h4>
+                  <div style={{ fontSize: '0.95rem', color: '#1e3a8a' }}>
+                    <div style={{ marginBottom: '0.25rem' }}>
+                      <span style={{ fontWeight: 600 }}>Total Units:</span> {totalUnits} | <span style={{ fontWeight: 600 }}>Total CBM:</span> {totalCbm.toFixed(4)} m³
+                    </div>
+                    <div style={{ marginBottom: '1.25rem' }}>
+                      <span style={{ fontWeight: 600 }}>Total Amount:</span> ${totalAmt.toFixed(2)}
+                    </div>
                   </div>
-                  <div style={{ fontWeight: 600, color: '#8b5a2b', fontStyle: 'italic', fontSize: '0.95rem' }}>
-                    {wordsRepresentation}
-                  </div>
+                  <div className="pi-totals-words" style={{ color: '#9a3412', fontWeight: 600, fontSize: '0.95rem' }}>{wordsRepresentation}</div>
                 </div>
               </div>
 

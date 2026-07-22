@@ -1928,3 +1928,169 @@ body {
   }
 }
 
+
+.buyer-detail-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .buyer-detail-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+
+.buyer-profile-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.buyer-profile-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 250px;
+}
+
+.buyer-profile-details {
+  display: flex;
+  gap: 2rem;
+  flex: 1;
+  justify-content: center;
+  min-width: 200px;
+}
+
+.buyer-profile-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .buyer-profile-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .buyer-profile-info {
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
+  }
+  
+  .buyer-profile-details {
+    justify-content: space-between;
+    padding: 1rem 0;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .buyer-profile-actions {
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .buyer-profile-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+
+.pi-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem 1.25rem;
+}
+.pi-info-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.pi-totals-summary {
+  background-color: #f0f9ff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+  color: #0369a1;
+}
+.pi-totals-summary strong {
+  color: #0f172a;
+}
+.pi-totals-words {
+  color: #b45309;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .pi-header-actions span {
+    display: none;
+  }
+  .pi-header-actions button {
+    padding: 0.5rem;
+  }
+}
+
+
+.pi-form-container {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+  .pi-form-container {
+    padding: 1rem 0.5rem;
+  }
+  .form-section {
+    padding: 1rem 0.75rem;
+  }
+  .pi-form-title {
+    font-size: 1.1rem !important;
+  }
+  .pi-info-grid {
+    gap: 0.75rem 0.5rem;
+  }
+}
+
+
+.po-desktop-table {
+  display: block;
+}
+.po-mobile-cards {
+  display: none;
+}
+.po-mobile-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+}
+@media (max-width: 768px) {
+  .po-desktop-table {
+    display: none;
+  }
+  .po-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
