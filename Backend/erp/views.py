@@ -427,6 +427,9 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         status_f = self.request.query_params.get('status')
         if status_f:
             qs = qs.filter(status=status_f)
+        exclude_status = self.request.query_params.get('exclude_status')
+        if exclude_status:
+            qs = qs.exclude(status=exclude_status)
         return qs
 
     def get_permissions(self):

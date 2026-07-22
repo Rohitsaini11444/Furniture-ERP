@@ -91,37 +91,37 @@ function Sanding() {
 
   // ── Fetch helpers ──
   const fetchSamples = useCallback(async () => {
-    try { const r = await api.get('/samples/'); setSamples(r.data); } catch {}
+    try { const r = await api.get('/samples/', { params: { nopage: true } }); setSamples(r.data.results || r.data); } catch {}
   }, []);
 
   const fetchBatches = useCallback(async () => {
-    try { const r = await api.get('/sanding/batches/'); setBatches(r.data); } catch {}
+    try { const r = await api.get('/sanding/batches/', { params: { nopage: true } }); setBatches(r.data.results || r.data); } catch {}
   }, []);
 
   const fetchAssignments = useCallback(async () => {
-    try { const r = await api.get('/sanding/assignments/'); setAssignments(r.data); } catch {}
+    try { const r = await api.get('/sanding/assignments/', { params: { nopage: true } }); setAssignments(r.data.results || r.data); } catch {}
   }, []);
 
   const fetchQC = useCallback(async () => {
     try {
       const [qcRes, pendRes] = await Promise.all([
-        api.get('/sanding/qc/'),
-        api.get('/sanding/qc/pending/'),
+        api.get('/sanding/qc/', { params: { nopage: true } }),
+        api.get('/sanding/qc/pending/', { params: { nopage: true } }),
       ]);
-      setQCRecords(qcRes.data);
-      setPendingQC(pendRes.data);
+      setQCRecords(qcRes.data.results || qcRes.data);
+      setPendingQC(pendRes.data.results || pendRes.data);
     } catch {}
   }, []);
 
   const fetchMyAssignments = useCallback(async () => {
-    try { const r = await api.get('/sanding/assignments/'); setMyAssignments(r.data); } catch {}
+    try { const r = await api.get('/sanding/assignments/', { params: { nopage: true } }); setMyAssignments(r.data.results || r.data); } catch {}
   }, []);
 
   const fetchContractors = useCallback(async () => {
     if (!isSandingSupervisor) return;
     try {
-      const r = await api.get(`/users/${user.id}/contractors/`);
-      setContractors(r.data);
+      const r = await api.get(`/users/${user.id}/contractors/`, { params: { nopage: true } });
+      setContractors(r.data.results || r.data);
     } catch {}
   }, [isSandingSupervisor, user?.id]);
 

@@ -6,6 +6,7 @@ import {
   ChevronDown, Package, Building2, Calendar, MoreVertical,
   CheckCircle, Clock, XCircle, TruckIcon, Eye
 } from 'lucide-react';
+import Pagination from '../components/Pagination';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -462,16 +463,33 @@ function POs() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(null);
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
-    api.get('/supplier-pos/')
-      .then(res => setPos(res.data))
+    api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering } })
+      .then(res => {
+        const data = res.data.results || res.data;
+        setPos(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
+      })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentPage, ordering]);
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, ordering]);
 
   const handleDelete = (poItem, e) => {
     e.stopPropagation();
@@ -587,6 +605,20 @@ function POs() {
               ))}
             </select>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+            <span className="filter-label">Order By:</span>
+            <select
+              className="filter-input"
+              value={ordering}
+              onChange={e => setOrdering(e.target.value)}
+              style={{ minWidth: '130px' }}
+            >
+              <option value="-id">Latest First</option>
+              <option value="id">Oldest First</option>
+              <option value="po_number">PO No (A-Z)</option>
+              <option value="-po_number">PO No (Z-A)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -680,6 +712,12 @@ function POs() {
           </tbody>
         </table>
       </div>
+
+      <Pagination 
+        currentPage={currentPage} 
+        totalPages={totalPages} 
+        onPageChange={setCurrentPage} 
+      />
     </div>
   );
 }

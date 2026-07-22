@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit } from 'lucide-react';
+import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
 
 function Buyers() {
   const navigate = useNavigate();
@@ -25,6 +27,12 @@ function Buyers() {
   });
   const [activeTab, setActiveTab] = useState('Overview');
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const { id } = useParams();
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
   
   const emptyForm = {
     name: '',
@@ -36,14 +44,26 @@ function Buyers() {
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchBuyers = () => {
-    api.get('/buyers/')
-      .then(res => setBuyers(res.data))
+    api.get('/buyers/', { params: { page: currentPage, ordering: ordering } })
+      .then(res => {
+        const data = res.data.results || res.data;
+        setBuyers(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
+      })
       .catch(err => console.error(err));
   };
 
   useEffect(() => {
     fetchBuyers();
-  }, []);
+  }, [currentPage, ordering]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, ordering]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -102,32 +122,42 @@ function Buyers() {
       .catch(err => console.error(err));
   };
 
-  const handleViewDetails = (buyer) => {
-    setSelectedBuyer(buyer);
-    setLoadingDetails(true);
-    
-    Promise.all([
-      api.get(`/pos/?buyer=${buyer.id}`),
-      api.get(`/buyer-masters/?buyer=${buyer.id}`),
-      api.get('/sales-orders/')
-    ]).then(([posRes, bmRes, soRes]) => {
-      const matchingSO = soRes.data.filter(so => 
-        so.buyer_name?.toLowerCase() === buyer.name?.toLowerCase() ||
-        so.po_no?.toLowerCase() === buyer.code?.toLowerCase()
-      );
-      
-      setBuyerDetails({
-        pos: posRes.data,
-        buyerMasters: bmRes.data,
-        salesOrders: matchingSO,
+  useEffect(() => {
+    if (id) {
+      setLoadingDetails(true);
+      api.get(`/buyers/${id}/`).then(buyerRes => {
+        const buyer = buyerRes.data;
+        setSelectedBuyer(buyer);
+        
+        Promise.all([
+          api.get('/pos/', { params: { buyer: buyer.id, nopage: true } }),
+          api.get('/buyer-masters/', { params: { buyer: buyer.id, nopage: true } }),
+          api.get('/sales-orders/', { params: { nopage: true } })
+        ]).then(([posRes, bmRes, soRes]) => {
+          const matchingSO = soRes.data.filter(so => 
+            so.buyer_name?.toLowerCase() === buyer.name?.toLowerCase() ||
+            so.po_no?.toLowerCase() === buyer.code?.toLowerCase()
+          );
+          
+          setBuyerDetails({
+            pos: posRes.data,
+            buyerMasters: bmRes.data,
+            salesOrders: matchingSO,
+          });
+          setActiveTab('Overview');
+        }).catch(err => {
+          console.error("Error fetching buyer details", err);
+        }).finally(() => {
+          setLoadingDetails(false);
+        });
+      }).catch(err => {
+        console.error("Error fetching buyer", err);
+        setLoadingDetails(false);
       });
-      setActiveTab('Overview');
-    }).catch(err => {
-      console.error("Error fetching buyer details", err);
-    }).finally(() => {
-      setLoadingDetails(false);
-    });
-  };
+    } else {
+      setSelectedBuyer(null);
+    }
+  }, [id]);
 
   const filteredBuyers = buyers.filter(b => 
     b.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,7 +170,7 @@ function Buyers() {
         <div className="buyer-detail-view" style={{ padding: '1rem 0' }}>
           {/* Back Link */}
           <button 
-            onClick={() => setSelectedBuyer(null)} 
+            onClick={() => navigate('/buyers')} 
             style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -546,10 +576,22 @@ function Buyers() {
                 onChange={e => setSearchTerm(e.target.value)}
                 style={{ flexGrow: 1 }}
               />
+              <span className="filter-label" style={{ marginLeft: 'auto' }}>Order By:</span>
+              <select
+                className="filter-input"
+                value={ordering}
+                onChange={e => setOrdering(e.target.value)}
+                style={{ minWidth: '130px' }}
+              >
+                <option value="-id">Latest First</option>
+                <option value="id">Oldest First</option>
+                <option value="name">Name (A-Z)</option>
+                <option value="-name">Name (Z-A)</option>
+              </select>
             </div>
           </div>
 
-          <div className="table-container">
+          <div className="table-container desktop-only">
             <table className="data-table">
               <thead>
                 <tr>
@@ -563,29 +605,22 @@ function Buyers() {
               </thead>
               <tbody>
                 {filteredBuyers.map(b => (
-                  <tr key={b.id}>
+                  <tr 
+                    key={b.id} 
+                    onClick={() => navigate(`/buyers/${b.id}`)}
+                    style={{ cursor: 'pointer', transition: 'background-color 0.2s ease' }}
+                    title="Click to view details"
+                  >
                     <td>
-                      <button 
-                        onClick={() => handleViewDetails(b)} 
-                        style={{ 
-                          background: 'none', 
-                          border: 'none', 
-                          padding: 0, 
-                          font: 'inherit', 
-                          cursor: 'pointer', 
-                          textAlign: 'left', 
-                          fontWeight: 'bold', 
-                          color: '#8b5a2b' 
-                        }}
-                      >
+                      <span style={{ fontWeight: 'bold', color: '#8b5a2b' }}>
                         {b.name}
-                      </button>
+                      </span>
                     </td>
                     <td><span className="navbar-role-badge admin-badge">{b.code}</span></td>
                     <td>{b.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                     <td>{b.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                     <td>{b.address || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td>
+                    <td onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => openEditModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
                         <button onClick={() => openDeleteModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
@@ -603,6 +638,47 @@ function Buyers() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List */}
+          <div className="mobile-only mobile-card-list">
+            {filteredBuyers.map(b => {
+              const initials = b.name ? b.name.substring(0, 2).toUpperCase() : 'DB';
+              return (
+                <div 
+                  className="mobile-card" 
+                  key={b.id} 
+                  onClick={() => navigate(`/buyers/${b.id}`)}
+                >
+                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
+                    {initials}
+                  </div>
+                  
+                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                    <div className="mobile-card-title">{b.name}</div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
+                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{b.code}</span>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-arrow">
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              );
+            })}
+            {filteredBuyers.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                No buyers found.
+              </div>
+            )}
+          </div>
+
+
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
         </>
       )}
 

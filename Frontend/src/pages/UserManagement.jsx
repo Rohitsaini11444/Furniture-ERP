@@ -44,9 +44,9 @@ function UserManagement() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const params = filterRole ? { role: filterRole } : {};
+      const params = filterRole ? { role: filterRole, nopage: true } : { nopage: true };
       const res = await api.get('/users/', { params });
-      setUsers(res.data);
+      setUsers(res.data.results || res.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -56,8 +56,8 @@ function UserManagement() {
 
   const fetchSupervisors = async () => {
     try {
-      const res = await api.get('/users/supervisors/');
-      setSupervisors(res.data);
+      const res = await api.get('/users/supervisors/', { params: { nopage: true } });
+      setSupervisors(res.data.results || res.data);
     } catch (err) {
       console.error(err);
     }

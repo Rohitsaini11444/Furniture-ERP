@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
 
 function num2words(num) {
   if (num === null || num === undefined || isNaN(num)) return '';
@@ -59,6 +61,12 @@ function BuyerPIs() {
   const [filterBuyerId, setFilterBuyerId] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
+  
 
   const emptyForm = {
     pi_no: '',
@@ -77,18 +85,26 @@ function BuyerPIs() {
 
   const fetchPIs = () => {
     setLoading(true);
-    let url = '/buyer-pis/';
+    const params = { page: currentPage, ordering: ordering };
     if (filterBuyerId) {
-      url += `?buyer=${filterBuyerId}`;
+      params.buyer = filterBuyerId;
     }
-    api.get(url)
-      .then(res => setPis(res.data))
+    api.get('/buyer-pis/', { params })
+      .then(res => {
+        const data = res.data.results || res.data;
+        setPis(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
+      })
       .catch(err => console.error('Failed to fetch Buyer PIs', err))
       .finally(() => setLoading(false));
   };
 
   const fetchBuyers = () => {
-    api.get('/buyers/')
+    api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
       .catch(err => console.error('Failed to fetch buyers', err));
   };
@@ -98,7 +114,7 @@ function BuyerPIs() {
       setBuyerMasters([]);
       return;
     }
-    api.get(`/buyer-masters/?buyer=${buyerId}`)
+    api.get('/buyer-masters/', { params: { buyer: buyerId, nopage: true } })
       .then(res => setBuyerMasters(res.data))
       .catch(err => console.error('Failed to fetch Buyer Masters for buyer', err));
   };
@@ -108,8 +124,12 @@ function BuyerPIs() {
   }, []);
 
   useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterBuyerId, ordering]);
+
+  useEffect(() => {
     fetchPIs();
-  }, [filterBuyerId]);
+  }, [currentPage, ordering, filterBuyerId]);
 
   useEffect(() => {
     if (id && id !== 'new') {
@@ -620,8 +640,8 @@ function BuyerPIs() {
 
           {/* Search & Filter Bar */}
           <div className="filter-bar">
-            <div className="filter-bar-inner" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexGrow: 1, minWidth: '240px' }}>
+            <div className="bm-filter-container">
+              <div className="bm-search">
                 <Search size={16} className="filter-icon" />
                 <span className="filter-label">Search:</span>
                 <input
@@ -630,11 +650,11 @@ function BuyerPIs() {
                   placeholder="Search by PI No, Buyer, Contact..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flexGrow: 1 }}
+                  style={{ width: '100%' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div className="bm-export">
                 <span className="filter-label">Filter Buyer:</span>
                 <select
                   className="filter-input"
@@ -648,10 +668,25 @@ function BuyerPIs() {
                   ))}
                 </select>
               </div>
+
+              <div className="bm-order">
+                <span className="filter-label">Order By:</span>
+                <select
+                  className="filter-input"
+                  value={ordering}
+                  onChange={e => setOrdering(e.target.value)}
+                  style={{ minWidth: '130px' }}
+                >
+                  <option value="-id">Latest First</option>
+                  <option value="id">Oldest First</option>
+                  <option value="pi_no">PI No (A-Z)</option>
+                  <option value="-pi_no">PI No (Z-A)</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="table-container">
+          <div className="table-container desktop-only">
             <table className="data-table">
               <thead>
                 <tr>
@@ -748,6 +783,52 @@ function BuyerPIs() {
               </tbody>
             </table>
           </div>
+          
+          {/* Mobile Card List */}
+          <div className="mobile-only mobile-card-list">
+            {filteredPIs.map(p => {
+              const pItems = p.items || [];
+              const pUnits = pItems.reduce((acc, it) => acc + (it.units || 0), 0);
+              
+              return (
+                <div 
+                  className="mobile-card" 
+                  key={p.id} 
+                  onClick={() => navigate(`/performa-invoices/${p.id}`)}
+                  style={{ backgroundColor: selectedRowIds.has(p.id) ? '#f0fdf4' : '#fff' }}
+                >
+                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', borderRadius: '12px', width: '56px', height: '56px' }}>
+                    <FileText size={24} />
+                  </div>
+                  
+                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                    <div className="mobile-card-title">{p.pi_no}</div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', color: 'var(--text-main)' }}>
+                      {p.buyer_detail?.name || 'Unknown Buyer'}
+                    </div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
+                      Items - <strong style={{ color: '#8b5a2b' }}>{pItems.length}</strong>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-arrow">
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              );
+            })}
+            {filteredPIs.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                {loading ? 'Loading Performa Invoices...' : 'No Performa Invoices found.'}
+              </div>
+            )}
+          </div>
+          
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
         </>
       )}
     </div>

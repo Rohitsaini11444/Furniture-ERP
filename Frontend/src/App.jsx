@@ -36,8 +36,8 @@ function Navbar() {
 
   const fetchNotifications = useCallback(() => {
     if (user) {
-      api.get('/notifications/')
-        .then(res => setNotifications(res.data))
+      api.get('/notifications/', { params: { nopage: true } })
+        .then(res => setNotifications(res.data.results || res.data))
         .catch(err => console.error(err));
     }
   }, [user]);
@@ -405,6 +405,7 @@ function AppLayout() {
           <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
           <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
           <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
+          <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
           <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
           <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
           <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />

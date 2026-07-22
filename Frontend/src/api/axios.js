@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Dynamically target local dev server or live pythonanywhere backend
 const API_BASE = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://127.0.0.1:8000/api'
+  ? '/api'
   : 'https://rohitsaini.pythonanywhere.com/api';
 
 const api = axios.create({

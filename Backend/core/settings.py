@@ -107,6 +107,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_PAGINATION_CLASS': 'erp.pagination.OptionalPagination',
+    'PAGE_SIZE': 50,
+    'DEFAULT_FILTER_BACKENDS': ['erp.pagination.CustomOrderingFilter'],
 }
 
 # Simple JWT Configuration

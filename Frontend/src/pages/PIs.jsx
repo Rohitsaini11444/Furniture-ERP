@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, ArrowLeft, Trash2, Download, Layers } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
 
 function num2words(num) {
   if (num === null || num === undefined || isNaN(num)) return '';
@@ -58,6 +60,12 @@ function PIs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBuyerId, setFilterBuyerId] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
+  
 
   const defaultDeclaration = (
     "We declare that this invoice shows that the actual price of the goods and that all particulars are true and correct. " +
@@ -96,18 +104,26 @@ function PIs() {
 
   const fetchPIs = () => {
     setLoading(true);
-    let url = '/performa-invoices/';
+    const params = { page: currentPage, ordering: ordering };
     if (filterBuyerId) {
-      url += `?buyer=${filterBuyerId}`;
+      params.buyer = filterBuyerId;
     }
-    api.get(url)
-      .then(res => setPis(res.data))
+    api.get('/performa-invoices/', { params })
+      .then(res => {
+        const data = res.data.results || res.data;
+        setPis(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
+      })
       .catch(err => console.error('Failed to fetch PIs', err))
       .finally(() => setLoading(false));
   };
 
   const fetchBuyers = () => {
-    api.get('/buyers/')
+    api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
       .catch(err => console.error('Failed to fetch buyers', err));
   };
@@ -117,7 +133,7 @@ function PIs() {
       setAvailablePOs([]);
       return;
     }
-    api.get(`/pos/?buyer=${buyerId}`)
+    api.get('/pos/', { params: { buyer: buyerId, nopage: true } })
       .then(res => setAvailablePOs(res.data))
       .catch(err => console.error('Failed to fetch POs for buyer', err));
   };
@@ -127,8 +143,12 @@ function PIs() {
   }, []);
 
   useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterBuyerId, ordering]);
+
+  useEffect(() => {
     fetchPIs();
-  }, [filterBuyerId]);
+  }, [currentPage, ordering, filterBuyerId]);
 
   useEffect(() => {
     if (id && id !== 'new') {
@@ -698,6 +718,21 @@ function PIs() {
                   ))}
                 </select>
               </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto' }}>
+                <span className="filter-label">Order By:</span>
+                <select
+                  className="filter-input"
+                  value={ordering}
+                  onChange={e => setOrdering(e.target.value)}
+                  style={{ minWidth: '130px' }}
+                >
+                  <option value="-id">Latest First</option>
+                  <option value="id">Oldest First</option>
+                  <option value="pi_no">Invoice No (A-Z)</option>
+                  <option value="-pi_no">Invoice No (Z-A)</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -760,6 +795,12 @@ function PIs() {
               </tbody>
             </table>
           </div>
+          
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
         </>
       )}
     </div>

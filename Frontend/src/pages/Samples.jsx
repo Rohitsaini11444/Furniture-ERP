@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Upload, ImageIcon, Filter, ArrowLeft } from 'lucide-react';
+import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -145,32 +147,48 @@ function Samples() {
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
   const fetchBuyers = () => {
-    api.get('/buyers/')
+    api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
       .catch(err => console.error(err));
   };
 
   const fetchSamples = useCallback(() => {
-    const params = {};
+    const params = { page: currentPage, ordering: ordering };
     if (filterBuyer) params.buyer = filterBuyer;
     if (filterMaterial) params.material = filterMaterial;
     api.get('/samples/', { params })
       .then(res => {
-        setSamples(res.data);
-        setFiltered(res.data);
+        const data = res.data.results || res.data;
+        setSamples(data);
+        setFiltered(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
       })
       .catch(err => console.error(err));
-  }, [filterBuyer, filterMaterial]);
+  }, [filterBuyer, filterMaterial, currentPage, ordering]);
 
   useEffect(() => {
     fetchBuyers();
   }, []);
 
   useEffect(() => { fetchSamples(); }, [fetchSamples]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterBuyer, filterMaterial, ordering]);
 
   // Local filter (instant feedback while typing)
   useEffect(() => {
@@ -428,7 +446,7 @@ function Samples() {
                       <label className="form-label">Vendor Name</label>
                       <input type="text" name="vendor_name" className="form-input" value={formData.vendor_name} onChange={handleChange} placeholder="e.g. Raj Artisans" />
                     </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                       <label className="form-label">Remark</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any additional notes..." />
                     </div>
@@ -480,19 +498,13 @@ function Samples() {
         </div>
       ) : (
         <>
-          {/* Page Header */}
-          <div className="page-header">
-            <h2>Samples</h2>
-            <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
-          </div>
-
-          {/* Filter Bar */}
+          {/* Filter Bar (Top on Mobile) */}
           <div className="filter-bar">
             <div className="filter-bar-inner">
               <Filter size={16} className="filter-icon" />
-              <span className="filter-label">Filter:</span>
+              <span className="filter-label">Filter</span>
               <select
-                className="filter-input"
+                className="filter-input desktop-only"
                 value={filterBuyer}
                 onChange={e => setFilterBuyer(e.target.value)}
                 style={{ minWidth: '150px' }}
@@ -504,25 +516,42 @@ function Samples() {
               </select>
               <input
                 type="text"
-                className="filter-input"
+                className="filter-input desktop-only"
                 placeholder="Material..."
                 value={filterMaterial}
                 onChange={e => setFilterMaterial(e.target.value)}
               />
               {(filterBuyer || filterMaterial) && (
                 <button
-                  className="filter-clear-btn"
+                  className="filter-clear-btn desktop-only"
                   onClick={() => { setFilterBuyer(''); setFilterMaterial(''); }}
                 >
                   <X size={14} /> Clear
                 </button>
               )}
-              <span className="filter-count">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</span>
+              
+              <select
+                className="filter-input"
+                value={ordering}
+                onChange={e => setOrdering(e.target.value)}
+                style={{ minWidth: '130px', marginLeft: 'auto' }}
+              >
+                <option value="-id">Latest First</option>
+                <option value="id">Oldest First</option>
+                <option value="product_name">Name (A-Z)</option>
+                <option value="-product_name">Name (Z-A)</option>
+              </select>
             </div>
           </div>
 
-          {/* Table */}
-          <div className="table-container">
+          {/* Page Header (Contains + Create New) */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0.5rem 1rem' }}>
+            <h2 className="desktop-only" style={{ marginRight: 'auto' }}>Samples</h2>
+            <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+          </div>
+
+          {/* Table (Desktop) */}
+          <div className="table-container desktop-only">
             <table className="data-table">
               <thead>
                 <tr>
@@ -620,6 +649,55 @@ function Samples() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List */}
+          <div className="mobile-only mobile-card-list">
+            {filtered.map(s => (
+              <div 
+                className="mobile-card" 
+                key={s.id} 
+                onClick={() => openEditModal(s)}
+                style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : '#fff' }}
+              >
+                <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={selectedRowIds.has(s.id)}
+                    onChange={e => toggleSelectRow(s.id, e)}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                  />
+                </div>
+                
+                <div className="mobile-card-img">
+                  {s.images && s.images.length > 0 ? (
+                    <img src={s.images[0].image_url} alt="sample" />
+                  ) : (
+                    <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
+                  )}
+                </div>
+                
+                <div className="mobile-card-content">
+                  <div className="mobile-card-title">{s.sample_id}</div>
+                  <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
+                </div>
+
+                <div className="mobile-card-arrow">
+                  <ChevronRight size={20} color="#94a3b8" />
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                No samples found.
+              </div>
+            )}
+          </div>
+          
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
         </>
       )}
 

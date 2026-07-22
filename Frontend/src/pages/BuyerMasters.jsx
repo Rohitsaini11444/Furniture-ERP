@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
 
 function SizeGroup({ label, prefix, values, onChange }) {
   return (
@@ -42,6 +44,11 @@ function BuyerMasters() {
   const [showMoreDetails, setShowMoreDetails] = useState(false);
   const [packagingImage, setPackagingImage] = useState(null);
   const [finishingImages, setFinishingImages] = useState([]);
+  
+  // Pagination & Ordering
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [ordering, setOrdering] = useState('-id');
 
   const handleDownloadExcel = (withDetails = false) => {
     if (!exportBuyerId) return;
@@ -91,22 +98,35 @@ function BuyerMasters() {
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchData = () => {
-    api.get('/buyer-masters/')
-      .then(res => setBuyerMasters(res.data))
+    api.get('/buyer-masters/', { params: { page: currentPage, ordering: ordering } })
+      .then(res => {
+        const data = res.data.results || res.data;
+        setBuyerMasters(data);
+        if (res.data.count !== undefined) {
+          setTotalPages(Math.ceil(res.data.count / 50));
+        } else {
+          setTotalPages(1);
+        }
+      })
       .catch(err => console.error(err));
 
-    api.get('/buyers/')
+    api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
       .catch(err => console.error(err));
 
-    api.get('/samples/')
+    api.get('/samples/', { params: { nopage: true } })
       .then(res => setSamples(res.data))
       .catch(err => console.error(err));
   };
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [currentPage, ordering]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, ordering]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -442,8 +462,8 @@ function BuyerMasters() {
           </div>
 
           <div className="filter-bar">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexGrow: 1 }}>
+            <div className="bm-filter-container">
+              <div className="bm-search">
                 <Search size={18} color="#64748b" />
                 <input
                   type="text"
@@ -451,11 +471,11 @@ function BuyerMasters() {
                   className="filter-input"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flexGrow: 1 }}
+                  style={{ width: '100%' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <div className="bm-export">
                 <span className="filter-label">Export Buyer Master:</span>
                 <select
                   className="filter-input"
@@ -495,10 +515,25 @@ function BuyerMasters() {
                   )}
                 </div>
               </div>
+
+              <div className="bm-order">
+                <span className="filter-label">Order By:</span>
+                <select
+                  className="filter-input"
+                  value={ordering}
+                  onChange={e => setOrdering(e.target.value)}
+                  style={{ minWidth: '130px', marginLeft: '0.5rem' }}
+                >
+                  <option value="-id">Latest First</option>
+                  <option value="id">Oldest First</option>
+                  <option value="product_name">Name (A-Z)</option>
+                  <option value="-product_name">Name (Z-A)</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="table-container">
+          <div className="table-container desktop-only">
             <table className="data-table">
               <thead>
                 <tr>
@@ -574,6 +609,60 @@ function BuyerMasters() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List */}
+          <div className="mobile-only mobile-card-list">
+            {filteredMasters.map(bm => {
+              const buyerName = bm.buyer_detail?.name || 'Unknown Buyer';
+              const initials = buyerName.substring(0, 2).toUpperCase();
+              return (
+                <div 
+                  className="mobile-card" 
+                  key={bm.id} 
+                  onClick={() => openEditModal(bm)}
+                  style={{ backgroundColor: selectedRowIds.has(bm.id) ? '#f0fdf4' : '#fff' }}
+                >
+                  <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.has(bm.id)}
+                      onChange={e => toggleSelectRow(bm.id, e)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </div>
+                  
+                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
+                    {initials}
+                  </div>
+                  
+                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                    <div className="mobile-card-title">{buyerName}</div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
+                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{bm.style_no}</span>
+                    </div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                      {bm.product_name}
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-arrow">
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              );
+            })}
+            {filteredMasters.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                No styles found.
+              </div>
+            )}
+          </div>
+          
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
         </>
       )}
     </div>
