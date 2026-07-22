@@ -20,9 +20,10 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const res = await api.post('/auth/login/', { username, password });
-      const { access, refresh, user: userData } = res.data;
+      const { access, refresh, session_id, user: userData } = res.data;
       localStorage.setItem('access_token', access);
       localStorage.setItem('refresh_token', refresh);
+      if (session_id) localStorage.setItem('session_id', session_id);
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       return { success: true, user: userData };
@@ -40,11 +41,13 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     const refresh = localStorage.getItem('refresh_token');
+    const session_id = localStorage.getItem('session_id');
     if (refresh) {
-      api.post('/auth/logout/', { refresh }).catch(() => {});
+      api.post('/auth/logout/', { refresh, session_id }).catch(() => {});
     }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('session_id');
     localStorage.removeItem('user');
     setUser(null);
   }, []);

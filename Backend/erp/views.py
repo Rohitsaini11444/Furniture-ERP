@@ -23,9 +23,11 @@ from .models import (
     Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
+    UserSession, Notification,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
+    UserSessionSerializer,
     SampleSerializer, SampleImageSerializer,
     SandingBatchSerializer, SandingAssignmentSerializer, SandingQCSerializer,
     BuyerSerializer, BuyerMasterSerializer,
@@ -54,9 +56,30 @@ class LoginView(APIView):
         user = serializer.validated_data['user']
 
         refresh = RefreshToken.for_user(user)
+
+        # Track Session
+        ip_address = request.META.get('REMOTE_ADDR')
+        user_agent = request.META.get('HTTP_USER_AGENT', '')[:512]
+        
+        session = UserSession.objects.create(
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        # Notify Admin on new login if they have other active devices
+        if user.role == 'admin':
+            active_count = UserSession.objects.filter(user=user, is_active=True).count()
+            if active_count > 1:
+                Notification.objects.create(
+                    user=user,
+                    message=f"New login detected from {ip_address} ({user_agent[:30]}...)",
+                )
+
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
+            'session_id': session.id,
             'user': {
                 'id': user.id,
                 'username': user.username,
@@ -69,7 +92,6 @@ class LoginView(APIView):
             }
         }, status=status.HTTP_200_OK)
 
-
 class LogoutView(APIView):
     """
     POST /api/auth/logout/
@@ -80,11 +102,27 @@ class LogoutView(APIView):
     def post(self, request):
         try:
             refresh_token = request.data.get('refresh')
+            session_id = request.data.get('session_id')
             token = RefreshToken(refresh_token)
             token.blacklist()
+            if session_id:
+                UserSession.objects.filter(id=session_id, user=request.user).update(is_active=False)
         except Exception:
             pass  # Token may already be expired
         return Response({'detail': 'Logged out successfully.'}, status=status.HTTP_200_OK)
+
+
+class ActiveDevicesView(APIView):
+    """
+    GET /api/auth/devices/
+    Returns active devices for the current user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sessions = UserSession.objects.filter(user=request.user, is_active=True)
+        serializer = UserSessionSerializer(sessions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 # ─── User Management (Admin Only) ─────────────────────────────────────────────

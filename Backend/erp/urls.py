@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
-    LoginView, LogoutView, CurrentUserView,
+    LoginView, LogoutView, CurrentUserView, ActiveDevicesView,
     UserViewSet,
     SampleViewSet, SampleImageViewSet,
     SandingBatchViewSet, SandingAssignmentViewSet, SandingQCViewSet,
@@ -47,6 +47,7 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
+    path('auth/devices/', ActiveDevicesView.as_view(), name='auth-devices'),
     path('auth/me/', CurrentUserView.as_view(), name='auth-me'),
 
     # Router URLs

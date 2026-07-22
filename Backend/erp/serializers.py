@@ -8,6 +8,7 @@ from .models import (
     Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
+    UserSession,
 )
 
 
@@ -460,3 +461,9 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = '__all__'
         read_only_fields = ['id', 'user', 'created_at']
+
+class UserSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserSession
+        fields = ["id", "ip_address", "user_agent", "created_at", "last_activity", "is_active"]
+

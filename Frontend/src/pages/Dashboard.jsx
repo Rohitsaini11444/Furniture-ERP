@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../api/axios';
 import {
   Box, FileText, ShoppingCart,
   Loader, Sparkles, Wrench,
   Package, Truck, Receipt, ArrowRight,
-  Lock, Users, Layers, ClipboardList, ClipboardCheck
+  Lock, Users, Layers, ClipboardList, ClipboardCheck,
+  Monitor, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -41,6 +43,17 @@ function Dashboard() {
     t.roles.includes(user?.role)
   );
 
+  const [activeDevices, setActiveDevices] = useState([]);
+  const [showDevicesModal, setShowDevicesModal] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.get('/auth/devices/')
+        .then(res => setActiveDevices(res.data))
+        .catch(err => console.error("Failed to load devices", err));
+    }
+  }, [isAdmin]);
+
   const getRoleWelcome = () => {
     if (isAdmin) return 'Full system access — manage everything.';
     if (isSandingSupervisor) return 'Sanding Supervisor — manage your batch & contractor assignments.';
@@ -59,10 +72,49 @@ function Dashboard() {
           </h2>
           <p className="dashboard-welcome-role">{getRoleWelcome()}</p>
         </div>
-        <span className={`login-role-badge ${user?.role}-badge`} style={{ fontSize: '0.9rem', padding: '0.4rem 1rem' }}>
-          {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {isAdmin && activeDevices.length > 0 && (
+            <button 
+              onClick={() => setShowDevicesModal(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#3b82f6', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.9rem' }}
+            >
+              <Monitor size={16} />
+              Logged into {activeDevices.length} device{activeDevices.length > 1 ? 's' : ''}
+            </button>
+          )}
+          <span className={`login-role-badge ${user?.role}-badge`} style={{ fontSize: '0.9rem', padding: '0.4rem 1rem' }}>
+            {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}
+          </span>
+        </div>
       </div>
+
+      {showDevicesModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>Active Devices</h3>
+              <button className="close-btn" onClick={() => setShowDevicesModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: '1rem', color: '#64748b' }}>You are currently logged into the following devices:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {activeDevices.map(device => (
+                  <div key={device.id} style={{ padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <strong style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Monitor size={16} /> {device.ip_address}</strong>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{new Date(device.created_at).toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#475569', wordBreak: 'break-word' }}>
+                      {device.user_agent || 'Unknown Device'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Tiles */}
       <div className="dashboard-grid">
