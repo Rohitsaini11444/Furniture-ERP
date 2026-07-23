@@ -14,6 +14,7 @@ from .views import (
     SupplierPOItemDefectViewSet,
     SupplierPOItemViewSet,
     NotificationViewSet,
+    StockItemViewSet,
 )
 
 router = DefaultRouter()
@@ -32,6 +33,7 @@ router.register(r'supplier-po-items', SupplierPOItemViewSet, basename='supplier-
 router.register(r'supplier-po-defects', SupplierPOItemDefectViewSet, basename='supplier-po-defect')
 
 router.register(r'performa-invoices', PerformaInvoiceViewSet, basename='performa-invoice')
+router.register(r'stock', StockItemViewSet, basename='stock')
 
 # Users (Admin only) & Notifications
 router.register(r'users', UserViewSet, basename='user')

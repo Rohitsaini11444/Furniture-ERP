@@ -8,7 +8,7 @@ from .models import (
     Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
-    UserSession,
+    UserSession, StockItem,
 )
 
 
@@ -557,4 +557,16 @@ class UserSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSession
         fields = ["id", "ip_address", "user_agent", "created_at", "last_activity", "is_active"]
+
+
+class StockItemSerializer(serializers.ModelSerializer):
+    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+    sample_id_str = serializers.CharField(source='sample.sample_id', read_only=True)
+    po_number_str = serializers.CharField(source='po_item.supplier_po.po_number', read_only=True)
+
+    class Meta:
+        model = StockItem
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
 

@@ -2042,6 +2042,9 @@ body {
   .pi-header-actions button {
     padding: 0.5rem;
   }
+  .pi-info-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 

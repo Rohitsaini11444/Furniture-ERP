@@ -4,7 +4,7 @@ import {
   Box, FileText, ShoppingCart,
   Loader, Sparkles, Wrench,
   Package, Truck, Receipt, ArrowRight,
-  Lock, Users, Layers, ClipboardList, ClipboardCheck
+  Lock, Users, Layers, ClipboardList, ClipboardCheck, Warehouse
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -15,6 +15,7 @@ const ALL_TILES = [
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={32} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },
   { name: 'PO',                      icon: <ClipboardList size={32} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
   { name: 'Gate Entry',              icon: <ClipboardCheck size={32} />, color: '#f59e0b', link: '/gate-entry',        roles: ['admin', 'supervisor'] },
+  { name: 'Stock',                   icon: <Warehouse size={32} />,      color: '#059669', link: '/stock',             roles: ['admin', 'supervisor'] },
   { name: 'Sanding',                 icon: <Loader size={32} />,        color: '#a0522d', link: '/sanding',           roles: ['admin', 'supervisor', 'contractor'] },
   { name: 'Polish',                  icon: <Sparkles size={32} />,      color: '#a855f7', link: '#',                  roles: ['admin', 'supervisor'] },
   { name: 'Fitting',                 icon: <Wrench size={32} />,        color: '#2563eb', link: '#',                  roles: ['admin', 'supervisor'] },
@@ -26,6 +27,7 @@ const ALL_TILES = [
 const WORKFLOW_STEPS = [
   { name: 'Performa Invoice', icon: <Receipt size={20} />,       color: '#8b5cf6' },
   { name: 'PO',               icon: <ClipboardList size={20} />, color: '#14b8a6' },
+  { name: 'Gate Entry / Stock', icon: <Warehouse size={20} />,   color: '#059669' },
   { name: 'Sanding',          icon: <Loader size={20} />,        color: '#a0522d' },
   { name: 'Polish',           icon: <Sparkles size={20} />,      color: '#a855f7' },
   { name: 'Fitting',          icon: <Wrench size={20} />,        color: '#2563eb' },

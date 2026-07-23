@@ -17,6 +17,7 @@ import POs            from './pages/POs';
 import GateEntry      from './pages/GateEntry';
 import PIs            from './pages/PIs';
 import BuyerPIs       from './pages/BuyerPIs';
+import Stock          from './pages/Stock';
 
 import pinkcityLogo from './assets/Logo_2.png';
 
@@ -411,9 +412,10 @@ function AppLayout() {
           <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
           <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
           
-          {/* Gate Entry */}
+          {/* Gate Entry & Stock */}
           <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
           <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+          <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
 
           <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
           <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />

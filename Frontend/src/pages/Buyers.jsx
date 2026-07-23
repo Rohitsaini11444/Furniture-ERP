@@ -32,7 +32,7 @@ function Buyers() {
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [ordering, setOrdering] = useState('-id');
+  const [ordering, setOrdering] = useState('-created_at');
   
   const emptyForm = {
     name: '',
@@ -572,8 +572,8 @@ function Buyers() {
                 onChange={e => setOrdering(e.target.value)}
                 style={{ minWidth: '130px' }}
               >
-                <option value="-id">Latest First</option>
-                <option value="id">Oldest First</option>
+                <option value="-created_at">Latest First</option>
+                <option value="created_at">Oldest First</option>
                 <option value="name">Name (A-Z)</option>
                 <option value="-name">Name (Z-A)</option>
               </select>

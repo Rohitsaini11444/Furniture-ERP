@@ -48,7 +48,7 @@ function BuyerMasters() {
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [ordering, setOrdering] = useState('-id');
+  const [ordering, setOrdering] = useState('-created_at');
 
   const handleDownloadExcel = (withDetails = false) => {
     if (!exportBuyerId) return;
@@ -371,7 +371,7 @@ function BuyerMasters() {
                       <label className="form-label">Finish / Color *</label>
                       <input required type="text" name="finish_color" className="form-input" value={formData.finish_color} onChange={handleChange} placeholder="e.g. Natural Wash" />
                     </div>
-                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                       <label className="form-label">Remark</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
                     </div>
@@ -402,7 +402,7 @@ function BuyerMasters() {
 
                   {showMoreDetails && (
                     <div className="form-grid-2">
-                      <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                         <label className="form-label">Vendor Details</label>
                         <textarea name="vendor_details" className="form-input" rows="2" value={formData.vendor_details} onChange={handleChange} placeholder="Vendor name, contact, etc..."></textarea>
                       </div>
@@ -524,8 +524,8 @@ function BuyerMasters() {
                   onChange={e => setOrdering(e.target.value)}
                   style={{ minWidth: '130px', marginLeft: '0.5rem' }}
                 >
-                  <option value="-id">Latest First</option>
-                  <option value="id">Oldest First</option>
+                  <option value="-created_at">Latest First</option>
+                  <option value="created_at">Oldest First</option>
                   <option value="product_name">Name (A-Z)</option>
                   <option value="-product_name">Name (Z-A)</option>
                 </select>

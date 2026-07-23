@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from decimal import Decimal
 import uuid
 
@@ -100,6 +101,7 @@ class Sample(models.Model):
     size_length_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (in)')
     size_breadth_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Breadth (in)')
     size_height_inch = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (in)')
+    created_at = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
         from decimal import Decimal
@@ -137,6 +139,7 @@ class Buyer(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     deletion_note = models.TextField(null=True, blank=True)
     deleted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deleted_buyers')
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -166,6 +169,7 @@ class BuyerMaster(models.Model):
     gross_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Gross Weight')
     box_size = models.CharField(max_length=150, blank=True, null=True, verbose_name='Box Size')
     packaging_image = models.ImageField(upload_to='buyer_masters/packaging/', blank=True, null=True, verbose_name='Packaging Image')
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return f"{self.style_no} - {self.product_name} ({self.buyer.code})"
@@ -560,6 +564,42 @@ class SupplierPOItemDefectImage(models.Model):
 
     def __str__(self):
         return f"Image for {self.defect}"
+
+
+# ─── Stock / Inventory Models ───────────────────────────────────────────────
+
+class StockItem(models.Model):
+    STOCK_STATUS_CHOICES = [
+        ('In Stock', 'In Stock'),
+        ('Low Stock', 'Low Stock'),
+        ('Reserved', 'Reserved'),
+        ('Out of Stock', 'Out of Stock'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Supplier PO Item')
+    sample = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Sample')
+    buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Buyer')
+    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Buyer Master')
+    
+    style_no = models.CharField(max_length=100, verbose_name='Style No.')
+    item_name = models.CharField(max_length=255, verbose_name='Item / Product Name')
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Stock Quantity')
+    unit = models.CharField(max_length=30, default='pcs', verbose_name='Unit')
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Unit Price (INR/USD)')
+    location = models.CharField(max_length=150, default='Main Store', blank=True, null=True, verbose_name='Storage Location')
+    status = models.CharField(max_length=30, choices=STOCK_STATUS_CHOICES, default='In Stock', verbose_name='Status')
+    remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.style_no} - {self.item_name} ({self.quantity} {self.unit})"
+
 
 
 class Notification(models.Model):

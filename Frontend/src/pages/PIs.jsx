@@ -64,7 +64,7 @@ function PIs() {
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [ordering, setOrdering] = useState('-id');
+  const [ordering, setOrdering] = useState('-created_at');
   
 
   const defaultDeclaration = (
@@ -727,8 +727,8 @@ function PIs() {
                   onChange={e => setOrdering(e.target.value)}
                   style={{ minWidth: '130px' }}
                 >
-                  <option value="-id">Latest First</option>
-                  <option value="id">Oldest First</option>
+                  <option value="-created_at">Latest First</option>
+                  <option value="created_at">Oldest First</option>
                   <option value="pi_no">Invoice No (A-Z)</option>
                   <option value="-pi_no">Invoice No (Z-A)</option>
                 </select>

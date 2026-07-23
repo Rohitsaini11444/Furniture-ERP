@@ -3,8 +3,17 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     User, Sample,
     SandingBatch, SandingAssignment, SandingQC,
-    PerformaInvoice, PerformaInvoiceItem,
+    PerformaInvoice, PerformaInvoiceItem, StockItem,
 )
+
+# ... existing code ...
+
+@admin.register(StockItem)
+class StockItemAdmin(admin.ModelAdmin):
+    list_display = ['style_no', 'item_name', 'quantity', 'unit', 'location', 'status', 'created_at']
+    list_filter = ['status', 'location']
+    search_fields = ['style_no', 'item_name', 'location']
+
 
 
 @admin.register(User)

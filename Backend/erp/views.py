@@ -23,7 +23,7 @@ from .models import (
     Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
-    UserSession, Notification,
+    UserSession, Notification, StockItem,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
@@ -33,7 +33,7 @@ from .serializers import (
     BuyerSerializer, BuyerMasterSerializer,
     SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer,
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
-    BuyerPISerializer, BuyerPIItemSerializer,
+    BuyerPISerializer, BuyerPIItemSerializer, StockItemSerializer,
 )
 from .permissions import (
     IsAdmin, IsSupervisor, IsContractor,
@@ -1864,3 +1864,81 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notification.is_read = True
         notification.save()
         return Response({'status': 'ok'})
+
+
+class StockItemViewSet(viewsets.ModelViewSet):
+    queryset = StockItem.objects.select_related('po_item', 'sample', 'buyer', 'buyer_master').all()
+    serializer_class = StockItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get('status')
+        buyer_param = self.request.query_params.get('buyer')
+        search_param = self.request.query_params.get('search')
+
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if buyer_param:
+            qs = qs.filter(buyer_id=buyer_param)
+        if search_param:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(style_no__icontains=search_param) |
+                Q(item_name__icontains=search_param) |
+                Q(location__icontains=search_param) |
+                Q(remarks__icontains=search_param)
+            )
+
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        if ordering:
+            qs = qs.order_by(ordering)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), IsAdminOrSupervisor()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get'], url_path='export-excel')
+    def export_excel(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Inventory_Stock"
+        ws.views.sheetView[0].showGridLines = True
+
+        headers = ['Style No', 'Item Name', 'Quantity', 'Unit', 'Unit Price', 'Location', 'Status', 'Buyer', 'PO Ref', 'Created At']
+        ws.append(headers)
+
+        header_font = Font(bold=True, color='FFFFFF')
+        header_fill = PatternFill(start_color='059669', end_color='059669', fill_type='solid')
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        for item in queryset:
+            ws.append([
+                item.style_no,
+                item.item_name,
+                float(item.quantity) if item.quantity else 0,
+                item.unit,
+                float(item.unit_price) if item.unit_price else '',
+                item.location or '',
+                item.status,
+                item.buyer.name if item.buyer else '',
+                item.po_item.supplier_po.po_number if (item.po_item and item.po_item.supplier_po) else '',
+                item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else ''
+            ])
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="Inventory_Stock.xlsx"'
+        wb.save(response)
+        return response
+

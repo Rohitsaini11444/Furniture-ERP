@@ -81,7 +81,7 @@ function SupplierModal({ onClose, onSaved }) {
                     value={form[f.key]} onChange={e => setForm({...form, [f.key]: e.target.value})} />
                 </div>
               ))}
-              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label className="form-label">Address</label>
                 <textarea rows={3} className="form-input"
                   value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
@@ -473,7 +473,7 @@ function POs() {
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [ordering, setOrdering] = useState('-id');
+  const [ordering, setOrdering] = useState('-created_at');
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
@@ -617,8 +617,8 @@ function POs() {
               onChange={e => setOrdering(e.target.value)}
               style={{ width: '100%' }}
             >
-              <option value="-id">Latest First</option>
-              <option value="id">Oldest First</option>
+              <option value="-created_at">Latest First</option>
+              <option value="created_at">Oldest First</option>
               <option value="po_number">PO No (A-Z)</option>
               <option value="-po_number">PO No (Z-A)</option>
             </select>

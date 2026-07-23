@@ -364,8 +364,28 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const newPassed = parseFloat(item.passed_quantity || 0) + parseFloat(quantity);
+      const addedQty = parseFloat(quantity);
+      const newPassed = parseFloat(item.passed_quantity || 0) + addedQty;
       await api.patch(`/supplier-po-items/${item.id}/`, { passed_quantity: newPassed });
+
+      // Automatically add passed pieces to Stock Registry
+      try {
+        await api.post('/stock/', {
+          po_item: item.id,
+          buyer: item.buyer || null,
+          style_no: item.style_no || (item.description ? item.description.split(' ')[0] : 'STK-ITEM'),
+          item_name: item.description || 'Passed Goods',
+          quantity: addedQty,
+          unit: item.unit || 'pcs',
+          unit_price: item.rate || null,
+          location: 'Main Store',
+          status: 'In Stock',
+          remarks: `Passed from Gate Entry`
+        });
+      } catch (stockErr) {
+        console.error('Failed to log stock entry:', stockErr);
+      }
+
       onSaved();
     } catch (err) {
       console.error(err);
@@ -628,7 +648,7 @@ export default function GateEntry() {
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [ordering, setOrdering] = useState('-id');
+  const [ordering, setOrdering] = useState('-created_at');
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
@@ -696,8 +716,8 @@ export default function GateEntry() {
               onChange={e => setOrdering(e.target.value)}
               style={{ minWidth: '130px' }}
             >
-              <option value="-id">Latest First</option>
-              <option value="id">Oldest First</option>
+              <option value="-created_at">Latest First</option>
+              <option value="created_at">Oldest First</option>
               <option value="po_number">PO No (A-Z)</option>
               <option value="-po_number">PO No (Z-A)</option>
             </select>
