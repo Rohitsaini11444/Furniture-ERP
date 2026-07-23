@@ -1,18 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
-  CheckCircle, Clock, XCircle, TruckIcon, Eye
+  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import GateEntry from './GateEntry';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
 const STATUS_STYLES = {
-  Draft:      { bg: '#f1f5f9', color: '#64748b', icon: <Clock size={12}/> },
-  Confirmed:  { bg: '#dcfce7', color: '#15803d', icon: <CheckCircle size={12}/> },
-  Received:   { bg: '#dbeafe', color: '#1d4ed8', icon: <TruckIcon size={12}/> },
+  Pending:    { bg: '#fef3c7', color: '#d97706', icon: <Clock size={12}/> },
+  Received:   { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
   Cancelled:  { bg: '#fee2e2', color: '#dc2626', icon: <XCircle size={12}/> },
 };
 
@@ -121,7 +121,7 @@ function POForm({ poId, onBack, onSaved }) {
     supervisor: '',
     nku_refs: '',
     remarks: '',
-    status: 'Draft',
+    status: 'Pending',
   });
 
   const [items, setItems] = useState([emptyItem()]);
@@ -156,7 +156,7 @@ function POForm({ poId, onBack, onSaved }) {
             supervisor: d.supervisor || '',
             nku_refs: d.nku_refs || '',
             remarks: d.remarks || '',
-            status: d.status,
+            status: d.status || 'Pending',
           });
           const loadedItems = (d.items || []).map(it => ({
             id: it.id,
@@ -273,7 +273,7 @@ function POForm({ poId, onBack, onSaved }) {
               <div className="form-group">
                 <label className="form-label">Status *</label>
                 <select required className="form-input" value={header.status} onChange={e => updateHeader('status', e.target.value)}>
-                  {['Draft','Confirmed','Received','Cancelled'].map(s => (
+                  {['Pending','Received','Cancelled'].map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -463,6 +463,9 @@ function POForm({ poId, onBack, onSaved }) {
 function POs() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'gate-entry' ? 'gate-entry' : 'pos';
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   const [pos, setPos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -527,13 +530,29 @@ function POs() {
     }
   };
 
+  const location = useLocation();
+  const fromBuyer = location.state?.fromBuyer;
+
   // If we're on a detail/create route
   if (id) {
     return (
       <POForm
         poId={id === 'new' ? null : id}
-        onBack={() => navigate('/pos')}
-        onSaved={() => { navigate('/pos'); fetchPOs(); }}
+        onBack={() => {
+          if (fromBuyer) {
+            navigate(`/buyers/${fromBuyer}`);
+          } else {
+            navigate('/pos');
+          }
+        }}
+        onSaved={() => {
+          if (fromBuyer) {
+            navigate(`/buyers/${fromBuyer}`);
+          } else {
+            navigate('/pos');
+          }
+          fetchPOs();
+        }}
       />
     );
   }
@@ -549,175 +568,231 @@ function POs() {
   // Stats
   const stats = {
     total: pos.length,
-    confirmed: pos.filter(p => p.status === 'Confirmed').length,
-    draft: pos.filter(p => p.status === 'Draft').length,
+    pending: pos.filter(p => p.status === 'Pending').length,
     received: pos.filter(p => p.status === 'Received').length,
     totalValue: pos.reduce((s, p) => s + parseFloat(p.total_amount || 0), 0),
   };
 
   return (
     <div>
-      {/* ── Page Header ── */}
-      <div className="page-header">
-        <div>
-          <h2 style={{ margin: 0 }}>Purchase Orders</h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Supplier POs for raw furniture material procurement
-          </p>
-        </div>
-        <button className="btn-primary" onClick={() => navigate('/pos/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Plus size={16}/> Create New PO
+      {/* ── Module Tabs (PO Listing & Gate Entry) ── */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid #e2e8f0',
+        marginBottom: '1.5rem',
+        gap: '2rem'
+      }}>
+        <button
+          onClick={() => { setActiveTab('pos'); setSearchParams({}); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'pos' ? '3px solid #14b8a6' : '3px solid transparent',
+            color: activeTab === 'pos' ? '#14b8a6' : 'var(--text-muted)',
+            fontWeight: activeTab === 'pos' ? 600 : 500,
+            padding: '0.75rem 0.5rem',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          <FileText size={18} /> Purchase Orders Listing
+        </button>
+
+        <button
+          onClick={() => { setActiveTab('gate-entry'); setSearchParams({ tab: 'gate-entry' }); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'gate-entry' ? '3px solid #14b8a6' : '3px solid transparent',
+            color: activeTab === 'gate-entry' ? '#14b8a6' : 'var(--text-muted)',
+            fontWeight: activeTab === 'gate-entry' ? 600 : 500,
+            padding: '0.75rem 0.5rem',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          <ClipboardCheck size={18} /> Gate Entry & Material Receiving
         </button>
       </div>
 
-      {/* ── Stat Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Total POs', value: stats.total, color: '#8b5a2b', bg: '#8b5a2b15' },
-          { label: 'Draft', value: stats.draft, color: '#64748b', bg: '#64748b15' },
-          { label: 'Confirmed', value: stats.confirmed, color: '#15803d', bg: '#dcfce7' },
-          { label: 'Received', value: stats.received, color: '#1d4ed8', bg: '#dbeafe' },
-          { label: 'Total Value', value: `₹${stats.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`, color: '#8b5a2b', bg: '#8b5a2b15' },
-        ].map(card => (
-          <div key={card.label} style={{ background: card.bg, borderRadius: '12px', padding: '1rem 1.25rem', border: `1px solid ${card.color}22` }}>
-            <div style={{ fontSize: '0.75rem', color: card.color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: card.color, marginTop: '4px' }}>{card.value}</div>
+      {activeTab === 'gate-entry' ? (
+        <GateEntry />
+      ) : (
+        <>
+          {/* ── Page Header ── */}
+          <div className="page-header">
+            <div>
+              <h2 style={{ margin: 0 }}>Purchase Orders & Gate Entry</h2>
+              <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                Supplier POs, material receipts, and quality check inspection
+              </p>
+            </div>
+            <button className="btn-primary" onClick={() => navigate('/pos/new')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Plus size={16}/> Create New PO
+            </button>
           </div>
-        ))}
-      </div>
 
-      {/* ── Filter Bar ── */}
-      <div className="filter-bar">
-        <div className="filter-bar-inner" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-            <Search size={15} className="filter-icon"/>
-            <input
-              type="text"
-              className="filter-input"
-              placeholder="Search by PO number or supplier..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{ flex: 1 }}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', maxWidth: '300px' }}>
-            <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Status:</span>
-            <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: '100%' }}>
-              <option value="">All Statuses</option>
-              {['Draft','Confirmed','Received','Cancelled'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-
-            <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Order By:</span>
-            <select
-              className="filter-input"
-              value={ordering}
-              onChange={e => setOrdering(e.target.value)}
-              style={{ width: '100%' }}
-            >
-              <option value="-created_at">Latest First</option>
-              <option value="created_at">Oldest First</option>
-              <option value="po_number">PO No (A-Z)</option>
-              <option value="-po_number">PO No (Z-A)</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Desktop Table & Mobile Cards ── */}
-      <div className="po-desktop-table">
-        <div className="table-container">
-          <table className="data-table">
-          <thead>
-            <tr>
-              <th>PO Number</th>
-              <th>Supplier</th>
-              <th>PO Date</th>
-              <th>Due Date</th>
-              <th>Items</th>
-              <th>Total Amount</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
-            ) : filteredPOs.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
-                  <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
-                  <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                    {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
-                  </div>
-                </td>
-              </tr>
-            ) : filteredPOs.map(p => (
-              <tr
-                key={p.id}
-                onClick={() => navigate(`/pos/${p.id}`)}
-                style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                title="Click to view/edit"
-              >
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <FileText size={15} color="#8b5a2b"/>
-                    </div>
-                    <strong>{p.po_number}</strong>
-                  </div>
-                </td>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{p.supplier_detail?.name || '—'}</div>
-                  {p.supplier_detail?.state_name && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.supplier_detail.state_name}</div>
-                  )}
-                </td>
-                <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                <td>
-                  <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
-                    {(p.items || []).length} item{(p.items || []).length !== 1 ? 's' : ''}
-                  </span>
-                </td>
-                <td style={{ fontWeight: 700, color: '#8b5a2b' }}>{fmtINR(p.total_amount)}</td>
-                <td><StatusBadge status={p.status}/></td>
-                <td onClick={e => e.stopPropagation()}>
-                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
-                    >
-                      <Eye size={13}/> Edit
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1d4ed8', borderColor: '#bfdbfe' }}
-                      onClick={e => handleDownloadPDF(p, e)}
-                      disabled={downloading === p.id}
-                      title="Download PDF"
-                    >
-                      <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
-                      onClick={e => handleDelete(p, e)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
+          {/* ── Stat Cards ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            {[
+              { label: 'Total POs', value: stats.total, color: '#8b5a2b', bg: '#8b5a2b15' },
+              { label: 'Pending', value: stats.pending, color: '#d97706', bg: '#fef3c7' },
+              { label: 'Received', value: stats.received, color: '#1d4ed8', bg: '#dbeafe' },
+              { label: 'Total Value', value: `₹${stats.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`, color: '#8b5a2b', bg: '#8b5a2b15' },
+            ].map(card => (
+              <div key={card.label} style={{ background: card.bg, borderRadius: '12px', padding: '1rem 1.25rem', border: `1px solid ${card.color}22` }}>
+                <div style={{ fontSize: '0.75rem', color: card.color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: card.color, marginTop: '4px' }}>{card.value}</div>
+              </div>
             ))}
-          </tbody>
-        </table>
-        </div>
-      </div>
+          </div>
+
+          {/* ── Filter Bar ── */}
+          <div className="filter-bar">
+            <div className="filter-bar-inner" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                <Search size={15} className="filter-icon"/>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="Search by PO number or supplier..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', maxWidth: '300px' }}>
+                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Status:</span>
+                <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">All Statuses</option>
+                  {['Pending','Received','Cancelled'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+
+                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Order By:</span>
+                <select
+                  className="filter-input"
+                  value={ordering}
+                  onChange={e => setOrdering(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <option value="-created_at">Latest First</option>
+                  <option value="created_at">Oldest First</option>
+                  <option value="po_number">PO No (A-Z)</option>
+                  <option value="-po_number">PO No (Z-A)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Desktop Table & Mobile Cards ── */}
+          <div className="po-desktop-table">
+            <div className="table-container">
+              <table className="data-table">
+              <thead>
+                <tr>
+                  <th>PO Number</th>
+                  <th>Supplier</th>
+                  <th>PO Date</th>
+                  <th>Due Date</th>
+                  <th>Items</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
+                ) : filteredPOs.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                      <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+                      <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+                      <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                        {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredPOs.map(p => (
+                  <tr
+                    key={p.id}
+                    onClick={() => navigate(`/pos/${p.id}`)}
+                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                    title="Click to view/edit"
+                  >
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <FileText size={15} color="#8b5a2b"/>
+                        </div>
+                        <strong>{p.po_number}</strong>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{p.supplier_detail?.name || '—'}</div>
+                      {p.supplier_detail?.state_name && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.supplier_detail.state_name}</div>
+                      )}
+                    </td>
+                    <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                    <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                    <td>
+                      <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
+                        {(p.items || []).length} item{(p.items || []).length !== 1 ? 's' : ''}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 700, color: '#8b5a2b' }}>{fmtINR(p.total_amount)}</td>
+                    <td><StatusBadge status={p.status}/></td>
+                    <td onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#14b8a6', borderColor: '#ccfbf1' }}
+                          onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                          title="Record Gate Entry QC Inspection"
+                        >
+                          <ClipboardCheck size={13}/> Gate Entry
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
+                        >
+                          <Eye size={13}/> Edit
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1d4ed8', borderColor: '#bfdbfe' }}
+                          onClick={e => handleDownloadPDF(p, e)}
+                          disabled={downloading === p.id}
+                          title="Download PDF"
+                        >
+                          <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                          onClick={e => handleDelete(p, e)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </div>
 
       <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
         {loading ? (
@@ -781,6 +856,8 @@ function POs() {
         totalPages={totalPages} 
         onPageChange={setCurrentPage} 
       />
+        </>
+      )}
     </div>
   );
 }

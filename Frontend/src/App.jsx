@@ -7,10 +7,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login          from './pages/Login';
-import Dashboard      from './pages/Dashboard';
-import Samples        from './pages/Samples';
-import UserManagement from './pages/UserManagement';
-import Sanding        from './pages/Sanding';
+import Dashboard          from './pages/Dashboard';
+import Samples            from './pages/Samples';
+import UserManagement     from './pages/UserManagement';
+import ProductionPipeline from './pages/ProductionPipeline';
 import Buyers         from './pages/Buyers';
 import BuyerMasters   from './pages/BuyerMasters';
 import POs            from './pages/POs';
@@ -18,6 +18,7 @@ import GateEntry      from './pages/GateEntry';
 import PIs            from './pages/PIs';
 import BuyerPIs       from './pages/BuyerPIs';
 import Stock          from './pages/Stock';
+import Tools          from './pages/Tools';
 
 import pinkcityLogo from './assets/Logo_2.png';
 
@@ -417,6 +418,9 @@ function AppLayout() {
           <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
           <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
 
+          {/* Tools & Catalog Generators */}
+          <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
+
           <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
           <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
@@ -424,12 +428,20 @@ function AppLayout() {
           <Route path="/pis" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
           <Route path="/pis/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
 
-          {/* Sanding — accessible to Supervisor (sanding), Contractor, and Admin */}
+          {/* Production & Stock Pipeline — accessible to Supervisor, Contractor, and Admin */}
+          <Route
+            path="/production-pipeline"
+            element={
+              <ProtectedRoute>
+                <ProductionPipeline />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/sanding"
             element={
               <ProtectedRoute>
-                <Sanding />
+                <ProductionPipeline />
               </ProtectedRoute>
             }
           />

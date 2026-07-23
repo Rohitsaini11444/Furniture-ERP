@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Box, FileText, ShoppingCart,
+  Box, Boxes, FileText, ShoppingCart,
   Loader, Sparkles, Wrench,
   Package, Truck, Receipt, ArrowRight,
   Lock, Users, Layers, ClipboardList, ClipboardCheck, Warehouse
@@ -13,27 +13,20 @@ const ALL_TILES = [
   { name: 'Buyers',                  icon: <Users size={32} />,         color: '#ec4899', link: '/buyers',            roles: ['admin'] },
   { name: 'Buyer Master',            icon: <Layers size={32} />,        color: '#6366f1', link: '/buyer-masters',     roles: ['admin'] },
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={32} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },
-  { name: 'PO',                      icon: <ClipboardList size={32} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
-  { name: 'Gate Entry',              icon: <ClipboardCheck size={32} />, color: '#f59e0b', link: '/gate-entry',        roles: ['admin', 'supervisor'] },
-  { name: 'Stock',                   icon: <Warehouse size={32} />,      color: '#059669', link: '/stock',             roles: ['admin', 'supervisor'] },
-  { name: 'Sanding',                 icon: <Loader size={32} />,        color: '#a0522d', link: '/sanding',           roles: ['admin', 'supervisor', 'contractor'] },
-  { name: 'Polish',                  icon: <Sparkles size={32} />,      color: '#a855f7', link: '#',                  roles: ['admin', 'supervisor'] },
-  { name: 'Fitting',                 icon: <Wrench size={32} />,        color: '#2563eb', link: '#',                  roles: ['admin', 'supervisor'] },
-  { name: 'Packaging',               icon: <Package size={32} />,       color: '#eab308', link: '#',                  roles: ['admin', 'supervisor'] },
-  { name: 'Dispatch',                icon: <Truck size={32} />,         color: '#3b82f6', link: '#',                  roles: ['admin'] },
+  { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={32} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
+  { name: 'Production & Stock Pipeline', icon: <Boxes size={32} />,     color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
+  { name: 'Presentation & Tools',    icon: <Sparkles size={32} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
   { name: 'Invoice',                 icon: <Receipt size={32} />,       color: '#ef4444', link: '/invoices',          roles: ['admin'] },
 ];
 
 const WORKFLOW_STEPS = [
   { name: 'Performa Invoice', icon: <Receipt size={20} />,       color: '#8b5cf6' },
-  { name: 'PO',               icon: <ClipboardList size={20} />, color: '#14b8a6' },
-  { name: 'Gate Entry / Stock', icon: <Warehouse size={20} />,   color: '#059669' },
-  { name: 'Sanding',          icon: <Loader size={20} />,        color: '#a0522d' },
-  { name: 'Polish',           icon: <Sparkles size={20} />,      color: '#a855f7' },
-  { name: 'Fitting',          icon: <Wrench size={20} />,        color: '#2563eb' },
-  { name: 'Packaging',        icon: <Package size={20} />,       color: '#eab308' },
-  { name: 'Dispatch',         icon: <Truck size={20} />,         color: '#3b82f6' },
-  { name: 'Invoice',          icon: <Receipt size={20} />,       color: '#ef4444' },
+  { name: 'Supplier PO',      icon: <ClipboardList size={20} />, color: '#14b8a6' },
+  { name: 'Gate Entry / Raw Stock', icon: <Warehouse size={20} />, color: '#059669' },
+  { name: 'Sanding Stage',    icon: <Wrench size={20} />,        color: '#3b82f6' },
+  { name: 'Polishing Stage',  icon: <Sparkles size={20} />,      color: '#a855f7' },
+  { name: 'Packaging Stage',  icon: <Package size={20} />,       color: '#16a34a' },
+  { name: 'Finished Goods',   icon: <Boxes size={20} />,         color: '#15803d' },
 ];
 
 function Dashboard() {

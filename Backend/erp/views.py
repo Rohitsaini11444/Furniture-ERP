@@ -19,17 +19,16 @@ from num2words import num2words
 from django.conf import settings
 from .models import (
     User, Sample, SampleImage,
-    SandingBatch, SandingAssignment, SandingQC,
     Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
-    UserSession, Notification, StockItem,
+    UserSession, Notification, StockItem, ProductionJob, ProductionQCLog,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
     UserSessionSerializer,
     SampleSerializer, SampleImageSerializer,
-    SandingBatchSerializer, SandingAssignmentSerializer, SandingQCSerializer,
+    ProductionJobSerializer, ProductionQCLogSerializer,
     BuyerSerializer, BuyerMasterSerializer,
     SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer,
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
@@ -133,9 +132,16 @@ class UserViewSet(viewsets.ModelViewSet):
     GET /api/users/?role=supervisor  — filter by role
     """
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'supervisors', 'contractors'):
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAdmin()]
 
     def get_queryset(self):
+        from django.db.models import Q
+        user = self.request.user
         qs = User.objects.all().order_by('role', 'username')
         role = self.request.query_params.get('role')
         if role:
@@ -143,6 +149,8 @@ class UserViewSet(viewsets.ModelViewSet):
         supervisor_id = self.request.query_params.get('supervisor')
         if supervisor_id:
             qs = qs.filter(supervisor_id=supervisor_id)
+        if user.role == 'supervisor' and role == 'contractor':
+            qs = qs.filter(Q(supervisor=user) | Q(supervisor__isnull=True))
         return qs
 
     @action(detail=False, methods=['get'], url_path='supervisors')
@@ -270,6 +278,28 @@ class BuyerViewSet(viewsets.ModelViewSet):
         return Response({"detail": "Buyer soft-deleted and logged successfully."}, status=status.HTTP_200_OK)
 
 
+class BuyerMasterFinishingImageViewSet(viewsets.ModelViewSet):
+    """
+    Manage finishing images for a buyer master.
+    POST /api/buyer-master-finishing-images/  — upload an image
+    DELETE /api/buyer-master-finishing-images/<id>/  — delete a specific image
+    """
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        from .serializers import BuyerMasterFinishingImageSerializer
+        return BuyerMasterFinishingImageSerializer
+
+    def get_queryset(self):
+        from .models import BuyerMasterFinishingImage
+        qs = BuyerMasterFinishingImage.objects.select_related('buyer_master')
+        bm_id = self.request.query_params.get('buyer_master')
+        if bm_id:
+            qs = qs.filter(buyer_master_id=bm_id)
+        return qs
+
+
 class BuyerMasterViewSet(viewsets.ModelViewSet):
     queryset = BuyerMaster.objects.select_related('buyer', 'sample').all()
     permission_classes = [IsAuthenticated]
@@ -301,11 +331,55 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
 
     def perform_update(self, serializer):
+        if self.request.data.get('clear_packaging_image') in ('true', True, '1'):
+            serializer.instance.packaging_image = None
         buyer_master = serializer.save()
         images = self.request.FILES.getlist('finishing_images')
         from .models import BuyerMasterFinishingImage
         for img in images:
             BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
+
+    @action(detail=True, methods=['get'], url_path='download-packaging-image')
+    def download_packaging_image(self, request, pk=None):
+        bm = self.get_object()
+        if not bm.packaging_image or not os.path.exists(bm.packaging_image.path):
+            return HttpResponse("Packaging image not found", status=404)
+        
+        sample_name = bm.style_no or (bm.sample.sample_id if bm.sample else "Style")
+        safe_name = "".join(c for c in sample_name if c.isalnum() or c in ('-', '_')).strip()
+        ext = os.path.splitext(bm.packaging_image.path)[1] or '.png'
+        filename = f"{safe_name}_Packaging_Image{ext}"
+
+        with open(bm.packaging_image.path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/octet-stream')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+    @action(detail=True, methods=['get'], url_path='download-finishing-images')
+    def download_finishing_images(self, request, pk=None):
+        import io
+        import zipfile
+        bm = self.get_object()
+        images = bm.finishing_images.all()
+        if not images.exists():
+            return HttpResponse("No finishing images found", status=404)
+        
+        sample_name = bm.style_no or (bm.sample.sample_id if bm.sample else "Style")
+        safe_name = "".join(c for c in sample_name if c.isalnum() or c in ('-', '_')).strip()
+        zip_filename = f"{safe_name}_Finishing_images.zip"
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for idx, img_obj in enumerate(images, 1):
+                if img_obj.image and os.path.exists(img_obj.image.path):
+                    ext = os.path.splitext(img_obj.image.path)[1] or '.png'
+                    arcname = f"{safe_name}_Finishing_Image_{idx}{ext}"
+                    zf.write(img_obj.image.path, arcname=arcname)
+        
+        buffer.seek(0)
+        response = HttpResponse(buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
+        return response
 
     @action(detail=False, methods=['get'], url_path='export-excel')
     def export_excel(self, request):
@@ -330,14 +404,15 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         
         headers = [
             'S. No.', 'Buyer Name', 'Buyer Code', 'Style No', 'Sample ID', 'Picture', 'Product Name', 
-            'Wood Type', 'Finish Color', 'Size Length (cm)', 
-            'Size Breadth (cm)', 'Size Height (cm)', 'Remark'
+            'Material', 'Finish', 'Size Length (cm)', 
+            'Size Breadth (cm)', 'Size Height (cm)', 
+            'Price USD', 'Units', 'Total CBM', 'Total Amount', 'Remark'
         ]
         
         if with_details:
             headers.extend([
                 'Vendor Details', 'Vendor Price', 'Costing', 'Purchase Price', 
-                'CBM', 'Net Weight', 'Gross Weight', 'Box Size'
+                'CBM', 'Net Weight', 'Gross Weight', 'Box Length (cm)', 'Box Breadth (cm)', 'Box Height (cm)', 'Box Size'
             ])
         
         ws.append(headers)
@@ -393,6 +468,10 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 float(bm.size_length) if bm.size_length else "",
                 float(bm.size_breadth) if bm.size_breadth else "",
                 float(bm.size_height) if bm.size_height else "",
+                float(bm.price_usd) if bm.price_usd else "",
+                bm.units or 1,
+                float(bm.total_cbm) if bm.total_cbm else "",
+                float(bm.total_amount) if bm.total_amount else "",
                 bm.remark or ""
             ]
             
@@ -405,6 +484,9 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                     float(bm.cbm) if bm.cbm else "",
                     float(bm.net_weight) if bm.net_weight else "",
                     float(bm.gross_weight) if bm.gross_weight else "",
+                    float(bm.box_length) if bm.box_length else "",
+                    float(bm.box_breadth) if bm.box_breadth else "",
+                    float(bm.box_height) if bm.box_height else "",
                     bm.box_size or ""
                 ])
             
@@ -489,6 +571,9 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         supplier_id = self.request.query_params.get('supplier')
         if supplier_id:
             qs = qs.filter(supplier_id=supplier_id)
+        buyer_id = self.request.query_params.get('buyer')
+        if buyer_id:
+            qs = qs.filter(items__buyer_id=buyer_id).distinct()
         status_f = self.request.query_params.get('status')
         if status_f:
             qs = qs.filter(status=status_f)
@@ -922,131 +1007,160 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
 # ─── Sanding Workflow ViewSets ────────────────────────────────────────────────
 
-class SandingBatchViewSet(viewsets.ModelViewSet):
-    """
-    Supervisor self-assigns samples into their Sanding batch.
-    - POST: Supervisor adds a sample to their batch (supervisor auto-set)
-    - GET: Supervisor sees only their own batches; Admin sees all
-    """
-    serializer_class = SandingBatchSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrSandingSupervisor]
+# ─── Production & Stock Pipeline ViewSets ───────────────────────────────────
 
-    def get_queryset(self):
-        user = self.request.user
-        if user.role == 'admin':
-            return SandingBatch.objects.all().select_related('supervisor', 'sample')
-        # Supervisor sees only their own batches
-        return SandingBatch.objects.filter(supervisor=user).select_related('supervisor', 'sample')
-
-    def perform_create(self, serializer):
-        serializer.save(supervisor=self.request.user)
-
-
-class SandingAssignmentViewSet(viewsets.ModelViewSet):
+class ProductionJobViewSet(viewsets.ModelViewSet):
     """
-    Supervisor assigns batch items to contractors.
-    - Supervisor: create/manage assignments for their batches
-    - Contractor: read-only, sees only their own assignments; can mark as completed
-    - Admin: full access
+    Manage stage production jobs (Sanding, Polishing, Packaging).
+    - Supervisor assigns quantity from source stock -> Job created with status='assigned'.
+    - Contractor marks work in progress or requests QC -> status='qc_requested'.
+    - Supervisor performs QC -> passed_qty moves to destination Stock, rejected_qty stays for Rework.
     """
-    serializer_class = SandingAssignmentSerializer
+    serializer_class = ProductionJobSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_permissions(self):
-        user = self.request.user if self.request.user.is_authenticated else None
-        if self.action == 'complete':
-            return [IsAuthenticated(), IsContractor()]
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [IsAuthenticated(), IsAdminOrSandingSupervisor()]
-        return [IsAuthenticated()]
-
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'admin':
-            return SandingAssignment.objects.all().select_related(
-                'batch__supervisor', 'batch__sample', 'contractor'
-            )
-        if user.role == 'supervisor':
-            return SandingAssignment.objects.filter(
-                batch__supervisor=user
-            ).select_related('batch__supervisor', 'batch__sample', 'contractor')
-        # Contractor sees only their own assignments
-        return SandingAssignment.objects.filter(
-            contractor=user
-        ).select_related('batch__supervisor', 'batch__sample', 'contractor')
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsContractor])
-    def complete(self, request, pk=None):
-        """POST /api/sanding/assignments/<id>/complete/ — Contractor marks work done."""
-        assignment = self.get_object()
-        if assignment.contractor != request.user:
-            return Response(
-                {'detail': 'You can only complete your own assignments.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        if assignment.status == 'completed':
-            return Response({'detail': 'Assignment is already completed.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        assignment.status = 'completed'
-        assignment.completed_at = timezone.now()
-        assignment.contractor_notes = request.data.get('contractor_notes', '')
-        assignment.save()
-
-        # Also update parent batch status if all assignments are completed
-        batch = assignment.batch
-        if not batch.assignments.exclude(status='completed').exists():
-            batch.status = 'completed'
-            batch.save()
-
-        serializer = self.get_serializer(assignment)
-        return Response(serializer.data)
-
-
-class SandingQCViewSet(viewsets.ModelViewSet):
-    """
-    Supervisor performs quality check (Pass/Reject) on completed assignments.
-    - POST: Supervisor creates a QC record for a completed assignment
-    - GET: Supervisor sees QC records for their batches; Admin sees all
-    """
-    serializer_class = SandingQCSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrSandingSupervisor]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.role == 'admin':
-            return SandingQC.objects.all().select_related(
-                'assignment__batch__supervisor',
-                'assignment__batch__sample',
-                'assignment__contractor',
-                'checked_by',
-            )
-        return SandingQC.objects.filter(
-            assignment__batch__supervisor=user
-        ).select_related(
-            'assignment__batch__supervisor',
-            'assignment__batch__sample',
-            'assignment__contractor',
-            'checked_by',
-        )
+        qs = ProductionJob.objects.select_related('stock_item', 'buyer_master', 'sample', 'buyer', 'contractor', 'assigned_by').all()
+        
+        stage_param = self.request.query_params.get('stage')
+        status_param = self.request.query_params.get('status')
+        contractor_param = self.request.query_params.get('contractor')
+        
+        if stage_param:
+            qs = qs.filter(stage=stage_param)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if contractor_param:
+            qs = qs.filter(contractor_id=contractor_param)
+            
+        if user.role == 'contractor':
+            qs = qs.filter(contractor=user)
+        elif user.role == 'supervisor':
+            qs = qs.filter(assigned_by=user)
+            
+        return qs
 
     def perform_create(self, serializer):
-        serializer.save(checked_by=self.request.user)
+        from decimal import Decimal
+        from .models import StockItem
+        user = self.request.user
+        data = serializer.validated_data
+        
+        stock_item = data.get('stock_item')
+        assigned_qty = Decimal(str(data.get('assigned_qty', 0)))
+        
+        if stock_item:
+            if stock_item.quantity < assigned_qty:
+                raise serializers.ValidationError({"assigned_qty": f"Insufficient stock. Available: {stock_item.quantity} {stock_item.unit}"})
+            stock_item.quantity -= assigned_qty
+            if stock_item.quantity <= 0:
+                stock_item.status = 'Out of Stock'
+            stock_item.save()
+            
+        serializer.save(assigned_by=user, status='assigned')
 
-    @action(detail=False, methods=['get'], url_path='pending')
-    def pending(self, request):
-        """GET /api/sanding/qc/pending/ — Completed assignments not yet QC'd."""
+    @action(detail=True, methods=['post'], url_path='request-qc')
+    def request_qc(self, request, pk=None):
+        """Contractor submits job for Supervisor QC Inspection."""
+        job = self.get_object()
+        if request.user.role == 'contractor' and job.contractor != request.user:
+            return Response({'detail': 'You can only request QC for your assigned jobs.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        job.status = 'qc_requested'
+        job.qc_requested_at = timezone.now()
+        if 'contractor_notes' in request.data:
+            job.contractor_notes = request.data['contractor_notes']
+        job.save()
+        return Response(ProductionJobSerializer(job).data)
+
+    @action(detail=True, methods=['post'], url_path='perform-qc')
+    def perform_qc(self, request, pk=None):
+        """Supervisor inspects job: passes X pieces, rejects Y pieces."""
+        from decimal import Decimal
+        from .models import StockItem, ProductionQCLog
+        job = self.get_object()
         user = request.user
-        if user.role == 'admin':
-            assignments = SandingAssignment.objects.filter(
-                status='completed'
-            ).exclude(qc__isnull=False).select_related('batch__sample', 'contractor')
-        else:
-            assignments = SandingAssignment.objects.filter(
-                batch__supervisor=user, status='completed'
-            ).exclude(qc__isnull=False).select_related('batch__sample', 'contractor')
+        
+        if user.role not in ('admin', 'supervisor'):
+            return Response({'detail': 'Only supervisors or admins can perform QC inspection.'}, status=status.HTTP_403_FORBIDDEN)
+            
+        passed_qty = Decimal(str(request.data.get('passed_qty', 0)))
+        rejected_qty = Decimal(str(request.data.get('rejected_qty', 0)))
+        qc_notes = request.data.get('notes', '')
 
-        serializer = SandingAssignmentSerializer(assignments, many=True, context={'request': request})
-        return Response(serializer.data)
+        if (passed_qty + rejected_qty) <= 0:
+            return Response({'detail': 'Please enter valid passed or rejected quantities.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_passed_total = (job.passed_qty or Decimal(0)) + passed_qty
+        if (new_passed_total + rejected_qty) > job.assigned_qty:
+            return Response({
+                'detail': f'Total passed ({new_passed_total}) + rejected ({rejected_qty}) cannot exceed assigned quantity ({job.assigned_qty}).'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Record QC log
+        ProductionQCLog.objects.create(
+            job=job,
+            inspected_by=user,
+            passed_qty=passed_qty,
+            rejected_qty=rejected_qty,
+            notes=qc_notes
+        )
+
+        job.passed_qty = new_passed_total
+        job.qc_notes = qc_notes
+
+        # If all assigned pieces have passed, complete job & clear rejected count
+        if job.passed_qty >= job.assigned_qty:
+            job.passed_qty = job.assigned_qty
+            job.rejected_qty = Decimal('0')
+            job.status = 'qc_completed'
+            job.qc_completed_at = timezone.now()
+        else:
+            job.rejected_qty = rejected_qty
+            if rejected_qty > 0:
+                job.status = 'in_progress'
+            else:
+                job.status = 'qc_completed'
+                job.qc_completed_at = timezone.now()
+
+        job.save()
+
+        # Add passed pieces to target stock stage
+        if passed_qty > 0:
+            target_stock_type = 'sanded'
+            if job.stage == 'sanding':
+                target_stock_type = 'sanded'
+            elif job.stage == 'polishing':
+                target_stock_type = 'polished'
+            elif job.stage == 'packaging':
+                target_stock_type = 'packaged'
+
+            # Update or create target stock
+            dest_stock, _ = StockItem.objects.get_or_create(
+                stock_type=target_stock_type,
+                style_no=job.style_no,
+                defaults={
+                    'item_name': job.item_name,
+                    'quantity': Decimal('0'),
+                    'unit': job.unit,
+                    'buyer_master': job.buyer_master,
+                    'sample': job.sample,
+                    'buyer': job.buyer,
+                    'status': 'In Stock'
+                }
+            )
+            dest_stock.quantity += passed_qty
+            dest_stock.status = 'In Stock'
+            dest_stock.save()
+
+        return Response(ProductionJobSerializer(job).data)
+
+
+class ProductionQCLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ProductionQCLog.objects.select_related('job', 'inspected_by').all()
+    serializer_class = ProductionQCLogSerializer
+    permission_classes = [IsAuthenticated]
 
 
 # ─── Number To Words Helper ───────────────────────────────────────────────────
@@ -1838,9 +1952,91 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'receive_qc'):
             return [IsAuthenticated(), IsAdminOrSupervisor()]
         return [IsAuthenticated()]
+
+    def perform_update(self, serializer):
+        item = serializer.save()
+        po = item.supplier_po
+        if po:
+            from decimal import Decimal
+            all_received = True
+            for it in po.items.all():
+                passed_tot = it.passed_quantity or Decimal(0)
+                if passed_tot < it.quantity:
+                    all_received = False
+                    break
+            if all_received:
+                po.status = 'Received'
+                po.save()
+
+    @action(detail=True, methods=['post'], url_path='receive-qc')
+    def receive_qc(self, request, pk=None):
+        """Supervisor inspects gate entry items: passed pcs enter Raw Stock, rejected pcs log defect."""
+        from decimal import Decimal
+        from .models import StockItem, SupplierPOItemDefect
+        po_item = self.get_object()
+        passed_qty = Decimal(str(request.data.get('passed_qty', 0)))
+        rejected_qty = Decimal(str(request.data.get('rejected_qty', 0)))
+        
+        if passed_qty < 0 or rejected_qty < 0:
+            return Response({'detail': 'Quantities cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        po_item.passed_quantity = (po_item.passed_quantity or Decimal(0)) + passed_qty
+        po_item.save()
+        
+        # Automatically add passed_qty to Raw Stock
+        if passed_qty > 0:
+            words = po_item.description.split()
+            style = words[0] if words else "RAW-ITEM"
+            item_name = po_item.description[:100] if po_item.description else "Raw Furniture Item"
+            
+            raw_stock, _ = StockItem.objects.get_or_create(
+                stock_type='raw',
+                po_item=po_item,
+                defaults={
+                    'style_no': style,
+                    'item_name': item_name,
+                    'quantity': Decimal(0),
+                    'unit': po_item.unit or 'pcs',
+                    'buyer': po_item.buyer,
+                    'status': 'In Stock'
+                }
+            )
+            raw_stock.quantity += passed_qty
+            raw_stock.status = 'In Stock'
+            raw_stock.save()
+            
+        # Log defect if any pieces rejected
+        if rejected_qty > 0:
+            remark = request.data.get('remark', 'Gate inspection rejected pieces')
+            SupplierPOItemDefect.objects.create(
+                po_item=po_item,
+                reported_by=request.user,
+                quantity=rejected_qty,
+                remark=remark
+            )
+
+        # Check if all items in parent PO are fully passed -> auto-update PO status to Received
+        po = po_item.supplier_po
+        if po:
+            all_received = True
+            for item in po.items.all():
+                passed_tot = item.passed_quantity or Decimal(0)
+                if passed_tot < item.quantity:
+                    all_received = False
+                    break
+            if all_received:
+                po.status = 'Received'
+                po.save()
+            
+        return Response({
+            'detail': f'Gate QC recorded successfully. {passed_qty} pcs added to Raw Stock.',
+            'passed_quantity': float(po_item.passed_quantity),
+            'po_status': po.status if po else 'Pending'
+        })
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     from .models import Notification
@@ -1873,10 +2069,13 @@ class StockItemViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        stock_type_param = self.request.query_params.get('stock_type')
         status_param = self.request.query_params.get('status')
         buyer_param = self.request.query_params.get('buyer')
         search_param = self.request.query_params.get('search')
 
+        if stock_type_param:
+            qs = qs.filter(stock_type=stock_type_param)
         if status_param:
             qs = qs.filter(status=status_param)
         if buyer_param:
@@ -1940,5 +2139,38 @@ class StockItemViewSet(viewsets.ModelViewSet):
         )
         response['Content-Disposition'] = 'attachment; filename="Inventory_Stock.xlsx"'
         wb.save(response)
+        return response
+
+
+class GeneratePresentationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .presentation_generator import generate_pptx_presentation
+        buyer_id = request.data.get('buyer_id')
+        sample_ids = request.data.get('sample_ids', [])
+        buyer_master_ids = request.data.get('buyer_master_ids', [])
+
+        buyer = None
+        if buyer_id:
+            try:
+                buyer = Buyer.objects.get(id=buyer_id)
+            except Buyer.DoesNotExist:
+                pass
+
+        items = []
+        if sample_ids:
+            items = list(Sample.objects.filter(id__in=sample_ids))
+        elif buyer_master_ids:
+            items = list(BuyerMaster.objects.filter(id__in=buyer_master_ids))
+
+        if not items:
+            return Response({'error': 'Please select at least one sample or item for presentation.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        buyer_code_str = buyer.code if buyer else 'Catalog'
+
+        pptx_bytes = generate_pptx_presentation(buyer, items)
+        response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        response['Content-Disposition'] = f'attachment; filename="Presentation_{buyer_code_str}.pptx"'
         return response
 

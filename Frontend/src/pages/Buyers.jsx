@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight } from 'lucide-react';
+import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText } from 'lucide-react';
 import Pagination from '../components/Pagination';
 
 
@@ -21,9 +21,9 @@ function Buyers() {
   // Buyer Details Tab state
   const [selectedBuyer, setSelectedBuyer] = useState(null);
   const [buyerDetails, setBuyerDetails] = useState({
-    pos: [],
     buyerMasters: [],
-    salesOrders: [],
+    buyerPIs: [],
+    pos: [],
   });
   const [activeTab, setActiveTab] = useState('Overview');
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -33,6 +33,20 @@ function Buyers() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  // Tab-specific filters & pagination (50/page)
+  const [bmSearch, setBmSearch] = useState('');
+  const [bmOrder, setBmOrder] = useState('-created_at');
+  const [bmPage, setBmPage] = useState(1);
+
+  const [piSearch, setPiSearch] = useState('');
+  const [piOrder, setPiOrder] = useState('-created_at');
+  const [piPage, setPiPage] = useState(1);
+
+  const [poSearch, setPoSearch] = useState('');
+  const [poStatus, setPoStatus] = useState('all');
+  const [poOrder, setPoOrder] = useState('-created_at');
+  const [poPage, setPoPage] = useState(1);
   
   const emptyForm = {
     name: '',
@@ -130,19 +144,18 @@ function Buyers() {
         setSelectedBuyer(buyer);
         
         Promise.all([
-          api.get('/pos/', { params: { buyer: buyer.id, nopage: true } }),
           api.get('/buyer-masters/', { params: { buyer: buyer.id, nopage: true } }),
-          api.get('/sales-orders/', { params: { nopage: true } })
-        ]).then(([posRes, bmRes, soRes]) => {
-          const matchingSO = soRes.data.filter(so => 
-            so.buyer_name?.toLowerCase() === buyer.name?.toLowerCase() ||
-            so.po_no?.toLowerCase() === buyer.code?.toLowerCase()
-          );
+          api.get('/buyer-pis/', { params: { buyer: buyer.id, nopage: true } }),
+          api.get('/supplier-pos/', { params: { buyer: buyer.id, nopage: true } })
+        ]).then(([bmRes, piRes, poRes]) => {
+          const bmList = bmRes.data.results || bmRes.data || [];
+          const piList = piRes.data.results || piRes.data || [];
+          const poList = poRes.data.results || poRes.data || [];
           
           setBuyerDetails({
-            pos: posRes.data,
-            buyerMasters: bmRes.data,
-            salesOrders: matchingSO,
+            buyerMasters: bmList,
+            buyerPIs: piList,
+            pos: poList,
           });
           setActiveTab('Overview');
         }).catch(err => {
@@ -163,6 +176,58 @@ function Buyers() {
     b.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     b.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // 1. Buyer Masters filtering & pagination
+  const filteredBMs = buyerDetails.buyerMasters.filter(bm =>
+    !bmSearch ||
+    bm.style_no?.toLowerCase().includes(bmSearch.toLowerCase()) ||
+    bm.product_name?.toLowerCase().includes(bmSearch.toLowerCase()) ||
+    bm.wood_type?.toLowerCase().includes(bmSearch.toLowerCase()) ||
+    bm.finish_color?.toLowerCase().includes(bmSearch.toLowerCase())
+  ).sort((a, b) => {
+    if (bmOrder === '-created_at') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    if (bmOrder === 'created_at') return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    if (bmOrder === 'style_no') return (a.style_no || '').localeCompare(b.style_no || '');
+    if (bmOrder === '-style_no') return (b.style_no || '').localeCompare(a.style_no || '');
+    if (bmOrder === 'price_usd') return (parseFloat(a.price_usd) || 0) - (parseFloat(b.price_usd) || 0);
+    if (bmOrder === '-price_usd') return (parseFloat(b.price_usd) || 0) - (parseFloat(a.price_usd) || 0);
+    return 0;
+  });
+  const bmTotalPages = Math.max(1, Math.ceil(filteredBMs.length / 50));
+  const paginatedBMs = filteredBMs.slice((bmPage - 1) * 50, bmPage * 50);
+
+  // 2. Buyer PIs filtering & pagination
+  const filteredPIs = buyerDetails.buyerPIs.filter(pi =>
+    !piSearch ||
+    pi.pi_no?.toLowerCase().includes(piSearch.toLowerCase()) ||
+    pi.payment_terms?.toLowerCase().includes(piSearch.toLowerCase()) ||
+    (pi.delivered_to_company || pi.delivered_to_name || '').toLowerCase().includes(piSearch.toLowerCase())
+  ).sort((a, b) => {
+    if (piOrder === '-created_at') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    if (piOrder === 'created_at') return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    if (piOrder === 'pi_no') return (a.pi_no || '').localeCompare(b.pi_no || '');
+    if (piOrder === '-pi_no') return (b.pi_no || '').localeCompare(a.pi_no || '');
+    return 0;
+  });
+  const piTotalPages = Math.max(1, Math.ceil(filteredPIs.length / 50));
+  const paginatedPIs = filteredPIs.slice((piPage - 1) * 50, piPage * 50);
+
+  // 3. Supplier POs filtering & pagination
+  const filteredPOs = buyerDetails.pos.filter(po => {
+    const matchesSearch = !poSearch ||
+      po.po_number?.toLowerCase().includes(poSearch.toLowerCase()) ||
+      (po.supplier_name || po.supplier?.name || '').toLowerCase().includes(poSearch.toLowerCase());
+    const matchesStatus = poStatus === 'all' || po.status === poStatus;
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    if (poOrder === '-created_at') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    if (poOrder === 'created_at') return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+    if (poOrder === 'po_number') return (a.po_number || '').localeCompare(b.po_number || '');
+    if (poOrder === '-po_number') return (b.po_number || '').localeCompare(a.po_number || '');
+    return 0;
+  });
+  const poTotalPages = Math.max(1, Math.ceil(filteredPOs.length / 50));
+  const paginatedPOs = filteredPOs.slice((poPage - 1) * 50, poPage * 50);
 
   return (
     <div>
@@ -255,16 +320,21 @@ function Buyers() {
             overflowX: 'auto',
             gap: '2rem'
           }}>
-            {['Overview', 'Samples', 'POs', 'Sales Orders'].map(tab => (
+            {[
+              { id: 'Overview', label: '🏠 Overview' },
+              { id: 'Buyer Master', label: `📐 Buyer Master (${buyerDetails.buyerMasters.length})` },
+              { id: 'PI', label: `📄 PI (${buyerDetails.buyerPIs.length})` },
+              { id: 'PO', label: `📋 PO (${buyerDetails.pos.length})` }
+            ].map(tab => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
                 style={{
                   background: 'none',
                   border: 'none',
-                  borderBottom: activeTab === tab ? '3px solid #8b5a2b' : '3px solid transparent',
-                  color: activeTab === tab ? '#8b5a2b' : 'var(--text-muted)',
-                  fontWeight: activeTab === tab ? 600 : 500,
+                  borderBottom: activeTab === tab.id ? '3px solid #8b5a2b' : '3px solid transparent',
+                  color: activeTab === tab.id ? '#8b5a2b' : 'var(--text-muted)',
+                  fontWeight: activeTab === tab.id ? 600 : 500,
                   padding: '0.75rem 0.5rem',
                   cursor: 'pointer',
                   fontSize: '0.95rem',
@@ -272,19 +342,17 @@ function Buyers() {
                   transition: 'all 0.2s'
                 }}
               >
-                {tab === 'Overview' && '🏠 Overview'}
-                {tab === 'Samples' && '📦 Samples'}
-                {tab === 'POs' && '📄 POs'}
-                {tab === 'Sales Orders' && '💼 Sales Orders'}
+                {tab.label}
               </button>
             ))}
           </div>
 
           {/* Loader or Content */}
           {loadingDetails ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading buyer statistics...</div>
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading buyer details...</div>
           ) : (
             <div>
+              {/* TAB 1: OVERVIEW */}
               {activeTab === 'Overview' && (
                 <div>
                   {/* Stats Row */}
@@ -296,89 +364,101 @@ function Buyers() {
                   }}>
                     {/* Card 1 */}
                     <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#eefdf4', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ShoppingBag size={22} /></div>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#eefdf4', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Layers size={22} />
+                      </div>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Active POs</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Buyer Master Styles</span>
                         <strong style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>
-                          {buyerDetails.pos.filter(po => po.status !== 'Completed').length}
+                          {buyerDetails.buyerMasters.length}
                         </strong>
                       </div>
                     </div>
+
                     {/* Card 2 */}
                     <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#eff6ff', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Package size={22} /></div>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#eff6ff', color: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Receipt size={22} />
+                      </div>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Total Items</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Total PIs</span>
                         <strong style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>
-                          {buyerDetails.pos.reduce((sum, po) => sum + (po.units || 0), 0)}
+                          {buyerDetails.buyerPIs.length}
                         </strong>
                       </div>
                     </div>
+
                     {/* Card 3 */}
                     <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Clock size={22} /></div>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ClipboardList size={22} />
+                      </div>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>In Production</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Total POs</span>
                         <strong style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>
-                          {buyerDetails.pos.filter(po => po.status === 'Production').reduce((sum, po) => sum + (po.units || 0), 0)}
+                          {buyerDetails.pos.length}
                         </strong>
                       </div>
                     </div>
+
                     {/* Card 4 */}
                     <div style={{ backgroundColor: '#fff', padding: '1.25rem', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#faf5ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle size={22} /></div>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '10px', backgroundColor: '#faf5ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Clock size={22} />
+                      </div>
                       <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Dispatched</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block' }}>Pending POs</span>
                         <strong style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-color)' }}>
-                          {buyerDetails.pos.filter(po => po.status === 'Dispatched').reduce((sum, po) => sum + (po.units || 0), 0)}
+                          {buyerDetails.pos.filter(po => po.status === 'Pending').length}
                         </strong>
                       </div>
                     </div>
                   </div>
 
-                  {/* Left & Right Section Grid */}
+                  {/* Overview Grid */}
                   <div className="buyer-detail-grid">
                     {/* Recent POs Table */}
                     <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>Recent Purchase Orders</h3>
+                        <button onClick={() => setActiveTab('PO')} style={{ background: 'none', border: 'none', color: '#8b5a2b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>View All →</button>
                       </div>
                       <div style={{ overflowX: 'auto' }}>
                         <table className="data-table" style={{ fontSize: '0.875rem' }}>
                           <thead>
                             <tr>
                               <th>PO Number</th>
-                              <th>Quantity</th>
+                              <th>Supplier</th>
                               <th>Status</th>
                               <th>Total Amount</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {buyerDetails.pos.slice(0, 5).map(po => (
+                            {filteredPOs.slice(0, 5).map(po => (
                               <tr 
                                 key={po.id}
-                                onClick={() => navigate(`/pos/${po.id}`)}
+                                onClick={() => navigate(`/pos/${po.id}`, { state: { fromBuyer: selectedBuyer.id } })}
                                 style={{ cursor: 'pointer' }}
-                                title="Click to view/edit PO"
+                                title="Click to view PO"
                               >
-                                <td><strong>{po.po}</strong></td>
-                                <td>{po.units || '—'}</td>
+                                <td><strong>{po.po_number}</strong></td>
+                                <td>{po.supplier_name || po.supplier?.name || '—'}</td>
                                 <td>
                                   <span 
                                     className="navbar-role-badge" 
                                     style={{
-                                      backgroundColor: po.status === 'Confirmed' ? '#dcfce7' : po.status === 'Production' ? '#dbeafe' : po.status === 'Dispatched' ? '#f3e8ff' : '#f3f4f6',
-                                      color: po.status === 'Confirmed' ? '#15803d' : po.status === 'Production' ? '#1d4ed8' : po.status === 'Dispatched' ? '#6b21a8' : '#374151',
+                                      backgroundColor: po.status === 'Received' ? '#dcfce7' : '#fef3c7',
+                                      color: po.status === 'Received' ? '#15803d' : '#d97706',
                                       fontSize: '0.75rem'
                                     }}
                                   >
-                                    {po.status || 'Confirmed'}
+                                    {po.status}
                                   </span>
                                 </td>
-                                <td>${parseFloat(po.total_amount || 0).toLocaleString()}</td>
+                                <td>₹{parseFloat(po.total_amount || 0).toLocaleString()}</td>
                               </tr>
                             ))}
-                            {buyerDetails.pos.length === 0 && (
+                            {filteredPOs.length === 0 && (
                               <tr>
                                 <td colSpan="4" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No POs found for this buyer.</td>
                               </tr>
@@ -388,27 +468,29 @@ function Buyers() {
                       </div>
                     </div>
 
-                    {/* Buyer Overview Card */}
+                    {/* Buyer Overview Summary Sidebar */}
                     <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '1.25rem', marginTop: 0 }}>ℹ️ Buyer Overview</h3>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '1.25rem', marginTop: 0 }}>ℹ️ Buyer Summary</h3>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.9rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Total POs</span>
-                          <strong style={{ color: 'var(--text-color)' }}>{buyerDetails.pos.length}</strong>
+                          <span style={{ color: 'var(--text-muted)' }}>Buyer Code</span>
+                          <strong style={{ color: 'var(--text-color)' }}>{selectedBuyer.code}</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Total Sales Orders</span>
-                          <strong style={{ color: 'var(--text-color)' }}>{buyerDetails.salesOrders.length}</strong>
+                          <span style={{ color: 'var(--text-muted)' }}>Buyer Master Styles</span>
+                          <strong style={{ color: '#6366f1' }}>{buyerDetails.buyerMasters.length}</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Total Value</span>
-                          <strong style={{ color: '#8b5a2b' }}>
-                            ${buyerDetails.pos.reduce((sum, po) => sum + parseFloat(po.total_amount || 0), 0).toLocaleString()}
-                          </strong>
+                          <span style={{ color: 'var(--text-muted)' }}>Total Buyer PIs</span>
+                          <strong style={{ color: '#8b5cf6' }}>{buyerDetails.buyerPIs.length}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Total Supplier POs</span>
+                          <strong style={{ color: '#14b8a6' }}>{buyerDetails.pos.length}</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.25rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Payment Terms</span>
-                          <strong style={{ color: 'var(--text-color)' }}>30 Days</strong>
+                          <span style={{ color: 'var(--text-muted)' }}>Contact Email</span>
+                          <strong style={{ color: 'var(--text-color)' }}>{selectedBuyer.email || '—'}</strong>
                         </div>
                       </div>
                     </div>
@@ -416,130 +498,302 @@ function Buyers() {
                 </div>
               )}
 
-              {activeTab === 'Samples' && (
+              {/* TAB 2: BUYER MASTER */}
+              {activeTab === 'Buyer Master' && (
                 <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '1rem', marginTop: 0 }}>Registered Samples & Styles</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                      Buyer Master Styles ({filteredBMs.length} Total)
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      {/* Search */}
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.35rem 0.6rem', backgroundColor: '#f8fafc' }}>
+                        <Search size={14} style={{ color: '#64748b', marginRight: '0.4rem' }} />
+                        <input
+                          type="text"
+                          placeholder="Search style or product..."
+                          value={bmSearch}
+                          onChange={e => { setBmSearch(e.target.value); setBmPage(1); }}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', width: '170px' }}
+                        />
+                      </div>
+                      {/* Order By Filter */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
+                        <select
+                          value={bmOrder}
+                          onChange={e => setBmOrder(e.target.value)}
+                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
+                        >
+                          <option value="-created_at">Latest First</option>
+                          <option value="created_at">Oldest First</option>
+                          <option value="style_no">Style No (A-Z)</option>
+                          <option value="-style_no">Style No (Z-A)</option>
+                          <option value="-price_usd">Price: High to Low</option>
+                          <option value="price_usd">Price: Low to High</option>
+                        </select>
+                      </div>
+                      <button onClick={() => navigate('/buyer-masters')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                        View All Buyer Masters →
+                      </button>
+                    </div>
+                  </div>
+
                   <div style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                       <thead>
                         <tr>
                           <th>Style No</th>
                           <th>Product Name</th>
-                          <th>Wood Type</th>
-                          <th>Finish Color</th>
+                          <th>Material</th>
+                          <th>Finish</th>
                           <th>Dimensions (L×B×H)</th>
+                          <th>Price (USD)</th>
+                          <th>Total CBM</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {buyerDetails.buyerMasters.map(bm => (
-                          <tr 
-                            key={bm.id}
-                            onClick={() => navigate(`/buyer-masters/${bm.id}`)}
-                            style={{ cursor: 'pointer' }}
-                            title="Click to view/edit style"
-                          >
+                        {paginatedBMs.map(bm => (
+                          <tr key={bm.id} onClick={() => navigate(`/buyer-masters/${bm.id}`, { state: { fromBuyer: selectedBuyer.id } })} style={{ cursor: 'pointer' }}>
                             <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
                             <td><strong>{bm.product_name}</strong></td>
-                            <td>{bm.wood_type}</td>
-                            <td>{bm.finish_color}</td>
-                            <td>{bm.size_length} × {bm.size_breadth} × {bm.size_height} cm</td>
+                            <td>{bm.wood_type || '—'}</td>
+                            <td>{bm.finish_color || '—'}</td>
+                            <td>{bm.size_length || 0} × {bm.size_breadth || 0} × {bm.size_height || 0} cm</td>
+                            <td><strong>${parseFloat(bm.price_usd || 0).toFixed(2)}</strong></td>
+                            <td>{bm.total_cbm ? `${parseFloat(bm.total_cbm).toFixed(4)} CBM` : '—'}</td>
+                            <td onClick={e => e.stopPropagation()}>
+                              <button 
+                                onClick={() => navigate(`/buyer-masters/${bm.id}`, { state: { fromBuyer: selectedBuyer.id } })}
+                                className="btn-secondary" 
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                              >
+                                View Style
+                              </button>
+                            </td>
                           </tr>
                         ))}
-                        {buyerDetails.buyerMasters.length === 0 && (
+                        {paginatedBMs.length === 0 && (
                           <tr>
-                            <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No styles registered for this buyer yet.</td>
+                            <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                              No Buyer Master styles found matching filters.
+                            </td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
+
+                  {bmTotalPages > 1 && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <Pagination currentPage={bmPage} totalPages={bmTotalPages} onPageChange={setBmPage} />
+                    </div>
+                  )}
                 </div>
               )}
 
-              {activeTab === 'POs' && (
+              {/* TAB 3: PI */}
+              {activeTab === 'PI' && (
                 <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '1rem', marginTop: 0 }}>All Purchase Orders</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                      Buyer Performa Invoices ({filteredPIs.length} Total)
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      {/* Search */}
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.35rem 0.6rem', backgroundColor: '#f8fafc' }}>
+                        <Search size={14} style={{ color: '#64748b', marginRight: '0.4rem' }} />
+                        <input
+                          type="text"
+                          placeholder="Search PI ref or details..."
+                          value={piSearch}
+                          onChange={e => { setPiSearch(e.target.value); setPiPage(1); }}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', width: '170px' }}
+                        />
+                      </div>
+                      {/* Order By Filter */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
+                        <select
+                          value={piOrder}
+                          onChange={e => setPiOrder(e.target.value)}
+                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
+                        >
+                          <option value="-created_at">Latest First</option>
+                          <option value="created_at">Oldest First</option>
+                          <option value="pi_no">PI Ref (A-Z)</option>
+                          <option value="-pi_no">PI Ref (Z-A)</option>
+                        </select>
+                      </div>
+                      <button onClick={() => navigate('/performa-invoices')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                        View All PIs →
+                      </button>
+                    </div>
+                  </div>
+
                   <div style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>PO #</th>
-                          <th>Style No</th>
-                          <th>Units</th>
-                          <th>Total CBM</th>
-                          <th>Total Amount</th>
-                          <th>Status</th>
-                          <th>Remarks</th>
+                          <th>PI / PO Ref No</th>
+                          <th>PI Date</th>
+                          <th>Ex-Factory Date</th>
+                          <th>Payment Terms</th>
+                          <th>Delivered To</th>
+                          <th>Items Count</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {buyerDetails.pos.map(po => (
-                          <tr 
-                            key={po.id}
-                            onClick={() => navigate(`/pos/${po.id}`)}
-                            style={{ cursor: 'pointer' }}
-                            title="Click to view/edit PO"
-                          >
-                            <td><strong>{po.po}</strong></td>
-                            <td><span className="navbar-role-badge admin-badge">{po.buyer_master_detail?.style_no}</span></td>
-                            <td>{po.units || '—'}</td>
-                            <td>{po.total_cbm} CBM</td>
-                            <td>${parseFloat(po.total_amount || 0).toLocaleString()}</td>
+                        {paginatedPIs.map(pi => (
+                          <tr key={pi.id} onClick={() => navigate(`/performa-invoices/${pi.id}`, { state: { fromBuyer: selectedBuyer.id } })} style={{ cursor: 'pointer' }}>
+                            <td><strong>{pi.pi_no}</strong></td>
+                            <td>{pi.pi_date || '—'}</td>
+                            <td>{pi.ex_factory_date || '—'}</td>
+                            <td><span style={{ fontSize: '0.82rem', color: '#475569' }}>{pi.payment_terms || '—'}</span></td>
+                            <td>{pi.delivered_to_company || pi.delivered_to_name || '—'}</td>
+                            <td><strong>{pi.items?.length || 0} items</strong></td>
+                            <td onClick={e => e.stopPropagation()}>
+                              <button 
+                                onClick={() => navigate(`/performa-invoices/${pi.id}`, { state: { fromBuyer: selectedBuyer.id } })}
+                                className="btn-secondary" 
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                              >
+                                View PI
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {paginatedPIs.length === 0 && (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                              No Performa Invoices (PIs) found matching filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {piTotalPages > 1 && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <Pagination currentPage={piPage} totalPages={piTotalPages} onPageChange={setPiPage} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: PO */}
+              {activeTab === 'PO' && (
+                <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                      Supplier Purchase Orders ({filteredPOs.length} Total)
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      {/* Search */}
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.35rem 0.6rem', backgroundColor: '#f8fafc' }}>
+                        <Search size={14} style={{ color: '#64748b', marginRight: '0.4rem' }} />
+                        <input
+                          type="text"
+                          placeholder="Search PO # or supplier..."
+                          value={poSearch}
+                          onChange={e => { setPoSearch(e.target.value); setPoPage(1); }}
+                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', width: '160px' }}
+                        />
+                      </div>
+                      {/* Status Filter */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Status:</span>
+                        <select
+                          value={poStatus}
+                          onChange={e => { setPoStatus(e.target.value); setPoPage(1); }}
+                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
+                        >
+                          <option value="all">All Statuses</option>
+                          <option value="Pending">Pending</option>
+                          <option value="Received">Received</option>
+                          <option value="Cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                      {/* Order By Filter */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
+                        <select
+                          value={poOrder}
+                          onChange={e => setPoOrder(e.target.value)}
+                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
+                        >
+                          <option value="-created_at">Latest First</option>
+                          <option value="created_at">Oldest First</option>
+                          <option value="po_number">PO No (A-Z)</option>
+                          <option value="-po_number">PO No (Z-A)</option>
+                        </select>
+                      </div>
+                      <button onClick={() => navigate('/pos')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+                        View All POs →
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>PO Number</th>
+                          <th>PO Date</th>
+                          <th>Supplier Name</th>
+                          <th>Status</th>
+                          <th>Total Amount (INR)</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedPOs.map(po => (
+                          <tr key={po.id} onClick={() => navigate(`/pos/${po.id}`, { state: { fromBuyer: selectedBuyer.id } })} style={{ cursor: 'pointer' }}>
+                            <td><strong>{po.po_number}</strong></td>
+                            <td>{po.po_date || '—'}</td>
+                            <td>{po.supplier_name || po.supplier?.name || '—'}</td>
                             <td>
                               <span 
                                 className="navbar-role-badge" 
                                 style={{
-                                  backgroundColor: po.status === 'Confirmed' ? '#dcfce7' : po.status === 'Production' ? '#dbeafe' : po.status === 'Dispatched' ? '#f3e8ff' : '#f3f4f6',
-                                  color: po.status === 'Confirmed' ? '#15803d' : po.status === 'Production' ? '#1d4ed8' : po.status === 'Dispatched' ? '#6b21a8' : '#374151'
+                                  backgroundColor: po.status === 'Received' ? '#dcfce7' : '#fef3c7',
+                                  color: po.status === 'Received' ? '#15803d' : '#d97706'
                                 }}
                               >
-                                {po.status || 'Confirmed'}
+                                {po.status}
                               </span>
                             </td>
-                            <td>{po.remark || '—'}</td>
+                            <td><strong>₹{parseFloat(po.total_amount || 0).toLocaleString()}</strong></td>
+                            <td onClick={e => e.stopPropagation()}>
+                              <button 
+                                onClick={() => navigate(`/pos/${po.id}`, { state: { fromBuyer: selectedBuyer.id } })}
+                                className="btn-secondary" 
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                              >
+                                View PO
+                              </button>
+                            </td>
                           </tr>
                         ))}
-                        {buyerDetails.pos.length === 0 && (
+                        {paginatedPOs.length === 0 && (
                           <tr>
-                            <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No POs found for this buyer.</td>
+                            <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                              No Supplier Purchase Orders found matching filters.
+                            </td>
                           </tr>
                         )}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
 
-              {activeTab === 'Sales Orders' && (
-                <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', marginBottom: '1rem', marginTop: 0 }}>Sales Orders</h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Sales Order No</th>
-                          <th>Order Date</th>
-                          <th>PO No</th>
-                          <th>Sample Reference</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {buyerDetails.salesOrders.map(so => (
-                          <tr key={so.id}>
-                            <td><strong>{so.sales_order_no}</strong></td>
-                            <td>{so.order_date}</td>
-                            <td>{so.po_no}</td>
-                            <td>{so.sample_detail?.sample_id || so.sample}</td>
-                          </tr>
-                        ))}
-                        {buyerDetails.salesOrders.length === 0 && (
-                          <tr>
-                            <td colSpan="4" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No sales orders matched this buyer's name.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  {poTotalPages > 1 && (
+                    <div style={{ marginTop: '1rem' }}>
+                      <Pagination currentPage={poPage} totalPages={poTotalPages} onPageChange={setPoPage} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

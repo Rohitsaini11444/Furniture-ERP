@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText } from 'lucide-react';
 import Pagination from '../components/Pagination';
@@ -213,9 +213,11 @@ function BuyerPIs() {
 
     const newItems = selectedMasters.map(bm => {
       const sample = bm.sample_detail || {};
-      const cbmVal = parseFloat(sample.cbm) || 0.15;
-      const priceVal = parseFloat(sample.usd) || 0;
-      const qty = 1;
+      const cbmVal = parseFloat(bm.cbm) || parseFloat(sample.cbm) || 0.15;
+      const priceVal = parseFloat(bm.price_usd) || parseFloat(sample.usd) || 0;
+      const qty = (bm.units !== undefined && bm.units !== null) ? parseInt(bm.units) : 1;
+      const totCbm = bm.total_cbm ? parseFloat(bm.total_cbm) : (qty * cbmVal);
+      const totAmt = bm.total_amount ? parseFloat(bm.total_amount) : (qty * priceVal);
 
       return {
         buyer_master: bm.id,
@@ -231,8 +233,8 @@ function BuyerPIs() {
         cbm: cbmVal,
         price_usd: priceVal,
         units: qty,
-        total_cbm: (qty * cbmVal).toFixed(4),
-        total_amount: (qty * priceVal).toFixed(2),
+        total_cbm: totCbm.toFixed(4),
+        total_amount: totAmt.toFixed(2),
         remarks: bm.remark || '',
         image_url: sample.images && sample.images.length > 0 ? sample.images[0].image_url : '',
       };
@@ -372,7 +374,13 @@ function BuyerPIs() {
       {id ? (
         <div className="new-page-form" style={{ padding: '1rem 0' }}>
           <button
-            onClick={() => navigate('/performa-invoices')}
+            onClick={() => {
+              if (location.state?.fromBuyer) {
+                navigate(`/buyers/${location.state.fromBuyer}`);
+              } else {
+                navigate('/performa-invoices');
+              }
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',

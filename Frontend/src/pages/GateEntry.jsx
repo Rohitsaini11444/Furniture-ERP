@@ -9,8 +9,8 @@ import Pagination from '../components/Pagination';
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
-  Confirmed:  { bg: '#dcfce7', color: '#15803d', icon: <CheckCircle size={12}/> },
-  Received:   { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
+  Pending:   { bg: '#fef3c7', color: '#d97706', icon: <CheckCircle size={12}/> },
+  Received:  { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
 };
 
 function StatusBadge({ status }) {
@@ -365,27 +365,7 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
     setSaving(true);
     try {
       const addedQty = parseFloat(quantity);
-      const newPassed = parseFloat(item.passed_quantity || 0) + addedQty;
-      await api.patch(`/supplier-po-items/${item.id}/`, { passed_quantity: newPassed });
-
-      // Automatically add passed pieces to Stock Registry
-      try {
-        await api.post('/stock/', {
-          po_item: item.id,
-          buyer: item.buyer || null,
-          style_no: item.style_no || (item.description ? item.description.split(' ')[0] : 'STK-ITEM'),
-          item_name: item.description || 'Passed Goods',
-          quantity: addedQty,
-          unit: item.unit || 'pcs',
-          unit_price: item.rate || null,
-          location: 'Main Store',
-          status: 'In Stock',
-          remarks: `Passed from Gate Entry`
-        });
-      } catch (stockErr) {
-        console.error('Failed to log stock entry:', stockErr);
-      }
-
+      await api.post(`/supplier-po-items/${item.id}/receive-qc/`, { passed_qty: addedQty });
       onSaved();
     } catch (err) {
       console.error(err);
@@ -652,7 +632,7 @@ export default function GateEntry() {
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
-    api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering, exclude_status: 'Draft' } })
+    api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering } })
       .then(res => {
         const data = res.data.results || res.data;
         setPos(data);

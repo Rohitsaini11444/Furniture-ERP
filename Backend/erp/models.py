@@ -83,14 +83,15 @@ class Sample(models.Model):
     style_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Style No.')
     buyer = models.ForeignKey('Buyer', on_delete=models.SET_NULL, null=True, blank=True, related_name='samples', verbose_name='Buyer')
     product_name = models.CharField(max_length=100)
-    material = models.CharField(max_length=150, blank=True, null=True, verbose_name='Material')
-    finish_color = models.CharField(max_length=150)
+    material = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material')
+    finish_color = models.CharField(max_length=255, blank=True, null=True)
     remark = models.TextField(blank=True, null=True)
 
     # New fields
     cbm = models.DecimalField(max_digits=10, decimal_places=4, blank=True, null=True, verbose_name='CBM')
     usd = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True, verbose_name='Price (USD)')
     vendor_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Vendor Name')
+    image = models.ImageField(upload_to='samples/', blank=True, null=True, verbose_name='Sample Image')
 
     # Product size in centimetres (L × B × H)
     size_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (cm)')
@@ -152,12 +153,18 @@ class BuyerMaster(models.Model):
     style_no = models.CharField(max_length=100)
     buyer_code = models.CharField(max_length=50)
     product_name = models.CharField(max_length=100)
-    wood_type = models.CharField(max_length=50)
-    finish_color = models.CharField(max_length=150)
+    wood_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material / Wood Type')
+    finish_color = models.CharField(max_length=255, blank=True, null=True, verbose_name='Finish Color')
     size_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (cm)')
     size_breadth = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Breadth (cm)')
     size_height = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (cm)')
     remark = models.TextField(blank=True, null=True)
+
+    # Price & Quantity details
+    price_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Price (USD)')
+    units = models.IntegerField(default=1, verbose_name='Units')
+    total_cbm = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True, verbose_name='Total CBM')
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Total Amount')
 
     # Extended details
     vendor_details = models.TextField(blank=True, null=True, verbose_name='Vendor Details')
@@ -168,8 +175,23 @@ class BuyerMaster(models.Model):
     net_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Net Weight')
     gross_weight = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Gross Weight')
     box_size = models.CharField(max_length=150, blank=True, null=True, verbose_name='Box Size')
+    box_length = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Box Length (cm)')
+    box_breadth = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Box Breadth (cm)')
+    box_height = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Box Height (cm)')
     packaging_image = models.ImageField(upload_to='buyer_masters/packaging/', blank=True, null=True, verbose_name='Packaging Image')
     created_at = models.DateTimeField(default=timezone.now)
+
+    def save(self, *args, **kwargs):
+        if self.units is not None and self.cbm is not None:
+            self.total_cbm = round(Decimal(str(self.units)) * Decimal(str(self.cbm)), 4)
+        if self.units is not None and self.price_usd is not None:
+            self.total_amount = round(Decimal(str(self.units)) * Decimal(str(self.price_usd)), 2)
+        if self.box_length or self.box_breadth or self.box_height:
+            l = float(self.box_length) if self.box_length else 0
+            b = float(self.box_breadth) if self.box_breadth else 0
+            h = float(self.box_height) if self.box_height else 0
+            self.box_size = f"{l} x {b} x {h} cm"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.style_no} - {self.product_name} ({self.buyer.code})"
@@ -207,8 +229,7 @@ class SupplierPO(models.Model):
     quantities from different buyer orders.
     """
     PO_STATUS_CHOICES = [
-        ('Draft', 'Draft'),
-        ('Confirmed', 'Confirmed'),
+        ('Pending', 'Pending'),
         ('Received', 'Received'),
         ('Cancelled', 'Cancelled'),
     ]
@@ -231,7 +252,7 @@ class SupplierPO(models.Model):
     status = models.CharField(
         max_length=20,
         choices=PO_STATUS_CHOICES,
-        default='Draft',
+        default='Pending',
         verbose_name='Status',
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -307,106 +328,6 @@ class SampleImage(models.Model):
     def __str__(self):
         return f"Image for {self.sample.sample_id}"
 
-
-
-# ─── Sanding Workflow Models ──────────────────────────────────────────────────
-
-class SandingBatchStatus(models.TextChoices):
-    PENDING = 'pending', 'Pending'
-    IN_PROGRESS = 'in_progress', 'In Progress'
-    COMPLETED = 'completed', 'Completed'
-
-
-class SandingBatch(models.Model):
-    """
-    Supervisor self-assigns a sample into their Sanding batch.
-    One supervisor can have many batches (one per sample).
-    """
-    supervisor = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='sanding_batches',
-        limit_choices_to={'role': RoleChoices.SUPERVISOR, 'batch_category': BatchCategory.SANDING},
-    )
-    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, related_name='sanding_batches')
-    assigned_at = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(blank=True)
-    status = models.CharField(
-        max_length=20,
-        choices=SandingBatchStatus.choices,
-        default=SandingBatchStatus.PENDING,
-    )
-
-    class Meta:
-        unique_together = ('supervisor', 'sample')
-        ordering = ['-assigned_at']
-
-    def __str__(self):
-        return f"Sanding Batch: {self.sample} → {self.supervisor}"
-
-
-class AssignmentStatus(models.TextChoices):
-    ASSIGNED = 'assigned', 'Assigned'
-    IN_PROGRESS = 'in_progress', 'In Progress'
-    COMPLETED = 'completed', 'Completed'
-
-
-class SandingAssignment(models.Model):
-    """
-    Supervisor assigns a batch item to a specific contractor under them.
-    """
-    batch = models.ForeignKey(SandingBatch, on_delete=models.CASCADE, related_name='assignments')
-    contractor = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='sanding_assignments',
-        limit_choices_to={'role': RoleChoices.CONTRACTOR},
-    )
-    assigned_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(
-        max_length=20,
-        choices=AssignmentStatus.choices,
-        default=AssignmentStatus.ASSIGNED,
-    )
-    completed_at = models.DateTimeField(null=True, blank=True)
-    contractor_notes = models.TextField(blank=True, help_text="Notes added by contractor on completion")
-
-    class Meta:
-        ordering = ['-assigned_at']
-
-    def __str__(self):
-        return f"Assignment: {self.batch.sample} → {self.contractor}"
-
-
-class QCResult(models.TextChoices):
-    PASS = 'pass', 'Pass'
-    REJECT = 'reject', 'Reject'
-
-
-class SandingQC(models.Model):
-    """
-    Supervisor performs quality check on a completed sanding assignment.
-    """
-    assignment = models.OneToOneField(
-        SandingAssignment,
-        on_delete=models.CASCADE,
-        related_name='qc',
-    )
-    checked_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='sanding_qc_checks',
-        limit_choices_to={'role': RoleChoices.SUPERVISOR},
-    )
-    result = models.CharField(max_length=10, choices=QCResult.choices)
-    notes = models.TextField(blank=True)
-    checked_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-checked_at']
-
-    def __str__(self):
-        return f"QC [{self.result}] — {self.assignment}"
 
 
 # ─── Performa Invoice Models ──────────────────────────────────────────────────
@@ -524,8 +445,8 @@ class BuyerPIItem(models.Model):
     size_length = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Length (cm)')
     size_breadth = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Breadth (cm)')
     size_height = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name='Size Height (cm)')
-    material = models.CharField(max_length=150, blank=True, null=True, verbose_name='Material')
-    finish_color = models.CharField(max_length=150, blank=True, null=True, verbose_name='Finish')
+    material = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material')
+    finish_color = models.CharField(max_length=255, blank=True, null=True, verbose_name='Finish')
     cbm = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True, verbose_name='CBM')
     price_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Price (USD)')
     units = models.IntegerField(default=1, verbose_name='Units')
@@ -566,7 +487,12 @@ class SupplierPOItemDefectImage(models.Model):
         return f"Image for {self.defect}"
 
 
-# ─── Stock / Inventory Models ───────────────────────────────────────────────
+class StockTypeChoices(models.TextChoices):
+    RAW = 'raw', 'Raw Stock'
+    SANDED = 'sanded', 'Sanded Stock'
+    POLISHED = 'polished', 'Polished Stock'
+    PACKAGED = 'packaged', 'Packaged Stock (Finished)'
+
 
 class StockItem(models.Model):
     STOCK_STATUS_CHOICES = [
@@ -577,6 +503,12 @@ class StockItem(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stock_type = models.CharField(
+        max_length=20,
+        choices=StockTypeChoices.choices,
+        default=StockTypeChoices.RAW,
+        verbose_name='Stock Type'
+    )
     po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Supplier PO Item')
     sample = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Sample')
     buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Buyer')
@@ -598,7 +530,70 @@ class StockItem(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.style_no} - {self.item_name} ({self.quantity} {self.unit})"
+        return f"[{self.get_stock_type_display()}] {self.style_no} - {self.item_name} ({self.quantity} {self.unit})"
+
+
+class ProductionStageChoices(models.TextChoices):
+    SANDING = 'sanding', 'Sanding'
+    POLISHING = 'polishing', 'Polishing'
+    PACKAGING = 'packaging', 'Packaging'
+
+
+class ProductionJobStatus(models.TextChoices):
+    ASSIGNED = 'assigned', 'Assigned'
+    IN_PROGRESS = 'in_progress', 'In Progress'
+    QC_REQUESTED = 'qc_requested', 'QC Requested'
+    QC_COMPLETED = 'qc_completed', 'QC Completed'
+
+
+class ProductionJob(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stage = models.CharField(max_length=20, choices=ProductionStageChoices.choices)
+    status = models.CharField(max_length=20, choices=ProductionJobStatus.choices, default=ProductionJobStatus.ASSIGNED)
+    stock_item = models.ForeignKey(StockItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
+    buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
+    sample = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
+    buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
+    
+    style_no = models.CharField(max_length=100, verbose_name='Style No.')
+    item_name = models.CharField(max_length=255, verbose_name='Item / Product Name')
+    contractor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='production_jobs', limit_choices_to={'role': RoleChoices.CONTRACTOR})
+    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_production_jobs')
+    
+    assigned_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Assigned Quantity')
+    passed_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Passed Quantity')
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rejected (Rework) Quantity')
+    unit = models.CharField(max_length=30, default='pcs', verbose_name='Unit')
+    
+    contractor_notes = models.TextField(blank=True, null=True, verbose_name='Contractor Notes')
+    qc_notes = models.TextField(blank=True, null=True, verbose_name='QC Feedback Notes')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    qc_requested_at = models.DateTimeField(null=True, blank=True)
+    qc_completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.get_stage_display()} Job: {self.style_no} ({self.assigned_qty} {self.unit}) -> {self.contractor.username}"
+
+
+class ProductionQCLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job = models.ForeignKey(ProductionJob, on_delete=models.CASCADE, related_name='qc_logs')
+    inspected_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='production_qc_inspections')
+    passed_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"QC Log for {self.job.style_no} - Passed: {self.passed_qty}, Rejected: {self.rejected_qty}"
 
 
 

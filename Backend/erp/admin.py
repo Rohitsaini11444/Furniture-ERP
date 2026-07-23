@@ -2,62 +2,30 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import (
     User, Sample,
-    SandingBatch, SandingAssignment, SandingQC,
+    ProductionJob, ProductionQCLog,
     PerformaInvoice, PerformaInvoiceItem, StockItem,
 )
 
-# ... existing code ...
 
 @admin.register(StockItem)
 class StockItemAdmin(admin.ModelAdmin):
-    list_display = ['style_no', 'item_name', 'quantity', 'unit', 'location', 'status', 'created_at']
-    list_filter = ['status', 'location']
+    list_display = ['stock_type', 'style_no', 'item_name', 'quantity', 'unit', 'location', 'status', 'created_at']
+    list_filter = ['stock_type', 'status', 'location']
     search_fields = ['style_no', 'item_name', 'location']
 
 
-
-@admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ('ERP Role', {'fields': ('role', 'batch_category', 'supervisor', 'phone')}),
-    )
-    add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ('ERP Role', {'fields': ('role', 'batch_category', 'supervisor', 'phone')}),
-    )
-    list_display = ['username', 'full_name', 'role', 'batch_category', 'supervisor', 'is_active']
-    list_filter = ['role', 'batch_category', 'is_active']
-    search_fields = ['username', 'first_name', 'last_name', 'email']
-    ordering = ['role', 'username']
-
-    def full_name(self, obj):
-        return obj.get_full_name()
-    full_name.short_description = 'Full Name'
+@admin.register(ProductionJob)
+class ProductionJobAdmin(admin.ModelAdmin):
+    list_display = ['stage', 'status', 'style_no', 'item_name', 'contractor', 'assigned_by', 'assigned_qty', 'passed_qty', 'rejected_qty', 'created_at']
+    list_filter = ['stage', 'status', 'contractor', 'assigned_by']
+    search_fields = ['style_no', 'item_name', 'contractor__username']
 
 
-@admin.register(Sample)
-class SampleAdmin(admin.ModelAdmin):
-    list_display = ['sample_id', 'product_name', 'buyer', 'material', 'finish_color']
-    search_fields = ['sample_id', 'product_name', 'buyer__name', 'material']
-
-
-@admin.register(SandingBatch)
-class SandingBatchAdmin(admin.ModelAdmin):
-    list_display = ['supervisor', 'sample', 'status', 'assigned_at']
-    list_filter = ['status', 'supervisor']
-    search_fields = ['sample__sample_id', 'supervisor__username']
-
-
-@admin.register(SandingAssignment)
-class SandingAssignmentAdmin(admin.ModelAdmin):
-    list_display = ['batch', 'contractor', 'status', 'assigned_at', 'completed_at']
-    list_filter = ['status', 'contractor']
-    search_fields = ['contractor__username', 'batch__sample__sample_id']
-
-
-@admin.register(SandingQC)
-class SandingQCAdmin(admin.ModelAdmin):
-    list_display = ['assignment', 'checked_by', 'result', 'checked_at']
-    list_filter = ['result', 'checked_by']
+@admin.register(ProductionQCLog)
+class ProductionQCLogAdmin(admin.ModelAdmin):
+    list_display = ['job', 'inspected_by', 'passed_qty', 'rejected_qty', 'created_at']
+    list_filter = ['inspected_by']
+    search_fields = ['job__style_no', 'inspected_by__username']
     search_fields = ['assignment__batch__sample__sample_id']
 
 

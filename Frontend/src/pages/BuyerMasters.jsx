@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, Download, Upload, ImageIcon } from 'lucide-react';
 import Pagination from '../components/Pagination';
 
 
@@ -85,15 +85,22 @@ function BuyerMasters() {
     size_length: '',
     size_breadth: '',
     size_height: '',
+    price_usd: '',
+    units: 1,
+    cbm: '',
+    total_cbm: '',
+    total_amount: '',
     remark: '',
     vendor_details: '',
     vendor_price: '',
     costing: '',
     purchase_price: '',
-    cbm: '',
     net_weight: '',
     gross_weight: '',
-    box_size: ''
+    box_size: '',
+    box_length: '',
+    box_breadth: '',
+    box_height: '',
   };
   const [formData, setFormData] = useState(emptyForm);
 
@@ -128,8 +135,44 @@ function BuyerMasters() {
     setCurrentPage(1);
   }, [searchTerm, ordering]);
 
+  const [materialsList, setMaterialsList] = useState(['']);
+  const [finishesList, setFinishesList] = useState(['']);
+
+  const parseSlashList = (str) => {
+    if (!str || typeof str !== 'string') return [''];
+    const parts = str.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [''];
+  };
+
+  const handleMaterialItemChange = (idx, value) => {
+    const next = [...materialsList];
+    next[idx] = value;
+    setMaterialsList(next);
+  };
+  const addMaterialField = () => setMaterialsList(prev => [...prev, '']);
+  const removeMaterialField = (idx) => setMaterialsList(prev => prev.filter((_, i) => i !== idx));
+
+  const handleFinishItemChange = (idx, value) => {
+    const next = [...finishesList];
+    next[idx] = value;
+    setFinishesList(next);
+  };
+  const addFinishField = () => setFinishesList(prev => [...prev, '']);
+  const removeFinishField = (idx) => setFinishesList(prev => prev.filter((_, i) => i !== idx));
+
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === 'units' || name === 'cbm' || name === 'price_usd') {
+        const u = parseInt(next.units) || 0;
+        const c = parseFloat(next.cbm) || 0;
+        const p = parseFloat(next.price_usd) || 0;
+        if (u && c) next.total_cbm = (u * c).toFixed(4);
+        if (u && p) next.total_amount = (u * p).toFixed(2);
+      }
+      return next;
+    });
   };
 
   const handleBuyerChange = (e) => {
@@ -143,7 +186,18 @@ function BuyerMasters() {
   };
 
   const handleDimChange = (key, val) => {
-    setFormData(prev => ({ ...prev, [key]: val }));
+    setFormData(prev => {
+      const next = { ...prev, [key]: val };
+      if (key.startsWith('box_')) {
+        const l = next.box_length || '';
+        const b = next.box_breadth || '';
+        const h = next.box_height || '';
+        if (l || b || h) {
+          next.box_size = `${l} x ${b} x ${h} cm`;
+        }
+      }
+      return next;
+    });
   };
 
   const handleSampleChange = (e) => {
@@ -155,6 +209,10 @@ function BuyerMasters() {
 
     const selectedSample = samples.find(s => s.id === sampleId);
     if (selectedSample) {
+      const cbmVal = parseFloat(selectedSample.cbm) || 0;
+      const priceVal = parseFloat(selectedSample.usd) || 0;
+      const unitsVal = parseInt(formData.units) || 1;
+
       setFormData(prev => ({
         ...prev,
         sample: sampleId,
@@ -166,8 +224,80 @@ function BuyerMasters() {
         size_length: selectedSample.size_length || '',
         size_breadth: selectedSample.size_breadth || '',
         size_height: selectedSample.size_height || '',
+        cbm: selectedSample.cbm || '',
+        price_usd: selectedSample.usd || '',
+        units: unitsVal,
+        total_cbm: (cbmVal && unitsVal) ? (cbmVal * unitsVal).toFixed(4) : '',
+        total_amount: (priceVal && unitsVal) ? (priceVal * unitsVal).toFixed(2) : '',
         remark: selectedSample.remark || ''
       }));
+      setMaterialsList(parseSlashList(selectedSample.material));
+      setFinishesList(parseSlashList(selectedSample.finish_color));
+    }
+  };
+
+  // Image Management States
+  const [existingPackagingUrl, setExistingPackagingUrl] = useState(null);
+  const [packagingFile, setPackagingFile] = useState(null);
+  const [clearPackagingImage, setClearPackagingImage] = useState(false);
+
+  const [existingFinishingImages, setExistingFinishingImages] = useState([]);
+  const [newFinishingFiles, setNewFinishingFiles] = useState([]);
+
+  const handleRemovePackagingImage = () => {
+    if (existingPackagingUrl) {
+      setClearPackagingImage(true);
+      setExistingPackagingUrl(null);
+    }
+    setPackagingFile(null);
+  };
+
+  const handleRemoveExistingFinishingImage = async (imgId) => {
+    try {
+      await api.delete(`/buyer-master-finishing-images/${imgId}/`);
+      setExistingFinishingImages(prev => prev.filter(img => img.id !== imgId));
+    } catch (err) {
+      console.error('Failed to delete finishing image', err);
+    }
+  };
+
+  const handleRemoveNewFinishingFile = (index) => {
+    setNewFinishingFiles(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleDownloadPackagingImage = async () => {
+    if (!editingId) return;
+    try {
+      const res = await api.get(`/buyer-masters/${editingId}/download-packaging-image/`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `${formData.style_no || 'Style'}_Packaging_Image.png`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download packaging image', err);
+    }
+  };
+
+  const handleDownloadFinishingImages = async () => {
+    if (!editingId) return;
+    try {
+      const res = await api.get(`/buyer-masters/${editingId}/download-finishing-images/`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `${formData.style_no || 'Style'}_Finishing_images.zip`;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download finishing images', err);
     }
   };
 
@@ -188,31 +318,50 @@ function BuyerMasters() {
             size_length: bm.size_length || '',
             size_breadth: bm.size_breadth || '',
             size_height: bm.size_height || '',
+            price_usd: bm.price_usd || '',
+            units: bm.units !== undefined && bm.units !== null ? bm.units : 1,
+            cbm: bm.cbm || '',
+            total_cbm: bm.total_cbm || '',
+            total_amount: bm.total_amount || '',
             remark: bm.remark || '',
             vendor_details: bm.vendor_details || '',
             vendor_price: bm.vendor_price || '',
             costing: bm.costing || '',
             purchase_price: bm.purchase_price || '',
-            cbm: bm.cbm || '',
             net_weight: bm.net_weight || '',
             gross_weight: bm.gross_weight || '',
-            box_size: bm.box_size || ''
+            box_size: bm.box_size || '',
+            box_length: bm.box_length || '',
+            box_breadth: bm.box_breadth || '',
+            box_height: bm.box_height || '',
           });
+          setMaterialsList(parseSlashList(bm.wood_type));
+          setFinishesList(parseSlashList(bm.finish_color));
+          setExistingPackagingUrl(bm.packaging_image_url || bm.packaging_image || null);
+          setPackagingFile(null);
+          setClearPackagingImage(false);
+          setExistingFinishingImages(bm.finishing_images || []);
+          setNewFinishingFiles([]);
           setEditingId(bm.id);
           setShowMoreDetails(
             !!bm.vendor_details || !!bm.vendor_price || !!bm.costing || 
             !!bm.purchase_price || !!bm.cbm || !!bm.net_weight || 
-            !!bm.gross_weight || !!bm.box_size || !!bm.packaging_image || 
+            !!bm.gross_weight || !!bm.box_size || !!bm.box_length || !!bm.packaging_image || 
             (bm.finishing_images && bm.finishing_images.length > 0)
           );
         })
         .catch(err => console.error(err));
     } else {
       setFormData(emptyForm);
+      setMaterialsList(['']);
+      setFinishesList(['']);
+      setExistingPackagingUrl(null);
+      setPackagingFile(null);
+      setClearPackagingImage(false);
+      setExistingFinishingImages([]);
+      setNewFinishingFiles([]);
       setEditingId(null);
       setShowMoreDetails(false);
-      setPackagingImage(null);
-      setFinishingImages([]);
     }
   }, [id]);
 
@@ -224,27 +373,41 @@ function BuyerMasters() {
     navigate(`/buyer-masters/${bm.id}`);
   };
 
+  const location = useLocation();
+  const fromBuyer = location.state?.fromBuyer;
+
   const closeModal = () => {
-    navigate('/buyer-masters');
+    if (fromBuyer) {
+      navigate(`/buyers/${fromBuyer}`);
+    } else {
+      navigate('/buyer-masters');
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    const woodTypeJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
+    const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
     
     const formDataPayload = new FormData();
     Object.keys(formData).forEach(key => {
       let val = formData[key];
+      if (key === 'wood_type') val = woodTypeJoined;
+      if (key === 'finish_color') val = finishJoined;
       if (val === null || val === undefined) val = '';
       if (key === 'sample' && !val) return; // Skip empty foreign keys
       formDataPayload.append(key, val);
     });
 
-    if (packagingImage) {
-      formDataPayload.append('packaging_image', packagingImage);
+    if (clearPackagingImage) {
+      formDataPayload.append('clear_packaging_image', 'true');
+    } else if (packagingFile) {
+      formDataPayload.append('packaging_image', packagingFile);
     }
     
-    finishingImages.forEach(file => {
-      formDataPayload.append('finishing_images', file);
+    newFinishingFiles.forEach(item => {
+      formDataPayload.append('finishing_images', item.file);
     });
 
     const config = { headers: { 'Content-Type': 'multipart/form-data' } };
@@ -363,14 +526,98 @@ function BuyerMasters() {
                       <label className="form-label">Product Name *</label>
                       <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Mango Wood Dining Table" />
                     </div>
+
+                    {/* ── Material(s) (Wood Type) ── */}
+                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) / Wood Type *</label>
+                        <button
+                          type="button"
+                          onClick={addMaterialField}
+                          className="btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
+                        >
+                          + Add Material
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {materialsList.map((mat, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              required={idx === 0}
+                              type="text"
+                              className="form-input"
+                              value={mat}
+                              onChange={e => handleMaterialItemChange(idx, e.target.value)}
+                              placeholder={`Material ${idx + 1} (e.g. ${idx === 0 ? 'Mango' : 'Silk'})`}
+                            />
+                            {materialsList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeMaterialField(idx)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                                title="Remove Material"
+                              >
+                                <X size={16} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ── Finish / Color(s) ── */}
+                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Finish / Color(s) *</label>
+                        <button
+                          type="button"
+                          onClick={addFinishField}
+                          className="btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
+                        >
+                          + Add Finish
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {finishesList.map((fin, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              required={idx === 0}
+                              type="text"
+                              className="form-input"
+                              value={fin}
+                              onChange={e => handleFinishItemChange(idx, e.target.value)}
+                              placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric 1557 Linen'})`}
+                            />
+                            {finishesList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeFinishField(idx)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                                title="Remove Finish"
+                              >
+                                <X size={16} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* ── Pricing & Quantity Details ── */}
                     <div className="form-group">
-                      <label className="form-label">Wood Type *</label>
-                      <input required type="text" name="wood_type" className="form-input" value={formData.wood_type} onChange={handleChange} placeholder="e.g. Mango Wood" />
+                      <label className="form-label">Price (USD)</label>
+                      <input type="number" step="0.01" name="price_usd" className="form-input" value={formData.price_usd} onChange={handleChange} placeholder="e.g. 150.00" />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Finish / Color *</label>
-                      <input required type="text" name="finish_color" className="form-input" value={formData.finish_color} onChange={handleChange} placeholder="e.g. Natural Wash" />
+                      <label className="form-label">Units</label>
+                      <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 1" />
                     </div>
+                    <div className="form-group">
+                      <label className="form-label">Total Amount ($)</label>
+                      <input type="number" step="0.01" name="total_amount" className="form-input" value={formData.total_amount} onChange={handleChange} placeholder="Auto calculated (Units × Price)" />
+                    </div>
+
                     <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                       <label className="form-label">Remark</label>
                       <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
@@ -420,7 +667,11 @@ function BuyerMasters() {
                       </div>
                       <div className="form-group">
                         <label className="form-label">CBM</label>
-                        <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} />
+                        <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Total CBM</label>
+                        <input type="number" step="0.0001" name="total_cbm" className="form-input" value={formData.total_cbm} onChange={handleChange} placeholder="Auto calculated (Units × CBM)" />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Net Weight (kg)</label>
@@ -430,17 +681,185 @@ function BuyerMasters() {
                         <label className="form-label">Gross Weight (kg)</label>
                         <input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} />
                       </div>
-                      <div className="form-group">
-                        <label className="form-label">Box Size</label>
-                        <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100x50x50 cm" />
+
+                      {/* ── Box Size (L, B, H) ── */}
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <SizeGroup
+                          label="Box Size Dimensions (cm)"
+                          prefix="box"
+                          values={formData}
+                          onChange={handleDimChange}
+                        />
                       </div>
-                      <div className="form-group">
-                        <label className="form-label">Packaging Image</label>
-                        <input type="file" accept="image/*" className="form-input" onChange={e => setPackagingImage(e.target.files[0])} />
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label">Box Size Summary</label>
+                        <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100 x 50 x 50 cm" />
                       </div>
-                      <div className="form-group">
-                        <label className="form-label">Finishing Images</label>
-                        <input type="file" accept="image/*" multiple className="form-input" onChange={e => setFinishingImages(Array.from(e.target.files))} />
+
+                      {/* ── Packaging Image Preview, Red Cross & Download ── */}
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label" style={{ fontWeight: 600 }}>Packaging Image</label>
+                        {(existingPackagingUrl || packagingFile) ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginTop: '0.4rem' }}>
+                            <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
+                              <img
+                                src={packagingFile ? URL.createObjectURL(packagingFile) : existingPackagingUrl}
+                                alt="Packaging Preview"
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleRemovePackagingImage}
+                                style={{
+                                  position: 'absolute',
+                                  top: '-8px',
+                                  right: '-8px',
+                                  width: '22px',
+                                  height: '22px',
+                                  borderRadius: '50%',
+                                  background: '#ef4444',
+                                  color: '#ffffff',
+                                  border: '2px solid #ffffff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                  zIndex: 10
+                                }}
+                                title="Remove Packaging Image"
+                              >
+                                <X size={12} strokeWidth={3} />
+                              </button>
+                            </div>
+                            {editingId && existingPackagingUrl && (
+                              <button
+                                type="button"
+                                onClick={handleDownloadPackagingImage}
+                                className="btn-secondary"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem', height: 'fit-content' }}
+                              >
+                                <Download size={15} /> Download Packaging Image
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="form-input"
+                            onChange={e => {
+                              if (e.target.files && e.target.files[0]) {
+                                setPackagingFile(e.target.files[0]);
+                                setClearPackagingImage(false);
+                              }
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      {/* ── Finishing Images Gallery Preview, Red Cross & Single ZIP Download ── */}
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <label className="form-label" style={{ fontWeight: 600, margin: 0 }}>Finishing Images</label>
+                          {editingId && existingFinishingImages.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleDownloadFinishingImages}
+                              className="btn-secondary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                            >
+                              <Download size={15} /> Download Finishing Images (ZIP)
+                            </button>
+                          )}
+                        </div>
+
+                        {(existingFinishingImages.length > 0 || newFinishingFiles.length > 0) && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem', padding: '0.65rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            {/* Existing Backend Finishing Images */}
+                            {existingFinishingImages.map(img => (
+                              <div key={img.id} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
+                                <img
+                                  src={img.image_url || img.image}
+                                  alt="Finishing"
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveExistingFinishingImage(img.id)}
+                                  style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    right: '-8px',
+                                    width: '22px',
+                                    height: '22px',
+                                    borderRadius: '50%',
+                                    background: '#ef4444',
+                                    color: '#ffffff',
+                                    border: '2px solid #ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                    zIndex: 10
+                                  }}
+                                  title="Remove Image"
+                                >
+                                  <X size={12} strokeWidth={3} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* New Finishing Image Files */}
+                            {newFinishingFiles.map((item, idx) => (
+                              <div key={idx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
+                                <img
+                                  src={item.preview}
+                                  alt="New Finishing"
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveNewFinishingFile(idx)}
+                                  style={{
+                                    position: 'absolute',
+                                    top: '-8px',
+                                    right: '-8px',
+                                    width: '22px',
+                                    height: '22px',
+                                    borderRadius: '50%',
+                                    background: '#ef4444',
+                                    color: '#ffffff',
+                                    border: '2px solid #ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                    zIndex: 10
+                                  }}
+                                  title="Remove Image"
+                                >
+                                  <X size={12} strokeWidth={3} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="form-input"
+                          onChange={e => {
+                            const files = Array.from(e.target.files || []);
+                            const mapped = files.map(file => ({ file, preview: URL.createObjectURL(file) }));
+                            setNewFinishingFiles(prev => [...prev, ...mapped]);
+                            e.target.value = '';
+                          }}
+                        />
                       </div>
                     </div>
                   )}

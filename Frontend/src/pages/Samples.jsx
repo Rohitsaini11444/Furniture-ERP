@@ -138,6 +138,16 @@ function Samples() {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
 
+  // Multi-item materials and finishes
+  const [materialsList, setMaterialsList] = useState(['']);
+  const [finishesList, setFinishesList] = useState(['']);
+
+  const parseSlashList = (str) => {
+    if (!str || typeof str !== 'string') return [''];
+    const parts = str.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [''];
+  };
+
   // Images: [{id, image_url, preview, file, isNew}]
   const [images, setImages] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(null);
@@ -237,6 +247,8 @@ function Samples() {
             size_breadth: sample.size_breadth ?? '',
             size_height: sample.size_height ?? '',
           });
+          setMaterialsList(parseSlashList(sample.material));
+          setFinishesList(parseSlashList(sample.finish_color));
           const existingImgs = (sample.images || []).map(img => ({
             id: img.id,
             image_url: img.image_url,
@@ -250,6 +262,8 @@ function Samples() {
         .catch(err => console.error(err));
     } else {
       setFormData(emptyForm);
+      setMaterialsList(['']);
+      setFinishesList(['']);
       setImages([]);
       setEditingId(null);
     }
@@ -260,6 +274,22 @@ function Samples() {
   const handleChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
+
+  const handleMaterialItemChange = (idx, value) => {
+    const next = [...materialsList];
+    next[idx] = value;
+    setMaterialsList(next);
+  };
+  const addMaterialField = () => setMaterialsList(prev => [...prev, '']);
+  const removeMaterialField = (idx) => setMaterialsList(prev => prev.filter((_, i) => i !== idx));
+
+  const handleFinishItemChange = (idx, value) => {
+    const next = [...finishesList];
+    next[idx] = value;
+    setFinishesList(next);
+  };
+  const addFinishField = () => setFinishesList(prev => [...prev, '']);
+  const removeFinishField = (idx) => setFinishesList(prev => prev.filter((_, i) => i !== idx));
 
   const handleDimChange = (key, val) => {
     setFormData(prev => ({ ...prev, [key]: val }));
@@ -309,8 +339,17 @@ function Samples() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const materialJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
+      const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+
+      const updatedFormData = {
+        ...formData,
+        material: materialJoined,
+        finish_color: finishJoined,
+      };
+
       const submitData = new FormData();
-      Object.entries(formData).forEach(([k, v]) => {
+      Object.entries(updatedFormData).forEach(([k, v]) => {
         if (k === 'buyer' && v === '') {
           submitData.append(k, '');
         } else if (v !== '' && v !== null && v !== undefined) {
@@ -426,14 +465,85 @@ function Samples() {
                       <label className="form-label">Product Name *</label>
                       <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Walnut Dining Table" />
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Material *</label>
-                      <input required type="text" name="material" className="form-input" value={formData.material} onChange={handleChange} placeholder="e.g. Teak, Walnut, Oak" />
+
+                    {/* ── Material(s) ── */}
+                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) *</label>
+                        <button
+                          type="button"
+                          onClick={addMaterialField}
+                          className="btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
+                        >
+                          + Add Material
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {materialsList.map((mat, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              required={idx === 0}
+                              type="text"
+                              className="form-input"
+                              value={mat}
+                              onChange={e => handleMaterialItemChange(idx, e.target.value)}
+                              placeholder={`Material ${idx + 1} (e.g. ${idx === 0 ? 'Mango' : 'Silk'})`}
+                            />
+                            {materialsList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeMaterialField(idx)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                                title="Remove Material"
+                              >
+                                <X size={16} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Finish / Color *</label>
-                      <input required type="text" name="finish_color" className="form-input" value={formData.finish_color} onChange={handleChange} placeholder="e.g. Matte Natural" />
+
+                    {/* ── Finish / Color(s) ── */}
+                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Finish / Color(s) *</label>
+                        <button
+                          type="button"
+                          onClick={addFinishField}
+                          className="btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
+                        >
+                          + Add Finish
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {finishesList.map((fin, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              required={idx === 0}
+                              type="text"
+                              className="form-input"
+                              value={fin}
+                              onChange={e => handleFinishItemChange(idx, e.target.value)}
+                              placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric 1557 Linen'})`}
+                            />
+                            {finishesList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeFinishField(idx)}
+                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                                title="Remove Finish"
+                              >
+                                <X size={16} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
+
                     <div className="form-group">
                       <label className="form-label">CBM</label>
                       <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" />

@@ -4,11 +4,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     User, Sample, SampleImage,
-    SandingBatch, SandingAssignment, SandingQC,
     Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
-    UserSession, StockItem,
+    UserSession, StockItem, ProductionJob, ProductionQCLog,
 )
 
 
@@ -211,13 +210,16 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
 
 class BuyerMasterListSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
+    sample_detail = SampleSerializer(source='sample', read_only=True)
 
     class Meta:
         model = BuyerMaster
         fields = [
-            'id', 'buyer', 'buyer_detail', 'style_no', 'product_name', 
+            'id', 'buyer', 'buyer_detail', 'sample', 'sample_detail', 'style_no', 'buyer_code', 'product_name', 
             'wood_type', 'finish_color', 
-            'size_length', 'size_breadth', 'size_height'
+            'size_length', 'size_breadth', 'size_height',
+            'price_usd', 'units', 'cbm', 'total_cbm', 'total_amount', 'remark',
+            'box_size', 'box_length', 'box_breadth', 'box_height'
         ]
 
 
@@ -336,103 +338,32 @@ class SupplierPOSerializer(serializers.ModelSerializer):
         return instance
 
 
-# ─── Sanding Serializers ──────────────────────────────────────────────────────
+# ─── Production Job & QC Serializers ─────────────────────────────────────────
 
-class SandingBatchSerializer(serializers.ModelSerializer):
-    sample_detail = SampleSerializer(source='sample', read_only=True)
-    supervisor_name = serializers.SerializerMethodField()
-    assignment_count = serializers.SerializerMethodField()
+class ProductionQCLogSerializer(serializers.ModelSerializer):
+    inspected_by_name = serializers.CharField(source='inspected_by.username', read_only=True)
 
     class Meta:
-        model = SandingBatch
-        fields = [
-            'id', 'supervisor', 'supervisor_name', 'sample', 'sample_detail',
-            'assigned_at', 'notes', 'status', 'assignment_count',
-        ]
-        read_only_fields = ['id', 'assigned_at', 'supervisor']
-
-    def get_supervisor_name(self, obj):
-        return obj.supervisor.get_full_name() or obj.supervisor.username
-
-    def get_assignment_count(self, obj):
-        return obj.assignments.count()
-
-    def create(self, validated_data):
-        # Supervisor is always the requesting user
-        validated_data['supervisor'] = self.context['request'].user
-        return super().create(validated_data)
+        model = ProductionQCLog
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at']
 
 
-class SandingAssignmentSerializer(serializers.ModelSerializer):
-    batch_detail = SandingBatchSerializer(source='batch', read_only=True)
-    contractor_detail = UserMinimalSerializer(source='contractor', read_only=True)
-    qc_result = serializers.SerializerMethodField()
+class ProductionJobSerializer(serializers.ModelSerializer):
+    contractor_name = serializers.SerializerMethodField()
+    assigned_by_name = serializers.SerializerMethodField()
+    qc_logs = ProductionQCLogSerializer(many=True, read_only=True)
 
     class Meta:
-        model = SandingAssignment
-        fields = [
-            'id', 'batch', 'batch_detail', 'contractor', 'contractor_detail',
-            'assigned_at', 'status', 'completed_at', 'contractor_notes', 'qc_result',
-        ]
-        read_only_fields = ['id', 'assigned_at', 'completed_at']
+        model = ProductionJob
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at', 'qc_requested_at', 'qc_completed_at']
 
-    def get_qc_result(self, obj):
-        if hasattr(obj, 'qc'):
-            return {'result': obj.qc.result, 'notes': obj.qc.notes, 'checked_at': obj.qc.checked_at}
-        return None
+    def get_contractor_name(self, obj):
+        return (obj.contractor.get_full_name() or obj.contractor.username) if obj.contractor else ''
 
-    def validate(self, attrs):
-        request = self.context['request']
-        user = request.user
-        batch = attrs.get('batch', getattr(self.instance, 'batch', None))
-        contractor = attrs.get('contractor', getattr(self.instance, 'contractor', None))
-
-        # Ensure supervisor can only assign from their own batches
-        if user.role == 'supervisor' and batch and batch.supervisor != user:
-            raise serializers.ValidationError("You can only assign from your own sanding batches.")
-
-        # Ensure contractor belongs to this supervisor
-        if user.role == 'supervisor' and contractor and contractor.supervisor != user:
-            raise serializers.ValidationError("This contractor is not under your supervision.")
-
-        return attrs
-
-
-class SandingQCSerializer(serializers.ModelSerializer):
-    assignment_detail = SandingAssignmentSerializer(source='assignment', read_only=True)
-    checked_by_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = SandingQC
-        fields = [
-            'id', 'assignment', 'assignment_detail',
-            'checked_by', 'checked_by_name',
-            'result', 'notes', 'checked_at',
-        ]
-        read_only_fields = ['id', 'checked_at', 'checked_by']
-
-    def get_checked_by_name(self, obj):
-        return obj.checked_by.get_full_name() or obj.checked_by.username
-
-    def validate(self, attrs):
-        request = self.context['request']
-        assignment = attrs.get('assignment', getattr(self.instance, 'assignment', None))
-
-        # Only the supervisor who owns the batch can QC it
-        if assignment and assignment.batch.supervisor != request.user:
-            raise serializers.ValidationError("You can only QC assignments from your own batches.")
-
-        # Must be completed before QC
-        if assignment and assignment.status != 'completed':
-            raise serializers.ValidationError(
-                "QC can only be performed on completed assignments. "
-                f"Current status: {assignment.status}"
-            )
-        return attrs
-
-    def create(self, validated_data):
-        validated_data['checked_by'] = self.context['request'].user
-        return super().create(validated_data)
+    def get_assigned_by_name(self, obj):
+        return (obj.assigned_by.get_full_name() or obj.assigned_by.username) if obj.assigned_by else ''
 
 
 # ─── Performa Invoice Serializers ─────────────────────────────────────────────
@@ -507,6 +438,27 @@ class BuyerPISerializer(serializers.ModelSerializer):
         model = BuyerPI
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        pi = BuyerPI.objects.create(**validated_data)
+        for item_data in items_data:
+            item_data.pop('buyer_pi', None)
+            BuyerPIItem.objects.create(buyer_pi=pi, **item_data)
+        return pi
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                item_data.pop('buyer_pi', None)
+                BuyerPIItem.objects.create(buyer_pi=instance, **item_data)
+        return instance
 
 class BuyerPIItemSummarySerializer(serializers.ModelSerializer):
     class Meta:
