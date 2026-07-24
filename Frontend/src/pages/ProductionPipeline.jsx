@@ -816,21 +816,8 @@ export default function ProductionPipeline() {
 
       {/* ── MODAL 1: Assign Stock to Contractor ── */}
       {showAssignModal && (
-        <div className="modal-overlay" style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.65)',
-          backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '1rem'
-        }}>
-          <div className="modal-content" style={{
-            maxWidth: '540px', width: '100%',
-            background: '#ffffff',
-            borderRadius: '20px',
-            boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(226, 232, 240, 0.8)',
-            overflow: 'hidden',
-            padding: 0
-          }}>
+        <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '540px', padding: 0 }}>
             {/* Header */}
             <div style={{
               padding: '1.25rem 1.75rem',
@@ -997,21 +984,8 @@ export default function ProductionPipeline() {
 
       {/* ── MODAL 2: Supervisor Quality Check Inspection ── */}
       {showQCModal && selectedJob && (
-        <div className="modal-overlay" style={{
-          position: 'fixed', inset: 0, zIndex: 1000,
-          background: 'rgba(15, 23, 42, 0.65)',
-          backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '1rem'
-        }}>
-          <div className="modal-content" style={{
-            maxWidth: '540px', width: '100%',
-            background: '#ffffff',
-            borderRadius: '20px',
-            boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(226, 232, 240, 0.8)',
-            overflow: 'hidden',
-            padding: 0
-          }}>
+        <div className="modal-overlay" onClick={() => setShowQCModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '540px', padding: 0 }}>
             {/* Header */}
             <div style={{
               padding: '1.25rem 1.75rem',

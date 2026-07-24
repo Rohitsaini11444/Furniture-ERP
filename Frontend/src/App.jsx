@@ -448,62 +448,64 @@ function AppLayout() {
     <div className="app-container">
       {isAuthenticated && !isLogin && <Navbar />}
       <main className={isLogin ? '' : 'container'}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+        <div key={location.pathname} className="page-transition-wrapper">
+          <Routes location={location}>
+            <Route path="/login" element={<Login />} />
 
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
-          <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
-          <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
-          <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
-          <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
-          <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
-          <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
-          <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
-          
-          {/* Gate Entry & Stock */}
-          <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
-          <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
-          <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
+            <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
+            <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
+            <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
+            <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
+            <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+            <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+            <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+            <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+            
+            {/* Gate Entry & Stock */}
+            <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+            <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+            <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
 
-          {/* Tools & Catalog Generators */}
-          <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
+            {/* Tools & Catalog Generators */}
+            <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
 
-          <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
-          <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
-          <Route path="/invoices" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
-          <Route path="/invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
-          <Route path="/pis" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
-          <Route path="/pis/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+            <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
+            <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
+            <Route path="/invoices" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+            <Route path="/invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+            <Route path="/pis" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
+            <Route path="/pis/:id" element={<ProtectedRoute allowedRoles={['admin']}><PIs /></ProtectedRoute>} />
 
-          {/* Production & Stock Pipeline — accessible to Supervisor, Contractor, and Admin */}
-          <Route
-            path="/production-pipeline"
-            element={
-              <ProtectedRoute>
-                <ProductionPipeline />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/sanding"
-            element={
-              <ProtectedRoute>
-                <ProductionPipeline />
-              </ProtectedRoute>
-            }
-          />
+            {/* Production & Stock Pipeline — accessible to Supervisor, Contractor, and Admin */}
+            <Route
+              path="/production-pipeline"
+              element={
+                <ProtectedRoute>
+                  <ProductionPipeline />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sanding"
+              element={
+                <ProtectedRoute>
+                  <ProductionPipeline />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Admin only */}
-          <Route
-            path="/users"
-            element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <UserManagement />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+            {/* Admin only */}
+            <Route
+              path="/users"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </div>
       </main>
       {isAuthenticated && location.pathname === '/' && <Footer />}
     </div>
