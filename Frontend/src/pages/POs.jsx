@@ -8,7 +8,12 @@ import {
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import SearchableSelect from '../components/SearchableSelect';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
+import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
+import { CustomDatePicker } from '../components/CustomDatePicker';
 import GateEntry from './GateEntry';
+
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -273,21 +278,34 @@ function POForm({ poId, onBack, onSaved }) {
               </div>
               <div className="form-group">
                 <label className="form-label">Status *</label>
-                <select required className="form-input" value={header.status} onChange={e => updateHeader('status', e.target.value)}>
-                  {['Pending','Received','Cancelled'].map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={[
+                    { id: 'Pending', name: 'Pending', icon: Clock },
+                    { id: 'Received', name: 'Received', icon: CheckCircle },
+                    { id: 'Cancelled', name: 'Cancelled', icon: XCircle }
+                  ]}
+                  value={header.status}
+                  onChange={val => updateHeader('status', val)}
+                  showSearch={false}
+                  clearable={false}
+                  placeholder="Select status..."
+                  titleKey="name"
+                />
               </div>
               <div className="form-group">
-                <label className="form-label">PO Date *</label>
-                <input required type="date" className="form-input"
-                  value={header.po_date} onChange={e => updateHeader('po_date', e.target.value)} />
+                <CustomDatePicker
+                  label="PO Date"
+                  required
+                  value={header.po_date}
+                  onChange={val => updateHeader('po_date', val)}
+                />
               </div>
               <div className="form-group">
-                <label className="form-label">PO Due Date</label>
-                <input type="date" className="form-input"
-                  value={header.due_date} onChange={e => updateHeader('due_date', e.target.value)} />
+                <CustomDatePicker
+                  label="PO Due Date"
+                  value={header.due_date}
+                  onChange={val => updateHeader('due_date', val)}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">Mode of Payment</label>
@@ -319,22 +337,31 @@ function POForm({ poId, onBack, onSaved }) {
 
           {/* ── Supplier ── */}
           <div className="form-section">
-            <h3 className="form-section-title">🏭 Supplier (Bill From)</h3>
+            <h3 className="form-section-title">🏢 Supplier (Bill From)</h3>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
               <div className="form-group" style={{ flex: 1, margin: 0 }}>
                 <label className="form-label">Supplier *</label>
-                <select required className="form-input" value={header.supplier} onChange={e => updateHeader('supplier', e.target.value)}>
-                  <option value="">Select Supplier...</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={suppliers}
+                  value={header.supplier}
+                  onChange={val => updateHeader('supplier', val)}
+                  placeholder="Select Supplier..."
+                  searchPlaceholder="Search supplier..."
+                  codeKey=""
+                  titleKey="name"
+                  icon={Building2}
+                  onAddNew={() => setShowSupplierModal(true)}
+                  addNewText="Add New Supplier"
+                  footerIcon={Building2}
+                  footerText={(count) => `🏢 ${count} supplier${count !== 1 ? 's' : ''} found`}
+                />
               </div>
               <button type="button" className="btn-secondary" onClick={() => setShowSupplierModal(true)}
-                style={{ padding: '0.5rem 1rem', whiteSpace: 'nowrap', height: '42px' }}>
+                style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap', height: '44px', border: '1px dashed #d6c7b2', backgroundColor: '#faf8f5', color: '#8b5a2b', borderRadius: '10px', fontWeight: 700 }}>
                 + New Supplier
               </button>
             </div>
+
             {header.supplier && (() => {
               const sup = suppliers.find(s => s.id === header.supplier);
               if (!sup) return null;
@@ -669,28 +696,23 @@ function POs() {
                   style={{ flex: 1 }}
                 />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', maxWidth: '300px' }}>
-                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Status:</span>
-                <select className="filter-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ width: '100%' }}>
-                  <option value="">All Statuses</option>
-                  {['Pending','Received','Cancelled'].map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', minWidth: '220px' }}>
+                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>STATUS:</span>
+                <StatusSelect
+                  options={PO_STATUS_OPTIONS}
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  placeholder="All Statuses"
+                />
 
-                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right' }}>Order By:</span>
-                <select
-                  className="filter-input"
+                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_PONO}
                   value={ordering}
-                  onChange={e => setOrdering(e.target.value)}
-                  style={{ width: '100%' }}
-                >
-                  <option value="-created_at">Latest First</option>
-                  <option value="created_at">Oldest First</option>
-                  <option value="po_number">PO No (A-Z)</option>
-                  <option value="-po_number">PO No (Z-A)</option>
-                </select>
+                  onChange={setOrdering}
+                />
               </div>
+
             </div>
           </div>
 

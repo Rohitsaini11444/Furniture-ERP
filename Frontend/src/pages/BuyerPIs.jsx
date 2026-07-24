@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import SearchableSelect from '../components/SearchableSelect';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
+import { CustomDatePicker } from '../components/CustomDatePicker';
+
+
 
 
 function num2words(num) {
@@ -61,6 +66,8 @@ function BuyerPIs() {
   const [filterBuyerId, setFilterBuyerId] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [styleSearchTerm, setStyleSearchTerm] = useState('');
+
   
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
@@ -164,17 +171,22 @@ function BuyerPIs() {
     }
   }, [id]);
 
-  const handleBuyerChange = (e) => {
-    const buyerId = e.target.value;
+  const handleBuyerChange = (eOrVal) => {
+    const buyerId = (typeof eOrVal === 'object' && eOrVal?.target) ? eOrVal.target.value : eOrVal;
     const bObj = buyers.find(b => b.id === buyerId);
     setFormData(prev => ({
       ...prev,
       buyer: buyerId,
-      delivered_to_company: bObj ? bObj.name : '',
-      delivered_to_address: bObj ? (bObj.address || '') : '',
+      delivered_to_company: bObj ? bObj.name : prev.delivered_to_company,
+      delivered_to_address: bObj ? (bObj.address || '') : prev.delivered_to_address,
     }));
-    fetchBuyerMasters(buyerId);
+    if (buyerId) {
+      fetchBuyerMasters(buyerId);
+    } else {
+      setBuyerMasters([]);
+    }
   };
+
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
@@ -432,13 +444,18 @@ function BuyerPIs() {
                 <div className="pi-info-grid">
                   <div className="form-group full-width">
                     <label className="form-label">Buyer *</label>
-                    <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleBuyerChange}>
-                      <option value="">Select Buyer...</option>
-                      {buyers.map(b => (
-                        <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                      ))}
-                    </select>
+                    <SearchableSelect
+                      options={buyers}
+                      value={formData.buyer}
+                      onChange={handleBuyerChange}
+                      placeholder="Select Buyer..."
+                      searchPlaceholder="Search buyer by name or code..."
+                      codeKey="code"
+                      titleKey="name"
+                      icon={Users}
+                    />
                   </div>
+
 
                   <div className="form-group">
                     <label className="form-label">PI Ref / PO # *</label>
@@ -446,13 +463,20 @@ function BuyerPIs() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">PI Date *</label>
-                    <input required type="date" name="pi_date" className="form-input" value={formData.pi_date} onChange={handleFormChange} />
+                    <CustomDatePicker
+                      label="PI Date"
+                      required
+                      value={formData.pi_date}
+                      onChange={val => handleFormChange({ target: { name: 'pi_date', value: val } })}
+                    />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Ex-Factory Date</label>
-                    <input type="date" name="ex_factory_date" className="form-input" value={formData.ex_factory_date} onChange={handleFormChange} />
+                    <CustomDatePicker
+                      label="Ex-Factory Date"
+                      value={formData.ex_factory_date}
+                      onChange={val => handleFormChange({ target: { name: 'ex_factory_date', value: val } })}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -488,40 +512,97 @@ function BuyerPIs() {
 
                 {/* Import from Buyer Master */}
                 {formData.buyer && buyerMasters.length > 0 && (
-                  <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 600, color: '#334155' }}>
-                      <Layers size={18} /> Select Styles from Buyer Master to Populate PI
+                  <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #d6c7b2', borderRadius: '14px', padding: '1.25rem', marginBottom: '1.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
+                        <Layers size={20} color="#8b5a2b" /> Select Styles from Buyer Master to Populate PI
+                      </div>
+                      <span style={{ fontSize: '0.82rem', color: '#8b5a2b', fontWeight: 700, backgroundColor: '#f5efe6', padding: '4px 12px', borderRadius: '20px' }}>
+                        {selectedMasterIds.length} style(s) selected
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-                      <select
-                        multiple
-                        className="form-input"
-                        style={{ height: '180px', width: '100%' }}
-                        value={selectedMasterIds}
-                        onChange={e => {
-                          const options = Array.from(e.target.selectedOptions, option => option.value);
-                          setSelectedMasterIds(options);
-                        }}
-                      >
-                        {buyerMasters.map(bm => (
-                          <option key={bm.id} value={bm.id} style={{ padding: '0.25rem 0.5rem', borderBottom: '1px solid #f1f5f9' }}>
-                            Style: {bm.style_no} — {bm.product_name} ({bm.wood_type} | {bm.finish_color})
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={handleImportBuyerMasters}
-                        className="btn-primary"
-                        disabled={selectedMasterIds.length === 0}
-                        style={{ height: '40px', padding: '0 1rem', fontSize: '0.9rem', alignSelf: 'flex-start' }}
-                      >
-                        Import Selected Styles
-                      </button>
+
+                    {/* Search Box */}
+                    <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+                      <Search size={16} color="#8b5a2b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input
+                        type="text"
+                        placeholder="Search styles by number, product name or wood..."
+                        value={styleSearchTerm}
+                        onChange={e => setStyleSearchTerm(e.target.value)}
+                        style={{ width: '100%', padding: '0.55rem 0.8rem 0.55rem 2.3rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.88rem', outline: 'none' }}
+                      />
                     </div>
-                    <small style={{ color: '#64748b', marginTop: '0.75rem', display: 'block' }}>Hold Ctrl (or Cmd) to select multiple Buyer Master styles to add into this Performa Invoice.</small>
+
+                    {/* Interactive List */}
+                    <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
+                      {buyerMasters
+                        .filter(bm => {
+                          if (!styleSearchTerm) return true;
+                          const t = styleSearchTerm.toLowerCase();
+                          return (
+                            (bm.style_no && bm.style_no.toLowerCase().includes(t)) ||
+                            (bm.product_name && bm.product_name.toLowerCase().includes(t)) ||
+                            (bm.wood_type && bm.wood_type.toLowerCase().includes(t)) ||
+                            (bm.finish_color && bm.finish_color.toLowerCase().includes(t))
+                          );
+                        })
+                        .map(bm => {
+                          const isSelected = selectedMasterIds.includes(bm.id);
+                          return (
+                            <div
+                              key={bm.id}
+                              onClick={() => {
+                                setSelectedMasterIds(prev =>
+                                  isSelected ? prev.filter(i => i !== bm.id) : [...prev, bm.id]
+                                );
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '0.65rem 0.85rem',
+                                borderRadius: '10px',
+                                border: isSelected ? '1.5px solid #8b5a2b' : '1px solid #f1f5f9',
+                                backgroundColor: isSelected ? '#f4ece1' : '#faf8f5',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
+                                <Box size={18} color="#8b5a2b" style={{ flexShrink: 0 }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
+                                  <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem', flexShrink: 0 }}>
+                                    Style: {bm.style_no}
+                                  </span>
+                                  <span style={{ color: '#475569', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    — {bm.product_name}
+                                  </span>
+                                  {(bm.wood_type || bm.finish_color) && (
+                                    <span style={{ fontSize: '0.78rem', color: '#78716c', backgroundColor: '#ffffff', padding: '2px 8px', borderRadius: '6px', border: '1px solid #e7e5e4', flexShrink: 0 }}>
+                                      {bm.wood_type} {bm.finish_color ? `| ${bm.finish_color}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {isSelected && <Check size={18} color="#8b5a2b" style={{ flexShrink: 0 }} />}
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleImportBuyerMasters}
+                      className="btn-primary"
+                      disabled={selectedMasterIds.length === 0}
+                      style={{ marginTop: '0.85rem', padding: '0.55rem 1.25rem', fontSize: '0.88rem' }}
+                    >
+                      Import Selected Styles ({selectedMasterIds.length})
+                    </button>
                   </div>
                 )}
+
 
                 <div className="table-container" style={{ overflowX: 'auto', width: '100%', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                   <table className="data-table" style={{ fontSize: '0.85rem', minWidth: '1750px', width: '100%' }}>
@@ -661,35 +742,30 @@ function BuyerPIs() {
                 />
               </div>
 
-              <div className="bm-export">
-                <span className="filter-label">Filter Buyer:</span>
-                <select
-                  className="filter-input"
+              <div className="bm-export" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>BUYER:</span>
+                <SearchableSelect
+                  options={buyers}
                   value={filterBuyerId}
-                  onChange={e => setFilterBuyerId(e.target.value)}
+                  onChange={val => setFilterBuyerId(val)}
+                  placeholder="All Buyers"
+                  searchPlaceholder="Search buyer..."
+                  codeKey="code"
+                  titleKey="name"
+                  icon={Users}
                   style={{ minWidth: '180px' }}
-                >
-                  <option value="">All Buyers</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                  ))}
-                </select>
+                />
               </div>
 
-              <div className="bm-order">
-                <span className="filter-label">Order By:</span>
-                <select
-                  className="filter-input"
+              <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_PINO}
                   value={ordering}
-                  onChange={e => setOrdering(e.target.value)}
-                  style={{ minWidth: '130px' }}
-                >
-                  <option value="-created_at">Latest First</option>
-                  <option value="created_at">Oldest First</option>
-                  <option value="pi_no">PI No (A-Z)</option>
-                  <option value="-pi_no">PI No (Z-A)</option>
-                </select>
+                  onChange={setOrdering}
+                />
               </div>
+
             </div>
           </div>
 

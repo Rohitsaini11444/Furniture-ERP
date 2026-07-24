@@ -4,6 +4,8 @@ import api from '../api/axios';
 import { Search, Download, Plus, ArrowLeft, ChevronRight, Package, Warehouse, Tag, CheckCircle2, AlertCircle } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import { OrderBySelect, ORDER_OPTIONS_DATE_QTY } from '../components/OrderBySelect';
+import { StatusSelect, STOCK_STATUS_FILTER_OPTIONS, STOCK_STATUS_FORM_OPTIONS } from '../components/StatusSelect';
 
 function Stock() {
   const navigate = useNavigate();
@@ -225,7 +227,7 @@ function Stock() {
             <ArrowLeft size={18} /> Back to Stock Registry
           </button>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div className="form-card-container">
             <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
                 {editingId ? '✏️ Edit Stock Item' : '📦 Add New Stock Item'}
@@ -267,13 +269,13 @@ function Stock() {
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label">Status *</label>
-                      <select name="status" className="form-input" value={formData.status} onChange={handleChange}>
-                        <option value="In Stock">In Stock</option>
-                        <option value="Low Stock">Low Stock</option>
-                        <option value="Reserved">Reserved</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                      </select>
+                      <StatusSelect
+                        label="Status"
+                        required
+                        options={STOCK_STATUS_FORM_OPTIONS}
+                        value={formData.status}
+                        onChange={val => handleChange({ target: { name: 'status', value: val } })}
+                      />
                     </div>
 
                     <div className="form-group">
@@ -369,20 +371,14 @@ function Stock() {
                 />
               </div>
 
-              <div className="bm-export">
-                <span className="filter-label">Filter Status:</span>
-                <select
-                  className="filter-input"
+              <div className="bm-export" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>STATUS:</span>
+                <StatusSelect
+                  options={STOCK_STATUS_FILTER_OPTIONS}
                   value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  style={{ minWidth: '140px' }}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="In Stock">In Stock</option>
-                  <option value="Low Stock">Low Stock</option>
-                  <option value="Reserved">Reserved</option>
-                  <option value="Out of Stock">Out of Stock</option>
-                </select>
+                  onChange={setStatusFilter}
+                  placeholder="All Statuses"
+                />
               </div>
 
               <div className="bm-export">
@@ -401,19 +397,12 @@ function Stock() {
               </div>
 
               <div className="bm-order">
-                <span className="filter-label">Order By:</span>
-                <select
-                  className="filter-input"
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_QTY}
                   value={ordering}
-                  onChange={e => setOrdering(e.target.value)}
-                  style={{ minWidth: '130px', marginLeft: '0.5rem' }}
-                >
-                  <option value="-created_at">Latest First</option>
-                  <option value="created_at">Oldest First</option>
-                  <option value="-quantity">Quantity (High to Low)</option>
-                  <option value="quantity">Quantity (Low to High)</option>
-                  <option value="style_no">Style No (A-Z)</option>
-                </select>
+                  onChange={setOrdering}
+                />
               </div>
             </div>
           </div>

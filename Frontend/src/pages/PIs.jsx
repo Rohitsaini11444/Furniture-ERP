@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, ArrowLeft, Trash2, Download, Layers } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
+import { CustomDatePicker } from '../components/CustomDatePicker';
 
 
 function num2words(num) {
@@ -397,7 +399,7 @@ function PIs() {
             <ArrowLeft size={18} /> Back to Invoices
           </button>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div className="form-card-container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>
                 {editingId ? `✏️ Edit Invoice (${formData.pi_no})` : '+ Create New Invoice'}
@@ -440,15 +442,24 @@ function PIs() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Invoice Date *</label>
-                    <input required type="date" name="pi_date" className="form-input" value={formData.pi_date} onChange={handleFormChange} />
+                    <CustomDatePicker
+                      label="Invoice Date"
+                      required
+                      value={formData.pi_date}
+                      onChange={val => handleFormChange({ target: { name: 'pi_date', value: val } })}
+                    />
                   </div>
 
                   <div className="form-group">
                     <label className="form-label">Buyer's Order No. & Date</label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <input type="text" name="buyer_order_no" className="form-input" value={formData.buyer_order_no} onChange={handleFormChange} placeholder="Order No (e.g. 50 076047)" />
-                      <input type="date" name="buyer_order_date" className="form-input" value={formData.buyer_order_date} onChange={handleFormChange} />
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input type="text" name="buyer_order_no" className="form-input" value={formData.buyer_order_no} onChange={handleFormChange} placeholder="Order No (e.g. 50 076047)" style={{ flex: 1 }} />
+                      <div style={{ flex: 1 }}>
+                        <CustomDatePicker
+                          value={formData.buyer_order_date}
+                          onChange={val => handleFormChange({ target: { name: 'buyer_order_date', value: val } })}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -720,18 +731,12 @@ function PIs() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto' }}>
-                <span className="filter-label">Order By:</span>
-                <select
-                  className="filter-input"
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_PINO}
                   value={ordering}
-                  onChange={e => setOrdering(e.target.value)}
-                  style={{ minWidth: '130px' }}
-                >
-                  <option value="-created_at">Latest First</option>
-                  <option value="created_at">Oldest First</option>
-                  <option value="pi_no">Invoice No (A-Z)</option>
-                  <option value="-pi_no">Invoice No (Z-A)</option>
-                </select>
+                  onChange={setOrdering}
+                />
               </div>
             </div>
           </div>

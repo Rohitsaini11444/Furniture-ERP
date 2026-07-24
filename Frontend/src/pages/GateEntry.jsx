@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -689,19 +690,13 @@ export default function GateEntry() {
               style={{ flex: 1 }}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            <span className="filter-label">Order By:</span>
-            <select
-              className="filter-input"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto' }}>
+            <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+            <OrderBySelect
+              options={ORDER_OPTIONS_DATE_PONO}
               value={ordering}
-              onChange={e => setOrdering(e.target.value)}
-              style={{ minWidth: '130px' }}
-            >
-              <option value="-created_at">Latest First</option>
-              <option value="created_at">Oldest First</option>
-              <option value="po_number">PO No (A-Z)</option>
-              <option value="-po_number">PO No (Z-A)</option>
-            </select>
+              onChange={setOrdering}
+            />
           </div>
         </div>
       </div>

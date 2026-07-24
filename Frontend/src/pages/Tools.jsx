@@ -14,9 +14,17 @@ function Tools() {
   // Presentation State
   const [buyers, setBuyers] = useState([]);
   const [selectedBuyerId, setSelectedBuyerId] = useState('');
+  const [itemSource, setItemSource] = useState('samples'); // 'samples' | 'buyer_masters'
   const [samples, setSamples] = useState([]);
+  const [buyerMasters, setBuyerMasters] = useState([]);
   const [selectedSampleIds, setSelectedSampleIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMaterial, setSelectedMaterial] = useState('');
+  const [selectedFinish, setSelectedFinish] = useState('');
+  const [itemsPerSlide, setItemsPerSlide] = useState(2);
+  const [includePrice, setIncludePrice] = useState(true);
+  const [includeSpecs, setIncludeSpecs] = useState(true);
+
   const [loading, setLoading] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState(null); // 'pptx' | 'pdf' | null
 
@@ -34,26 +42,76 @@ function Tools() {
       .catch(err => console.error(err));
   }, []);
 
-  // Fetch Samples
-  const fetchSamples = useCallback(() => {
+  // Fetch Samples / Buyer Masters dynamically based on itemSource & selectedBuyerId
+  const fetchItems = useCallback(() => {
     setLoading(true);
-    api.get('/samples/', { params: { page: currentPage } })
-      .then(res => {
-        const data = res.data.results || res.data;
-        setSamples(data);
-        if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
-        } else {
-          setTotalPages(1);
-        }
-      })
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
-  }, [currentPage]);
+    if (itemSource === 'buyer_masters') {
+      const params = { page: currentPage };
+      if (selectedBuyerId) params.buyer = selectedBuyerId;
+      api.get('/buyer-masters/', { params })
+        .then(res => {
+          const data = res.data.results || res.data;
+          setBuyerMasters(data);
+          if (res.data.count !== undefined) {
+            setTotalPages(Math.ceil(res.data.count / 50));
+          } else {
+            setTotalPages(1);
+          }
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    } else {
+      const params = { page: currentPage };
+      if (selectedBuyerId) params.buyer = selectedBuyerId;
+      api.get('/samples/', { params })
+        .then(res => {
+          const data = res.data.results || res.data;
+          setSamples(data);
+          if (res.data.count !== undefined) {
+            setTotalPages(Math.ceil(res.data.count / 50));
+          } else {
+            setTotalPages(1);
+          }
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    }
+  }, [currentPage, itemSource, selectedBuyerId]);
 
   useEffect(() => {
-    fetchSamples();
-  }, [fetchSamples]);
+    fetchItems();
+  }, [fetchItems]);
+
+  const activeItemList = itemSource === 'buyer_masters' ? buyerMasters : samples;
+
+  // Extract Dynamic Material & Finish Options
+  const dynamicMaterials = Array.from(
+    new Set(activeItemList.map(s => s.material || s.sample?.material).filter(Boolean))
+  );
+
+  const dynamicFinishes = Array.from(
+    new Set(activeItemList.map(s => s.finish_color || s.sample?.finish_color).filter(Boolean))
+  );
+
+  // Filter items dynamically
+  const filteredSamples = activeItemList.filter(s => {
+    const mat = s.material || s.sample?.material || '';
+    const fin = s.finish_color || s.sample?.finish_color || '';
+    const name = s.product_name || s.sample?.product_name || '';
+    const styleId = s.sample_id || s.style_no || '';
+
+    if (selectedMaterial && mat !== selectedMaterial) return false;
+    if (selectedFinish && fin !== selectedFinish) return false;
+
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      styleId.toLowerCase().includes(term) ||
+      name.toLowerCase().includes(term) ||
+      mat.toLowerCase().includes(term) ||
+      fin.toLowerCase().includes(term)
+    );
+  });
 
   // Toggle sample selection
   const toggleSelectSample = (id) => {
@@ -84,13 +142,23 @@ function Tools() {
       const selectedBuyer = buyers.find(b => b.id === selectedBuyerId);
       const buyerCode = selectedBuyer ? selectedBuyer.code : 'Catalog';
 
+      const payload = {
+        buyer_id: selectedBuyerId || null,
+        format: format,
+        items_per_slide: itemsPerSlide,
+        include_price: includePrice,
+        include_specs: includeSpecs
+      };
+
+      if (itemSource === 'buyer_masters') {
+        payload.buyer_master_ids = selectedSampleIds;
+      } else {
+        payload.sample_ids = selectedSampleIds;
+      }
+
       const res = await api.post(
         '/generate-presentation/',
-        {
-          buyer_id: selectedBuyerId || null,
-          sample_ids: selectedSampleIds,
-          format: format
-        },
+        payload,
         { responseType: 'blob' }
       );
 
@@ -114,16 +182,6 @@ function Tools() {
     }
   };
 
-  const filteredSamples = samples.filter(s => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      s.sample_id?.toLowerCase().includes(term) ||
-      s.product_name?.toLowerCase().includes(term) ||
-      s.material?.toLowerCase().includes(term) ||
-      s.finish_color?.toLowerCase().includes(term)
-    );
-  });
 
   const toolCards = [
     {
@@ -283,27 +341,33 @@ function Tools() {
             </div>
           </div>
 
-          {/* ── Step 1: Select Buyer ── */}
+          {/* ── Dynamic Presentation Controls & Options ── */}
           <div style={{
             backgroundColor: '#f8fafc',
             borderRadius: '12px',
             padding: '1.25rem',
             marginBottom: '1.5rem',
-            border: '1px solid #e2e8f0'
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem'
           }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Step 1: Select Buyer (For Cover Slide & Branding)
-            </label>
-
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '260px' }}>
+            {/* Step 1: Select Buyer & Source */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Step 1: Select Buyer (Branding & Catalog)
+                </label>
                 <select
                   className="filter-input"
                   value={selectedBuyerId}
-                  onChange={e => setSelectedBuyerId(e.target.value)}
+                  onChange={e => {
+                    setSelectedBuyerId(e.target.value);
+                    setSelectedSampleIds([]);
+                  }}
                   style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: '8px', fontSize: '0.95rem' }}
                 >
-                  <option value="">-- General Catalog / No Specific Buyer --</option>
+                  <option value="">-- General Catalog / All Buyers --</option>
                   {buyers.map(b => (
                     <option key={b.id} value={b.id}>
                       {b.name} ({b.code})
@@ -312,36 +376,147 @@ function Tools() {
                 </select>
               </div>
 
-              {selectedBuyerId && (
-                <div style={{ fontSize: '0.88rem', color: '#0f766e', backgroundColor: '#ccfbf1', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: 600 }}>
-                  ✓ Buyer Code: {buyers.find(b => b.id === selectedBuyerId)?.code}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Catalog Source
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#e2e8f0', padding: '3px', borderRadius: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setItemSource('samples'); setSelectedSampleIds([]); }}
+                    style={{
+                      flex: 1,
+                      padding: '0.45rem 0.75rem',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      backgroundColor: itemSource === 'samples' ? '#fff' : 'transparent',
+                      color: itemSource === 'samples' ? '#8b5cf6' : '#64748b',
+                      boxShadow: itemSource === 'samples' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    📦 Samples Catalog
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setItemSource('buyer_masters'); setSelectedSampleIds([]); }}
+                    style={{
+                      flex: 1,
+                      padding: '0.45rem 0.75rem',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      backgroundColor: itemSource === 'buyer_masters' ? '#fff' : 'transparent',
+                      color: itemSource === 'buyer_masters' ? '#8b5cf6' : '#64748b',
+                      boxShadow: itemSource === 'buyer_masters' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    🏷️ Buyer Master Styles
+                  </button>
                 </div>
-              )}
+              </div>
+            </div>
+
+            {/* Dynamic Layout & Content Customization Options */}
+            <div style={{
+              display: 'flex',
+              gap: '1.25rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              paddingTop: '0.75rem',
+              borderTop: '1px stroke #cbd5e1',
+              fontSize: '0.88rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontWeight: 700, color: '#475569' }}>Items Per Slide:</span>
+                <select
+                  value={itemsPerSlide}
+                  onChange={e => setItemsPerSlide(Number(e.target.value))}
+                  style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                >
+                  <option value={2}>2 Items / Slide (Side by Side)</option>
+                  <option value={1}>1 Item / Slide (Full Detail)</option>
+                </select>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontWeight: 600, color: '#334155' }}>
+                <input
+                  type="checkbox"
+                  checked={includePrice}
+                  onChange={e => setIncludePrice(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                />
+                Include Price (USD)
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontWeight: 600, color: '#334155' }}>
+                <input
+                  type="checkbox"
+                  checked={includeSpecs}
+                  onChange={e => setIncludeSpecs(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                />
+                Include Specs (Material, Finish, Dimensions)
+              </label>
             </div>
           </div>
 
-          {/* ── Step 2: Select Furniture Samples / Items ── */}
+          {/* ── Step 2: Select Items with Dynamic Filters ── */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
                 <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Step 2: Select Furniture Samples (1 Item per Slide)
+                  Step 2: Select Items for Slide Deck ({itemSource === 'buyer_masters' ? 'Buyer Master' : 'Samples Catalog'})
                 </label>
                 <span style={{ marginLeft: '0.75rem', fontSize: '0.85rem', color: '#8b5cf6', fontWeight: 700 }}>
-                  ({selectedSampleIds.length} sample{selectedSampleIds.length !== 1 ? 's' : ''} selected)
+                  ({selectedSampleIds.length} item{selectedSampleIds.length !== 1 ? 's' : ''} selected)
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Dynamic Material Filter */}
+                {dynamicMaterials.length > 0 && (
+                  <select
+                    value={selectedMaterial}
+                    onChange={e => setSelectedMaterial(e.target.value)}
+                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600 }}
+                  >
+                    <option value="">All Materials ({dynamicMaterials.length})</option>
+                    {dynamicMaterials.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Dynamic Finish Filter */}
+                {dynamicFinishes.length > 0 && (
+                  <select
+                    value={selectedFinish}
+                    onChange={e => setSelectedFinish(e.target.value)}
+                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600 }}
+                  >
+                    <option value="">All Finishes ({dynamicFinishes.length})</option>
+                    {dynamicFinishes.map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                )}
+
                 {/* Search Bar */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                   <Search size={15} color="#64748b" />
                   <input
                     type="text"
-                    placeholder="Search samples..."
+                    placeholder="Search items..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', width: '180px' }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', width: '150px' }}
                   />
                 </div>
 
@@ -356,6 +531,7 @@ function Tools() {
                 </button>
               </div>
             </div>
+
 
             {/* Desktop Table View */}
             <div className="tools-desktop-table">

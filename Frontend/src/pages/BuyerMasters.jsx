@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight, Download, Upload, ImageIcon } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, Download, Upload, ImageIcon, Package, Clock, History, ArrowDownAZ, ArrowUpZA } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import SearchableSelect from '../components/SearchableSelect';
+import CustomFileUpload from '../components/CustomFileUpload';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
+
+
 
 
 function SizeGroup({ label, prefix, values, onChange }) {
@@ -204,12 +209,13 @@ function BuyerMasters() {
     });
   };
 
-  const handleSampleChange = (e) => {
-    const sampleId = e.target.value;
+  const handleSampleChange = (eOrVal) => {
+    const sampleId = (typeof eOrVal === 'object' && eOrVal?.target) ? eOrVal.target.value : eOrVal;
     if (!sampleId) {
       setFormData(prev => ({ ...prev, sample: '' }));
       return;
     }
+
 
     const selectedSample = samples.find(s => s.id === sampleId);
     if (selectedSample) {
@@ -484,7 +490,7 @@ function BuyerMasters() {
             <ArrowLeft size={18} /> Back to Buyer Master
           </button>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div className="form-card-container">
             <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Buyer Master Style' : '+ Create Buyer Master Style'}</h2>
             </div>
@@ -505,13 +511,17 @@ function BuyerMasters() {
 
                     <div className="form-group">
                       <label className="form-label">Sample ID (Autofill Source)</label>
-                      <select name="sample" className="form-input" value={formData.sample} onChange={handleSampleChange}>
-                        <option value="">Choose Sample to Autofill...</option>
-                        {samples.map(s => (
-                          <option key={s.id} value={s.id}>{s.sample_id} — {s.product_name}</option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        options={samples}
+                        value={formData.sample}
+                        onChange={handleSampleChange}
+                        placeholder="Choose Sample to Autofill..."
+                        searchPlaceholder="Search sample ID or name..."
+                        codeKey="sample_id"
+                        titleKey="product_name"
+                      />
                     </div>
+
                   </div>
                 </div>
 
@@ -700,171 +710,61 @@ function BuyerMasters() {
                         <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100 x 50 x 50 cm" />
                       </div>
 
-                      {/* ── Packaging Image Preview, Red Cross & Download ── */}
+                      {/* ── Packaging Image ── */}
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label className="form-label" style={{ fontWeight: 600 }}>Packaging Image</label>
-                        {(existingPackagingUrl || packagingFile) ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginTop: '0.4rem' }}>
-                            <div style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
-                              <img
-                                src={packagingFile ? URL.createObjectURL(packagingFile) : existingPackagingUrl}
-                                alt="Packaging Preview"
-                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={handleRemovePackagingImage}
-                                style={{
-                                  position: 'absolute',
-                                  top: '-8px',
-                                  right: '-8px',
-                                  width: '22px',
-                                  height: '22px',
-                                  borderRadius: '50%',
-                                  background: '#ef4444',
-                                  color: '#ffffff',
-                                  border: '2px solid #ffffff',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer',
-                                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                  zIndex: 10
-                                }}
-                                title="Remove Packaging Image"
-                              >
-                                <X size={12} strokeWidth={3} />
-                              </button>
-                            </div>
-                            {editingId && existingPackagingUrl && (
-                              <button
-                                type="button"
-                                onClick={handleDownloadPackagingImage}
-                                className="btn-secondary"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem', height: 'fit-content' }}
-                              >
-                                <Download size={15} /> Download Packaging Image
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="form-input"
-                            onChange={e => {
-                              if (e.target.files && e.target.files[0]) {
-                                setPackagingFile(e.target.files[0]);
-                                setClearPackagingImage(false);
-                              }
-                            }}
-                          />
+                        <CustomFileUpload
+                          label="Packaging Image"
+                          icon={Package}
+                          singleFile={packagingFile || existingPackagingUrl}
+                          onChange={file => {
+                            setPackagingFile(file);
+                            setClearPackagingImage(false);
+                          }}
+                          onRemoveNew={handleRemovePackagingImage}
+                        />
+                        {editingId && existingPackagingUrl && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadPackagingImage}
+                            className="btn-secondary"
+                            style={{ marginTop: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                          >
+                            <Download size={15} /> Download Packaging Image
+                          </button>
                         )}
                       </div>
 
-                      {/* ── Finishing Images Gallery Preview, Red Cross & Single ZIP Download ── */}
+                      {/* ── Finishing Images ── */}
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <label className="form-label" style={{ fontWeight: 600, margin: 0 }}>Finishing Images</label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                           {editingId && existingFinishingImages.length > 0 && (
                             <button
                               type="button"
                               onClick={handleDownloadFinishingImages}
                               className="btn-secondary"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.85rem', marginLeft: 'auto' }}
                             >
                               <Download size={15} /> Download Finishing Images (ZIP)
                             </button>
                           )}
                         </div>
 
-                        {(existingFinishingImages.length > 0 || newFinishingFiles.length > 0) && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem', padding: '0.65rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                            {/* Existing Backend Finishing Images */}
-                            {existingFinishingImages.map(img => (
-                              <div key={img.id} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
-                                <img
-                                  src={img.image_url || img.image}
-                                  alt="Finishing"
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveExistingFinishingImage(img.id)}
-                                  style={{
-                                    position: 'absolute',
-                                    top: '-8px',
-                                    right: '-8px',
-                                    width: '22px',
-                                    height: '22px',
-                                    borderRadius: '50%',
-                                    background: '#ef4444',
-                                    color: '#ffffff',
-                                    border: '2px solid #ffffff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                    zIndex: 10
-                                  }}
-                                  title="Remove Image"
-                                >
-                                  <X size={12} strokeWidth={3} />
-                                </button>
-                              </div>
-                            ))}
-
-                            {/* New Finishing Image Files */}
-                            {newFinishingFiles.map((item, idx) => (
-                              <div key={idx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '2px', background: '#fff' }}>
-                                <img
-                                  src={item.preview}
-                                  alt="New Finishing"
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveNewFinishingFile(idx)}
-                                  style={{
-                                    position: 'absolute',
-                                    top: '-8px',
-                                    right: '-8px',
-                                    width: '22px',
-                                    height: '22px',
-                                    borderRadius: '50%',
-                                    background: '#ef4444',
-                                    color: '#ffffff',
-                                    border: '2px solid #ffffff',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                                    zIndex: 10
-                                  }}
-                                  title="Remove Image"
-                                >
-                                  <X size={12} strokeWidth={3} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <input
-                          type="file"
-                          accept="image/*"
+                        <CustomFileUpload
+                          label="Finishing Images"
                           multiple
-                          className="form-input"
-                          onChange={e => {
-                            const files = Array.from(e.target.files || []);
+                          icon={ImageIcon}
+                          existingFiles={existingFinishingImages}
+                          newFiles={newFinishingFiles}
+                          onChange={files => {
                             const mapped = files.map(file => ({ file, preview: URL.createObjectURL(file) }));
                             setNewFinishingFiles(prev => [...prev, ...mapped]);
-                            e.target.value = '';
                           }}
+                          onRemoveNew={idx => handleRemoveNewFinishingFile(idx)}
+                          onRemoveExisting={id => handleRemoveExistingFinishingImage(id)}
                         />
                       </div>
+
+
                     </div>
                   )}
                 </div>
@@ -939,20 +839,15 @@ function BuyerMasters() {
                 </div>
               </div>
 
-              <div className="bm-order">
-                <span className="filter-label">Order By:</span>
-                <select
-                  className="filter-input"
+              <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_PRODUCT}
                   value={ordering}
-                  onChange={e => setOrdering(e.target.value)}
-                  style={{ minWidth: '130px', marginLeft: '0.5rem' }}
-                >
-                  <option value="-created_at">Latest First</option>
-                  <option value="created_at">Oldest First</option>
-                  <option value="product_name">Name (A-Z)</option>
-                  <option value="-product_name">Name (Z-A)</option>
-                </select>
+                  onChange={setOrdering}
+                />
               </div>
+
             </div>
           </div>
 

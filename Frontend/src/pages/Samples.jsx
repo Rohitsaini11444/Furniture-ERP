@@ -4,6 +4,7 @@ import api from '../api/axios';
 import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
 
 
 
@@ -416,7 +417,7 @@ function Samples() {
             <ArrowLeft size={18} /> Back to Samples
           </button>
 
-          <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div className="form-card-container">
             <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Sample' : '+ Create New Sample'}</h2>
             </div>
@@ -644,17 +645,11 @@ function Samples() {
                 </button>
               )}
               
-              <select
-                className="filter-input"
+              <OrderBySelect
+                options={ORDER_OPTIONS_DATE_PRODUCT}
                 value={ordering}
-                onChange={e => setOrdering(e.target.value)}
-                style={{ minWidth: '130px', marginLeft: 'auto' }}
-              >
-                <option value="-created_at">Latest First</option>
-                <option value="created_at">Oldest First</option>
-                <option value="product_name">Name (A-Z)</option>
-                <option value="-product_name">Name (Z-A)</option>
-              </select>
+                onChange={setOrdering}
+              />
             </div>
           </div>
 

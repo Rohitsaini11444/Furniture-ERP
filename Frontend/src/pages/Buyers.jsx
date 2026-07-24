@@ -4,6 +4,8 @@ import api from '../api/axios';
 import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import { OrderBySelect, ORDER_OPTIONS_DATE_STYLE, ORDER_OPTIONS_DATE_PINO, ORDER_OPTIONS_DATE_PONO, ORDER_OPTIONS_DATE_NAME } from '../components/OrderBySelect';
+import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
 
 
 function Buyers() {
@@ -522,20 +524,13 @@ function Buyers() {
                         />
                       </div>
                       {/* Order By Filter */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
-                        <select
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#8b5a2b', fontWeight: 700, textTransform: 'uppercase' }}>ORDER BY:</span>
+                        <OrderBySelect
+                          options={ORDER_OPTIONS_DATE_STYLE}
                           value={bmOrder}
-                          onChange={e => setBmOrder(e.target.value)}
-                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
-                        >
-                          <option value="-created_at">Latest First</option>
-                          <option value="created_at">Oldest First</option>
-                          <option value="style_no">Style No (A-Z)</option>
-                          <option value="-style_no">Style No (Z-A)</option>
-                          <option value="-price_usd">Price: High to Low</option>
-                          <option value="price_usd">Price: Low to High</option>
-                        </select>
+                          onChange={setBmOrder}
+                        />
                       </div>
                       <button onClick={() => navigate('/buyer-masters')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                         View All Buyer Masters →
@@ -617,18 +612,13 @@ function Buyers() {
                         />
                       </div>
                       {/* Order By Filter */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
-                        <select
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#8b5a2b', fontWeight: 700, textTransform: 'uppercase' }}>ORDER BY:</span>
+                        <OrderBySelect
+                          options={ORDER_OPTIONS_DATE_PINO}
                           value={piOrder}
-                          onChange={e => setPiOrder(e.target.value)}
-                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
-                        >
-                          <option value="-created_at">Latest First</option>
-                          <option value="created_at">Oldest First</option>
-                          <option value="pi_no">PI Ref (A-Z)</option>
-                          <option value="-pi_no">PI Ref (Z-A)</option>
-                        </select>
+                          onChange={setPiOrder}
+                        />
                       </div>
                       <button onClick={() => navigate('/performa-invoices')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                         View All PIs →
@@ -708,32 +698,23 @@ function Buyers() {
                         />
                       </div>
                       {/* Status Filter */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Status:</span>
-                        <select
-                          value={poStatus}
-                          onChange={e => { setPoStatus(e.target.value); setPoPage(1); }}
-                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
-                        >
-                          <option value="all">All Statuses</option>
-                          <option value="Pending">Pending</option>
-                          <option value="Received">Received</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#8b5a2b', fontWeight: 700, textTransform: 'uppercase' }}>STATUS:</span>
+                        <StatusSelect
+                          options={PO_STATUS_OPTIONS}
+                          value={poStatus === 'all' ? '' : poStatus}
+                          onChange={val => { setPoStatus(val === '' ? 'all' : val); setPoPage(1); }}
+                          placeholder="All Statuses"
+                        />
                       </div>
                       {/* Order By Filter */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Order By:</span>
-                        <select
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#8b5a2b', fontWeight: 700, textTransform: 'uppercase' }}>ORDER BY:</span>
+                        <OrderBySelect
+                          options={ORDER_OPTIONS_DATE_PONO}
                           value={poOrder}
-                          onChange={e => setPoOrder(e.target.value)}
-                          style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none', backgroundColor: '#fff' }}
-                        >
-                          <option value="-created_at">Latest First</option>
-                          <option value="created_at">Oldest First</option>
-                          <option value="po_number">PO No (A-Z)</option>
-                          <option value="-po_number">PO No (Z-A)</option>
-                        </select>
+                          onChange={setPoOrder}
+                        />
                       </div>
                       <button onClick={() => navigate('/pos')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                         View All POs →
@@ -823,18 +804,12 @@ function Buyers() {
                 onChange={e => setSearchTerm(e.target.value)}
                 style={{ flexGrow: 1 }}
               />
-              <span className="filter-label" style={{ marginLeft: 'auto' }}>Order By:</span>
-              <select
-                className="filter-input"
+              <span className="filter-label" style={{ marginLeft: 'auto' }}>ORDER BY:</span>
+              <OrderBySelect
+                options={ORDER_OPTIONS_DATE_NAME}
                 value={ordering}
-                onChange={e => setOrdering(e.target.value)}
-                style={{ minWidth: '130px' }}
-              >
-                <option value="-created_at">Latest First</option>
-                <option value="created_at">Oldest First</option>
-                <option value="name">Name (A-Z)</option>
-                <option value="-name">Name (Z-A)</option>
-              </select>
+                onChange={setOrdering}
+              />
             </div>
           </div>
 
