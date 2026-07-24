@@ -20,7 +20,7 @@ import BuyerPIs       from './pages/BuyerPIs';
 import Stock          from './pages/Stock';
 import Tools          from './pages/Tools';
 
-import pinkcityLogo from './assets/Pinkcity_Logo.png';
+import pinkcityLogo from "./assets/pinkcity_logo.png";
 
 const ROLE_COLORS = {
   admin:      '#8b5a2b',
