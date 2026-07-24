@@ -5,6 +5,7 @@ import {
   Users, UserPlus, Edit2, Trash2, X, ChevronDown,
   Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor,
 } from 'lucide-react';
+import { TableSkeleton } from '../components/TableSkeleton';
 
 const ROLE_CONFIG = {
   admin:      { label: 'Admin',      color: '#8b5a2b', badge: 'admin-badge' },
@@ -281,28 +282,27 @@ function UserManagement() {
       </div>
 
       {/* Users Table */}
-      {loading ? (
-        <div className="um-loading">Loading users...</div>
-      ) : (
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Username</th>
-                <th>Role</th>
-                <th>Batch / Supervisor</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 && (
-                <tr><td colSpan={7} className="um-empty">No users found.</td></tr>
-              )}
-              {users.map((u) => (
-                <tr key={u.id}>
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Batch / Supervisor</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <TableSkeleton rows={6} cols={7} hasImage={false} />
+            ) : users.length === 0 ? (
+              <tr><td colSpan={7} className="um-empty">No users found.</td></tr>
+            ) : (
+              users.map((u) => (
+                <tr key={u.id} className="smooth-fade-in">
                   <td className="um-name-cell">
                     <div className="um-avatar" style={{ backgroundColor: ROLE_CONFIG[u.role]?.color + '20' }}>
                       {(u.first_name?.[0] || u.username[0]).toUpperCase()}
@@ -346,11 +346,11 @@ function UserManagement() {
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* Create / Edit Modal */}
       {showModal && (

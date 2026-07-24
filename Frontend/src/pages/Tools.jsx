@@ -5,6 +5,7 @@ import {
   Search, CheckSquare, Square, Download, Sparkles, Building2,
   Box, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import Pagination from '../components/Pagination';
 
 function Tools() {
@@ -373,7 +374,7 @@ function Tools() {
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>Loading samples…</td></tr>
+                      <TableSkeleton rows={6} cols={7} hasImage={false} />
                     ) : filteredSamples.length === 0 ? (
                       <tr>
                         <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
@@ -391,6 +392,7 @@ function Tools() {
                             backgroundColor: isSelected ? '#f3e8ff' : 'transparent',
                             transition: 'background 0.15s'
                           }}
+                          className="smooth-fade-in"
                         >
                           <td onClick={e => { e.stopPropagation(); toggleSelectSample(sample.id); }}>
                             {isSelected
@@ -418,7 +420,7 @@ function Tools() {
             {/* Mobile Cards View */}
             <div className="tools-mobile-cards">
               {loading ? (
-                <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>Loading samples…</div>
+                <CardSkeleton count={4} />
               ) : filteredSamples.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>No samples found.</div>
               ) : filteredSamples.map(sample => {

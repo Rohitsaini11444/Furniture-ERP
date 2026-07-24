@@ -43,7 +43,7 @@ function Login() {
           <div className="login-logo">
             <span className="login-logo-icon">🪵</span>
           </div>
-          <h1 className="login-brand-title">Furniture ERP</h1>
+          <h1 className="login-brand-title">Pinkcity Enterprises</h1>
           <p className="login-brand-subtitle">
             Manufacturing Intelligence Platform
           </p>

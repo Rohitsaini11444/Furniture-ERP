@@ -670,8 +670,8 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
         # ── Business data ──────────────────────────────────────────────────────
         CNAME  = 'PINKCITY ENTERPRISES'
-        CADDR1 = 'G-78, EPIP, Indl. Area Sitapura,'
-        CADDR2 = 'JAIPUR'
+        CADDR1 = 'G-78, EPIP, Sitapura Industrial Area, Tonk Road,'
+        CADDR2 = 'Jaipur-302022 Rajasthan, India'
         CIEC   = 'IEC CODE :  1397002620'
         CGSTIN = 'GSTIN/UIN: 08ABXPS4077R1Z8'
         CSTATE = 'State Name : Rajasthan, Code : 08'
@@ -1324,10 +1324,10 @@ class PerformaInvoiceViewSet(viewsets.ModelViewSet):
             ws.row_dimensions[r].height = 18
 
         style_range(1, 1, 1, 4, "Exporter:", font=font_bold)
-        style_range(2, 1, 2, 4, "Pinkcity Enterprises Pvt. Ltd.", font=font_title)
-        style_range(3, 1, 3, 4, "G 21, EPIP, Sitapura Industrial Area, Jaipur")
-        style_range(4, 1, 4, 4, "TEL: -91-141-2770033, Tel:-91-141-2771144")
-        style_range(5, 1, 5, 4, "Fax:-91-141-2771754")
+        style_range(2, 1, 2, 4, "Pinkcity Enterprises", font=font_title)
+        style_range(3, 1, 3, 4, "G-78, EPIP, Sitapura Industrial Area, Tonk Road, Jaipur-302022 Rajasthan, India.")
+        style_range(4, 1, 4, 4, "TEL: +91-141-2771144 / 2770033 | GSTIN: 08ABXPS4077R1Z8")
+        style_range(5, 1, 5, 4, "IEC CODE: 1397002620 | State: Rajasthan, Code: 08")
         style_range(6, 1, 6, 4, "")
         apply_outer_border(1, 1, 6, 4)
 
@@ -1660,9 +1660,9 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
         # Block 1: Pinkcity Enterprises Header (A1:E1)
         company_text = (
             "Pinkcity Enterprises\n"
-            "G 78 EPIP, Sitapura Industrial Area,\n"
-            "Jaipur 302022 -\n"
-            "Phone: +91 141 277 1144"
+            "G-78, EPIP, Sitapura Industrial Area, Tonk Road,\n"
+            "Jaipur-302022 Rajasthan, India\n"
+            "Tele #: +91-141-2771144 / 2770033 | GSTIN: 08ABXPS4077R1Z8"
         )
         style_box(1, 1, 1, 5, company_text, font=font_bold_md, alignment=align_center)
 

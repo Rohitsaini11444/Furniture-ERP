@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 
 
 
@@ -135,6 +136,7 @@ function Samples() {
 
   const [samples, setSamples] = useState([]);
   const [buyers, setBuyers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
 
@@ -172,6 +174,7 @@ function Samples() {
   };
 
   const fetchSamples = useCallback(() => {
+    setLoading(true);
     const params = { page: currentPage, ordering: ordering };
     if (filterBuyer) params.buyer = filterBuyer;
     if (filterMaterial) params.material = filterMaterial;
@@ -186,7 +189,8 @@ function Samples() {
           setTotalPages(1);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
   }, [filterBuyer, filterMaterial, currentPage, ordering]);
 
   useEffect(() => {
@@ -688,73 +692,72 @@ function Samples() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(s => (
-                  <tr
-                    key={s.id}
-                    onClick={() => openEditModal(s)}
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor: selectedRowIds.has(s.id) ? '#dcfce7' : undefined,
-                      transition: 'background-color 0.2s ease',
-                    }}
-                    title="Click to edit"
-                  >
-                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.has(s.id)}
-                        onChange={e => toggleSelectRow(s.id, e)}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                      />
-                    </td>
-                    <td>
-                      <div className="table-image-stack">
-                        {(s.images || []).slice(0, 3).map((img, idx) => (
-                          <img
-                            key={img.id}
-                            src={img.image_url}
-                            alt={s.product_name}
-                            className="table-thumb"
-                            style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
-                          />
-                        ))}
-                        {(s.images || []).length === 0 && (
-                          <div className="table-no-img"><ImageIcon size={14} /></div>
-                        )}
-                        {(s.images || []).length > 3 && (
-                          <div className="table-more-imgs">+{s.images.length - 3}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td>{s.sample_id}</td>
-                    <td>{s.style_no || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td><strong>{s.product_name}</strong></td>
-                    <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td>{s.finish_color}</td>
-                    <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                    <td>
-                      {s.size_length && s.size_breadth && s.size_height
-                        ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
-                        : <span style={{color:'var(--text-muted)'}}>—</span>
-                      }
-                    </td>
-                    <td>
-                      {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
-                        ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
-                        : <span style={{color:'var(--text-muted)'}}>—</span>
-                      }
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={13} hasImage={true} />
+                ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan="13" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="13" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
                       No samples found.
                     </td>
                   </tr>
+                ) : (
+                  filtered.map(s => (
+                    <tr 
+                      key={s.id} 
+                      onClick={() => openEditModal(s)} 
+                      style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : 'transparent' }}
+                      className="smooth-fade-in"
+                    >
+                      <td onClick={e => e.stopPropagation()} style={{ width: '40px' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(s.id)}
+                          onChange={e => toggleSelectRow(s.id, e)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                        />
+                      </td>
+                      <td>
+                        <div className="table-image-stack">
+                          {(s.images || []).slice(0, 3).map((img, idx) => (
+                            <img
+                              key={img.id}
+                              src={img.image_url}
+                              alt={s.product_name}
+                              className="table-thumb"
+                              style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
+                            />
+                          ))}
+                          {(s.images || []).length === 0 && (
+                            <div className="table-no-img"><ImageIcon size={14} /></div>
+                          )}
+                          {(s.images || []).length > 3 && (
+                            <div className="table-more-imgs">+{s.images.length - 3}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td>{s.sample_id}</td>
+                      <td>{s.style_no || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td><strong>{s.product_name}</strong></td>
+                      <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td>{s.finish_color}</td>
+                      <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td>
+                        {s.size_length && s.size_breadth && s.size_height
+                          ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
+                          : <span style={{color:'var(--text-muted)'}}>—</span>
+                        }
+                      </td>
+                      <td>
+                        {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
+                          ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
+                          : <span style={{color:'var(--text-muted)'}}>—</span>
+                        }
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -762,44 +765,47 @@ function Samples() {
 
           {/* Mobile Card List */}
           <div className="mobile-only mobile-card-list">
-            {filtered.map(s => (
-              <div 
-                className="mobile-card" 
-                key={s.id} 
-                onClick={() => openEditModal(s)}
-                style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : '#fff' }}
-              >
-                <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedRowIds.has(s.id)}
-                    onChange={e => toggleSelectRow(s.id, e)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                  />
-                </div>
-                
-                <div className="mobile-card-img">
-                  {s.images && s.images.length > 0 ? (
-                    <img src={s.images[0].image_url} alt="sample" />
-                  ) : (
-                    <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
-                  )}
-                </div>
-                
-                <div className="mobile-card-content">
-                  <div className="mobile-card-title">{s.sample_id}</div>
-                  <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
-                </div>
-
-                <div className="mobile-card-arrow">
-                  <ChevronRight size={20} color="#94a3b8" />
-                </div>
-              </div>
-            ))}
-            {filtered.length === 0 && (
+            {loading ? (
+              <CardSkeleton count={5} />
+            ) : filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                 No samples found.
               </div>
+            ) : (
+              filtered.map(s => (
+                <div 
+                  className="mobile-card smooth-fade-in" 
+                  key={s.id} 
+                  onClick={() => openEditModal(s)}
+                  style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : '#fff' }}
+                >
+                  <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.has(s.id)}
+                      onChange={e => toggleSelectRow(s.id, e)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </div>
+                  
+                  <div className="mobile-card-img">
+                    {s.images && s.images.length > 0 ? (
+                      <img src={s.images[0].image_url} alt="sample" />
+                    ) : (
+                      <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
+                    )}
+                  </div>
+                  
+                  <div className="mobile-card-content">
+                    <div className="mobile-card-title">{s.sample_id}</div>
+                    <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
+                  </div>
+
+                  <div className="mobile-card-arrow">
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              ))
             )}
           </div>
           

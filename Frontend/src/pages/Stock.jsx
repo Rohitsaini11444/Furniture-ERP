@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, Download, Plus, ArrowLeft, ChevronRight, Package, Warehouse, Tag, CheckCircle2, AlertCircle } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 
 function Stock() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ function Stock() {
   const [stockItems, setStockItems] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Filters & State
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,6 +45,7 @@ function Stock() {
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchData = () => {
+    setLoading(true);
     const params = {
       page: currentPage,
       ordering: ordering,
@@ -61,7 +64,8 @@ function Stock() {
           setTotalPages(1);
         }
       })
-      .catch(err => console.error('Failed to fetch stock items', err));
+      .catch(err => console.error('Failed to fetch stock items', err))
+      .finally(() => setLoading(false));
 
     api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
@@ -430,6 +434,7 @@ function Stock() {
                   <th>Style No</th>
                   <th>Item / Product Name</th>
                   <th>Quantity</th>
+                  <th>Unit Price</th>
                   <th>Location</th>
                   <th>Status</th>
                   <th>PO / Buyer Ref</th>
@@ -437,62 +442,68 @@ function Stock() {
                 </tr>
               </thead>
               <tbody>
-                {stockItems.map(item => (
-                  <tr
-                    key={item.id}
-                    onClick={() => openEditModal(item)}
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor: selectedRowIds.has(item.id) ? '#dcfce7' : undefined,
-                      transition: 'background-color 0.2s ease',
-                    }}
-                  >
-                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.has(item.id)}
-                        onChange={e => toggleSelectRow(item.id, e)}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                      />
-                    </td>
-                    <td>
-                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f1f5f9', color: '#334155' }}>
-                        {item.style_no}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{item.item_name}</strong>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.95rem' }}>
-                        {parseFloat(item.quantity || 0)} {item.unit}
-                      </span>
-                    </td>
-                    <td>{item.location || 'Main Store'}</td>
-                    <td>{getStatusBadge(item.status)}</td>
-                    <td>
-                      {item.po_number_str ? (
-                        <div style={{ fontSize: '0.8rem', color: '#14b8a6', fontWeight: 600 }}>PO: {item.po_number_str}</div>
-                      ) : item.buyer_detail ? (
-                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.buyer_detail.name}</div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>Edit</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.item_name); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {stockItems.length === 0 && (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={9} hasImage={false} />
+                ) : stockItems.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No items in Stock registry.
                     </td>
                   </tr>
+                ) : (
+                  stockItems.map(item => (
+                    <tr
+                      key={item.id}
+                      onClick={() => openEditModal(item)}
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor: selectedRowIds.has(item.id) ? '#dcfce7' : undefined,
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      className="smooth-fade-in"
+                      title="Click to edit stock item"
+                    >
+                      <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(item.id)}
+                          onChange={e => toggleSelectRow(item.id, e)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                        />
+                      </td>
+                      <td>
+                        <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f1f5f9', color: '#334155' }}>
+                          {item.style_no}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{item.item_name}</strong>
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.95rem' }}>
+                          {parseFloat(item.quantity || 0)} {item.unit}
+                        </span>
+                      </td>
+                      <td>{item.unit_price ? `₹${parseFloat(item.unit_price).toLocaleString()}` : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td>{item.location || 'Main Store'}</td>
+                      <td>{getStatusBadge(item.status)}</td>
+                      <td>
+                        {item.po_number_str ? (
+                          <div style={{ fontSize: '0.8rem', color: '#14b8a6', fontWeight: 600 }}>PO: {item.po_number_str}</div>
+                        ) : item.buyer_detail ? (
+                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.buyer_detail.name}</div>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(item); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>Edit</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id, item.item_name); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -500,44 +511,47 @@ function Stock() {
 
           {/* Mobile Card List */}
           <div className="mobile-only mobile-card-list">
-            {stockItems.map(item => (
-              <div 
-                className="mobile-card" 
-                key={item.id} 
-                onClick={() => openEditModal(item)}
-                style={{ backgroundColor: selectedRowIds.has(item.id) ? '#f0fdf4' : '#fff' }}
-              >
-                <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedRowIds.has(item.id)}
-                    onChange={e => toggleSelectRow(item.id, e)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                  />
-                </div>
-
-                <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                  <div className="mobile-card-title">{item.item_name}</div>
-                  <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f1f5f9', color: '#334155', padding: '2px 8px' }}>
-                      {item.style_no}
-                    </span>
-                    {getStatusBadge(item.status)}
-                  </div>
-                  <div className="mobile-card-subtitle" style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: '#059669', fontWeight: 'bold' }}>
-                    Stock: {parseFloat(item.quantity || 0)} {item.unit} ({item.location || 'Main Store'})
-                  </div>
-                </div>
-
-                <div className="mobile-card-arrow">
-                  <ChevronRight size={20} color="#94a3b8" />
-                </div>
-              </div>
-            ))}
-            {stockItems.length === 0 && (
+            {loading ? (
+              <CardSkeleton count={5} />
+            ) : stockItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                 No stock items found.
               </div>
+            ) : (
+              stockItems.map(item => (
+                <div 
+                  className="mobile-card smooth-fade-in" 
+                  key={item.id} 
+                  onClick={() => openEditModal(item)}
+                  style={{ backgroundColor: selectedRowIds.has(item.id) ? '#f0fdf4' : '#fff' }}
+                >
+                  <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.has(item.id)}
+                      onChange={e => toggleSelectRow(item.id, e)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                    />
+                  </div>
+
+                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                    <div className="mobile-card-title">{item.item_name}</div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f1f5f9', color: '#334155', padding: '2px 8px' }}>
+                        {item.style_no}
+                      </span>
+                      {getStatusBadge(item.status)}
+                    </div>
+                    <div className="mobile-card-subtitle" style={{ marginTop: '0.4rem', fontSize: '0.85rem', color: '#059669', fontWeight: 'bold' }}>
+                      Stock: {parseFloat(item.quantity || 0)} {item.unit} ({item.location || 'Main Store'})
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-arrow">
+                    <ChevronRight size={20} color="#94a3b8" />
+                  </div>
+                </div>
+              ))
             )}
           </div>
 

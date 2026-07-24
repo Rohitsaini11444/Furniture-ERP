@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, ArrowLeft, ChevronRight, Download, Upload, ImageIcon } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 
 
 function SizeGroup({ label, prefix, values, onChange }) {
@@ -36,6 +37,7 @@ function BuyerMasters() {
   const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
@@ -105,6 +107,7 @@ function BuyerMasters() {
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchData = () => {
+    setLoading(true);
     api.get('/buyer-masters/', { params: { page: currentPage, ordering: ordering } })
       .then(res => {
         const data = res.data.results || res.data;
@@ -115,7 +118,8 @@ function BuyerMasters() {
           setTotalPages(1);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
 
     api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
@@ -974,56 +978,60 @@ function BuyerMasters() {
                 </tr>
               </thead>
               <tbody>
-                {filteredMasters.map(bm => (
-                  <tr
-                    key={bm.id}
-                    onClick={() => openEditModal(bm)}
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor: selectedRowIds.has(bm.id) ? '#dcfce7' : undefined,
-                      transition: 'background-color 0.2s ease',
-                    }}
-                    title="Click to view/edit detail"
-                  >
-                    <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.has(bm.id)}
-                        onChange={e => toggleSelectRow(bm.id, e)}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                      />
-                    </td>
-                    <td>
-                      <strong>{bm.buyer_detail?.name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
-                    </td>
-                    <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
-                    <td>{bm.product_name}</td>
-                    <td>{bm.wood_type}</td>
-                    <td>{bm.finish_color}</td>
-                    <td>
-                      {bm.size_length && bm.size_breadth && bm.size_height ? (
-                        <span style={{ fontSize: '0.85rem' }}>
-                          {bm.size_length} × {bm.size_breadth} × {bm.size_height} cm
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={(e) => { e.stopPropagation(); openEditModal(bm); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(bm.id, bm.style_no); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredMasters.length === 0 && (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={8} hasImage={false} />
+                ) : filteredMasters.length === 0 ? (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No styles found in Buyer Master.
                     </td>
                   </tr>
+                ) : (
+                  filteredMasters.map(bm => (
+                    <tr
+                      key={bm.id}
+                      onClick={() => openEditModal(bm)}
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor: selectedRowIds.has(bm.id) ? '#dcfce7' : undefined,
+                        transition: 'background-color 0.2s ease',
+                      }}
+                      className="smooth-fade-in"
+                      title="Click to view/edit detail"
+                    >
+                      <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(bm.id)}
+                          onChange={e => toggleSelectRow(bm.id, e)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
+                        />
+                      </td>
+                      <td>
+                        <strong>{bm.buyer_detail?.name}</strong>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
+                      </td>
+                      <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
+                      <td>{bm.product_name}</td>
+                      <td>{bm.wood_type}</td>
+                      <td>{bm.finish_color}</td>
+                      <td>
+                        {bm.size_length && bm.size_breadth && bm.size_height ? (
+                          <span style={{ fontSize: '0.85rem' }}>
+                            {bm.size_length} × {bm.size_breadth} × {bm.size_height} cm
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={(e) => { e.stopPropagation(); openEditModal(bm); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(bm.id, bm.style_no); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -1031,49 +1039,52 @@ function BuyerMasters() {
 
           {/* Mobile Card List */}
           <div className="mobile-only mobile-card-list">
-            {filteredMasters.map(bm => {
-              const buyerName = bm.buyer_detail?.name || 'Unknown Buyer';
-              const initials = buyerName.substring(0, 2).toUpperCase();
-              return (
-                <div 
-                  className="mobile-card" 
-                  key={bm.id} 
-                  onClick={() => openEditModal(bm)}
-                  style={{ backgroundColor: selectedRowIds.has(bm.id) ? '#f0fdf4' : '#fff' }}
-                >
-                  <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedRowIds.has(bm.id)}
-                      onChange={e => toggleSelectRow(bm.id, e)}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                    />
-                  </div>
-                  
-                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
-                    {initials}
-                  </div>
-                  
-                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                    <div className="mobile-card-title">{buyerName}</div>
-                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
-                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{bm.style_no}</span>
-                    </div>
-                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-main)' }}>
-                      {bm.product_name}
-                    </div>
-                  </div>
-
-                  <div className="mobile-card-arrow">
-                    <ChevronRight size={20} color="#94a3b8" />
-                  </div>
-                </div>
-              );
-            })}
-            {filteredMasters.length === 0 && (
+            {loading ? (
+              <CardSkeleton count={5} />
+            ) : filteredMasters.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                No styles found.
+                No styles found in Buyer Master.
               </div>
+            ) : (
+              filteredMasters.map(bm => {
+                const buyerName = bm.buyer_detail?.name || 'Unknown Buyer';
+                const initials = buyerName.substring(0, 2).toUpperCase();
+                return (
+                  <div 
+                    className="mobile-card smooth-fade-in" 
+                    key={bm.id} 
+                    onClick={() => openEditModal(bm)}
+                    style={{ backgroundColor: selectedRowIds.has(bm.id) ? '#f0fdf4' : '#fff' }}
+                  >
+                    <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(bm.id)}
+                        onChange={e => toggleSelectRow(bm.id, e)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                    </div>
+                    
+                    <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
+                      {initials}
+                    </div>
+                    
+                    <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                      <div className="mobile-card-title">{buyerName}</div>
+                      <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
+                        <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{bm.style_no}</span>
+                      </div>
+                      <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-main)' }}>
+                        {bm.product_name}
+                      </div>
+                    </div>
+
+                    <div className="mobile-card-arrow">
+                      <ChevronRight size={20} color="#94a3b8" />
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
           

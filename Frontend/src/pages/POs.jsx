@@ -7,6 +7,7 @@ import {
   CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import GateEntry from './GateEntry';
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
@@ -711,7 +712,7 @@ function POs() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
+                  <TableSkeleton rows={6} cols={8} hasImage={false} />
                 ) : filteredPOs.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
@@ -727,6 +728,7 @@ function POs() {
                     key={p.id}
                     onClick={() => navigate(`/pos/${p.id}`)}
                     style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                    className="smooth-fade-in"
                     title="Click to view/edit"
                   >
                     <td>
@@ -796,7 +798,7 @@ function POs() {
 
       <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</div>
+          <CardSkeleton count={4} />
         ) : filteredPOs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>

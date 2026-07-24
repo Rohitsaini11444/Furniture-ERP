@@ -20,7 +20,7 @@ import BuyerPIs       from './pages/BuyerPIs';
 import Stock          from './pages/Stock';
 import Tools          from './pages/Tools';
 
-import pinkcityLogo from './assets/Logo_2.png';
+import pinkcityLogo from './assets/Pinkcity_Logo.png';
 
 const ROLE_COLORS = {
   admin:      '#8b5a2b',
@@ -181,7 +181,7 @@ function Navbar() {
       <div className="navbar-container">
         <Link to="/" className="navbar-brand" onClick={() => setMobileMenuOpen(false)}>
           <img src={pinkcityLogo} alt="Pinkcity Logo" className="navbar-logo-img" />
-          <span className="navbar-brand-text">Pinkcity Imports ERP</span>
+          <span className="navbar-brand-text">Pinkcity Enterprises</span>
         </Link>
 
         {/* Notification & Mobile toggle wrapper */}
@@ -391,6 +391,54 @@ function Navbar() {
   );
 }
 
+function Footer() {
+  return (
+    <footer className="app-company-footer">
+      <div className="footer-content-wrap">
+        {/* Brand Block */}
+        <div className="footer-brand-block">
+          <img src={pinkcityLogo} alt="Pinkcity Enterprises Logo" className="footer-logo" />
+          <div>
+            <h3 className="footer-company-name">Pinkcity Enterprises</h3>
+            <p className="footer-company-tagline">Manufacturing & Furniture Export ERP</p>
+          </div>
+        </div>
+
+        {/* Details Grid */}
+        <div className="footer-details-grid">
+          <div className="footer-detail-card">
+            <span className="footer-detail-title">📍 Official Address & Works</span>
+            <p className="footer-detail-text">
+              G-78, EPIP, Sitapura Industrial Area, Tonk Road, Jaipur-302022 Rajasthan, India.
+            </p>
+          </div>
+
+          <div className="footer-detail-card">
+            <span className="footer-detail-title">📞 Contact Telephone</span>
+            <p className="footer-detail-text">
+              +91-141-2771144 / 2770033
+            </p>
+          </div>
+
+          <div className="footer-detail-card">
+            <span className="footer-detail-title">📋 Registrations & Codes</span>
+            <p className="footer-detail-text">
+              <strong>GSTIN/UIN:</strong> 08ABXPS4077R1Z8<br />
+              <strong>IEC CODE:</strong> 1397002620<br />
+              <strong>State:</strong> Rajasthan (Code: 08)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="footer-bottom-bar">
+        <span>© {new Date().getFullYear()} Pinkcity Enterprises. All Rights Reserved.</span>
+        <span>Enterprise Furniture ERP Platform</span>
+      </div>
+    </footer>
+  );
+}
+
 function AppLayout() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
@@ -457,6 +505,7 @@ function AppLayout() {
           />
         </Routes>
       </main>
+      {isAuthenticated && location.pathname === '/' && <Footer />}
     </div>
   );
 }

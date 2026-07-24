@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText } from 'lucide-react';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 
 
 function Buyers() {
@@ -58,6 +59,7 @@ function Buyers() {
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchBuyers = () => {
+    setLoading(true);
     api.get('/buyers/', { params: { page: currentPage, ordering: ordering } })
       .then(res => {
         const data = res.data.results || res.data;
@@ -68,7 +70,8 @@ function Buyers() {
           setTotalPages(1);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -847,36 +850,40 @@ function Buyers() {
                 </tr>
               </thead>
               <tbody>
-                {filteredBuyers.map(b => (
-                  <tr 
-                    key={b.id} 
-                    onClick={() => navigate(`/buyers/${b.id}`)}
-                    style={{ cursor: 'pointer', transition: 'background-color 0.2s ease' }}
-                    title="Click to view details"
-                  >
-                    <td>
-                      <span style={{ fontWeight: 'bold', color: '#8b5a2b' }}>
-                        {b.name}
-                      </span>
-                    </td>
-                    <td><span className="navbar-role-badge admin-badge">{b.code}</span></td>
-                    <td>{b.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td>{b.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td>{b.address || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button onClick={() => openEditModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                        <button onClick={() => openDeleteModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredBuyers.length === 0 && (
+                {loading ? (
+                  <TableSkeleton rows={6} cols={6} hasImage={false} />
+                ) : filteredBuyers.length === 0 ? (
                   <tr>
                     <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       No buyers found.
                     </td>
                   </tr>
+                ) : (
+                  filteredBuyers.map(b => (
+                    <tr 
+                      key={b.id} 
+                      onClick={() => navigate(`/buyers/${b.id}`)}
+                      style={{ cursor: 'pointer', transition: 'background-color 0.2s ease' }}
+                      className="smooth-fade-in"
+                      title="Click to view details"
+                    >
+                      <td>
+                        <span style={{ fontWeight: 'bold', color: '#8b5a2b' }}>
+                          {b.name}
+                        </span>
+                      </td>
+                      <td><span className="navbar-role-badge admin-badge">{b.code}</span></td>
+                      <td>{b.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td>{b.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td>{b.address || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={() => openEditModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                          <button onClick={() => openDeleteModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -884,35 +891,38 @@ function Buyers() {
 
           {/* Mobile Card List */}
           <div className="mobile-only mobile-card-list">
-            {filteredBuyers.map(b => {
-              const initials = b.name ? b.name.substring(0, 2).toUpperCase() : 'DB';
-              return (
-                <div 
-                  className="mobile-card" 
-                  key={b.id} 
-                  onClick={() => navigate(`/buyers/${b.id}`)}
-                >
-                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
-                    {initials}
-                  </div>
-                  
-                  <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                    <div className="mobile-card-title">{b.name}</div>
-                    <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
-                      <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{b.code}</span>
-                    </div>
-                  </div>
-
-                  <div className="mobile-card-arrow">
-                    <ChevronRight size={20} color="#94a3b8" />
-                  </div>
-                </div>
-              );
-            })}
-            {filteredBuyers.length === 0 && (
+            {loading ? (
+              <CardSkeleton count={4} />
+            ) : filteredBuyers.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                 No buyers found.
               </div>
+            ) : (
+              filteredBuyers.map(b => {
+                const initials = b.name ? b.name.substring(0, 2).toUpperCase() : 'DB';
+                return (
+                  <div 
+                    className="mobile-card smooth-fade-in" 
+                    key={b.id} 
+                    onClick={() => navigate(`/buyers/${b.id}`)}
+                  >
+                    <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
+                      {initials}
+                    </div>
+                    
+                    <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
+                      <div className="mobile-card-title">{b.name}</div>
+                      <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
+                        <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{b.code}</span>
+                      </div>
+                    </div>
+
+                    <div className="mobile-card-arrow">
+                      <ChevronRight size={20} color="#94a3b8" />
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 

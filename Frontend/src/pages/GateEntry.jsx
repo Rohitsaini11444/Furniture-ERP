@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -720,7 +721,7 @@ export default function GateEntry() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</td></tr>
+                <TableSkeleton rows={6} cols={6} hasImage={false} />
               ) : filteredPOs.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
@@ -729,7 +730,7 @@ export default function GateEntry() {
                   </td>
                 </tr>
               ) : filteredPOs.map(p => (
-                <tr key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', transition: 'background 0.15s' }}>
+                <tr key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', transition: 'background 0.15s' }} className="smooth-fade-in">
                   <td style={{ fontWeight: 600 }}>{p.po_number}</td>
                   <td>{p.supplier_detail?.name || '—'}</td>
                   <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
@@ -749,7 +750,7 @@ export default function GateEntry() {
 
       <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading…</div>
+          <CardSkeleton count={4} />
         ) : filteredPOs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
             <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
