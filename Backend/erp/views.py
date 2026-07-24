@@ -2150,6 +2150,10 @@ class GeneratePresentationView(APIView):
         buyer_id = request.data.get('buyer_id')
         sample_ids = request.data.get('sample_ids', [])
         buyer_master_ids = request.data.get('buyer_master_ids', [])
+        
+        items_per_slide = int(request.data.get('items_per_slide', 2))
+        include_price = request.data.get('include_price', True) in (True, 'true', '1', 1)
+        include_specs = request.data.get('include_specs', True) in (True, 'true', '1', 1)
 
         buyer = None
         if buyer_id:
@@ -2169,8 +2173,15 @@ class GeneratePresentationView(APIView):
 
         buyer_code_str = buyer.code if buyer else 'Catalog'
 
-        pptx_bytes = generate_pptx_presentation(buyer, items)
+        pptx_bytes = generate_pptx_presentation(
+            buyer=buyer,
+            items=items,
+            items_per_slide=items_per_slide,
+            include_price=include_price,
+            include_specs=include_specs
+        )
         response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
         response['Content-Disposition'] = f'attachment; filename="Presentation_{buyer_code_str}.pptx"'
         return response
+
 

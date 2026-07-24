@@ -433,11 +433,15 @@ class BuyerPIItemSerializer(serializers.ModelSerializer):
 class BuyerPISerializer(serializers.ModelSerializer):
     items = BuyerPIItemSerializer(many=True, required=False)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+    total_usd = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerPI
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_total_usd(self, obj):
+        return sum(float(item.total_amount or 0) for item in obj.items.all())
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
@@ -468,13 +472,18 @@ class BuyerPIItemSummarySerializer(serializers.ModelSerializer):
 class BuyerPIListSerializer(serializers.ModelSerializer):
     items = BuyerPIItemSummarySerializer(many=True, read_only=True)
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
+    total_usd = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerPI
         fields = [
             'id', 'pi_no', 'pi_date', 'buyer', 'buyer_detail', 
-            'delivered_to_name', 'delivered_to_company', 'ex_factory_date', 'items'
+            'delivered_to_name', 'delivered_to_company', 'ex_factory_date', 'items', 'total_usd'
         ]
+
+    def get_total_usd(self, obj):
+        return sum(float(item.total_amount or 0) for item in obj.items.all())
+
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])

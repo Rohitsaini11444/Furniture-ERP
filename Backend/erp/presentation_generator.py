@@ -80,11 +80,11 @@ def find_image_path(item):
     return None
 
 
-def generate_pptx_presentation(buyer, items):
+def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=True, include_specs=True):
     """
     Generates a 16:9 widescreen PowerPoint Presentation (.pptx)
     - Slide 1: Cover Page with Company Logo, Title, Prepared For Buyer, Date.
-    - Slide 2..N: 2 Selected Items per Slide (Left/Right side-by-side: Image + Specs Table).
+    - Slide 2..N: Dynamic Selected Items per Slide (Left/Right side-by-side: Image + Specs Table).
     - Slide N+1: Clean, Centered Thank You & Contact Info Card Slide.
     """
     prs = Presentation()
@@ -194,12 +194,14 @@ def generate_pptx_presentation(buyer, items):
     p_dt.font.size = Pt(14)
     p_dt.font.color.rgb = C_SLATE
 
-    # ── SLIDES 2..N: 2 Selected Items per Slide ──
-    item_chunks = [items[i:i + 2] for i in range(0, len(items), 2)]
+    # ── SLIDES 2..N: Dynamic Selected Items per Slide ──
+    chunk_size = max(1, min(2, items_per_slide))
+    item_chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
-    col_width = Inches(6.0)
+    col_width = Inches(12.533) if chunk_size == 1 else Inches(6.0)
     gap = Inches(0.533)
     start_left = Inches(0.4)
+
 
     for page_idx, chunk in enumerate(item_chunks, start=1):
         slide = prs.slides.add_slide(blank_layout)
@@ -316,13 +318,19 @@ def generate_pptx_presentation(buyer, items):
             specs_rows = [
                 ("Style No", str(style_val)),
                 ("Product", str(prod_val)),
-                ("Material", str(wood_val)),
-                ("Finish", str(finish_val)),
-                ("Size (L×B×H)", f"{length_val}×{breadth_val}×{height_val} cm"),
-                ("Volume", f"{cbm_val} CBM" if cbm_val != '—' else '—'),
-                ("Price (USD)", f"${float(price_val):.2f}" if price_val else 'Contact Quote'),
-                ("Remarks", str(remark_val))
             ]
+            if include_specs:
+                specs_rows.extend([
+                    ("Material", str(wood_val)),
+                    ("Finish", str(finish_val)),
+                    ("Size (L×B×H)", f"{length_val}×{breadth_val}×{height_val} cm"),
+                    ("Volume", f"{cbm_val} CBM" if cbm_val != '—' else '—'),
+                ])
+            if include_price:
+                specs_rows.append(("Price (USD)", f"${float(price_val):.2f}" if price_val else 'Contact Quote'))
+
+            specs_rows.append(("Remarks", str(remark_val)))
+
 
             total_rows = len(specs_rows) + 1
             table_shape = slide.shapes.add_table(
