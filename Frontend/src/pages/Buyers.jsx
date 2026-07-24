@@ -9,6 +9,7 @@ import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 function Buyers() {
   const navigate = useNavigate();
   const [buyers, setBuyers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');

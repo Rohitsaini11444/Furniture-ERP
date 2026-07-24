@@ -73,7 +73,7 @@ function Sanding() {
   const [pendingQC, setPendingQC] = useState([]);
   const [myAssignments, setMyAssignments] = useState([]);
   const [contractors, setContractors] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Modal state
   const [batchModal, setBatchModal] = useState(false);

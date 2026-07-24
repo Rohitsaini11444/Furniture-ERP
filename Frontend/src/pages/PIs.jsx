@@ -59,7 +59,7 @@ function PIs() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBuyerId, setFilterBuyerId] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);

@@ -59,7 +59,7 @@ function BuyerPIs() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBuyerId, setFilterBuyerId] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   
   // Pagination & Ordering

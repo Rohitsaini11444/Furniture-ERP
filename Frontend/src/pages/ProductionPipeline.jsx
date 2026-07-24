@@ -35,7 +35,7 @@ export default function ProductionPipeline() {
   const [stockItems, setStockItems] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
   const [contractors, setContractors] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [stockTypeFilter, setStockTypeFilter] = useState('raw'); // 'raw' | 'sanded' | 'polished' | 'packaged'
 
