@@ -4,7 +4,7 @@ import api from '../api/axios';
 import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
-  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck
+  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
@@ -656,7 +656,9 @@ function POs() {
           {/* ── Page Header ── */}
           <div className="page-header">
             <div>
-              <h2 style={{ margin: 0 }}>Purchase Orders & Gate Entry</h2>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ShoppingBag size={28} color="#8b5a2b" style={{ flexShrink: 0 }} /> Purchase Orders & Gate Entry
+              </h2>
               <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 Supplier POs, material receipts, and quality check inspection
               </p>
@@ -684,8 +686,8 @@ function POs() {
 
           {/* ── Filter Bar ── */}
           <div className="filter-bar">
-            <div className="filter-bar-inner" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+            <div className="filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 260px', minWidth: '200px', maxWidth: '380px' }}>
                 <Search size={15} className="filter-icon"/>
                 <input
                   type="text"
@@ -693,26 +695,34 @@ function POs() {
                   placeholder="Search by PO number or supplier..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 0.75rem', alignItems: 'center', minWidth: '220px' }}>
-                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>STATUS:</span>
-                <StatusSelect
-                  options={PO_STATUS_OPTIONS}
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  placeholder="All Statuses"
-                />
-
-                <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>ORDER BY:</span>
-                <OrderBySelect
-                  options={ORDER_OPTIONS_DATE_PONO}
-                  value={ordering}
-                  onChange={setOrdering}
+                  style={{ flex: 1, height: '38px', boxSizing: 'border-box' }}
                 />
               </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>STATUS:</span>
+                  <div style={{ width: '165px' }}>
+                    <StatusSelect
+                      options={PO_STATUS_OPTIONS}
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      placeholder="All Statuses"
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>ORDER BY:</span>
+                  <div style={{ width: '165px' }}>
+                    <OrderBySelect
+                      options={ORDER_OPTIONS_DATE_PONO}
+                      value={ordering}
+                      onChange={setOrdering}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

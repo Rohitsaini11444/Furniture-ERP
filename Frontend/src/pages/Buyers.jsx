@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText } from 'lucide-react';
+import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText, Building2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_STYLE, ORDER_OPTIONS_DATE_PINO, ORDER_OPTIONS_DATE_PONO, ORDER_OPTIONS_DATE_NAME } from '../components/OrderBySelect';
@@ -787,7 +787,9 @@ function Buyers() {
       ) : (
         <>
           <div className="page-header">
-            <h2>Buyers</h2>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Building2 size={28} color="#d97706" style={{ flexShrink: 0 }} /> Buyer Directory
+            </h2>
             <button onClick={openCreateModal} className="btn-primary">+ Create New Buyer</button>
           </div>
 

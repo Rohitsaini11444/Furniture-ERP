@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import {
   Users, UserPlus, Edit2, Trash2, X, ChevronDown,
-  Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor,
+  Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor, UserCheck,
 } from 'lucide-react';
 import { TableSkeleton } from '../components/TableSkeleton';
 
@@ -229,7 +229,9 @@ function UserManagement() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1 className="um-title">User Management</h1>
+          <h1 className="um-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <UserCheck size={28} color="#0284c7" style={{ flexShrink: 0 }} /> User Management
+          </h1>
           <p className="um-subtitle">Manage system users, roles, and assignments</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>

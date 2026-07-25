@@ -567,7 +567,7 @@ function Navbar() {
         {/* Navbar links & actions */}
         <div className={`navbar-menu ${mobileMenuOpen ? 'is-open' : ''}`}>
           {/* Search bar */}
-          <div className="navbar-search-wrapper" ref={searchRef} style={{ position: 'relative', flex: 1, maxWidth: '520px' }}>
+          <div className="navbar-search-wrapper" ref={searchRef} style={{ position: 'relative', flex: '1 1 450px', maxWidth: '680px', margin: '0 auto' }}>
             <Search size={16} color="#94a3b8" className="navbar-search-icon" />
             <input
               type="text"
@@ -636,7 +636,7 @@ function Navbar() {
                   </div>
                   {/* Style No */}
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
-                    {sample.sample_id || sample.style_no || '—'}
+                    {sample.style_no || sample.id || '—'}
                   </span>
                   {/* Product name */}
                   <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1069,6 +1069,13 @@ function AppLayout() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
   const isLogin = location.pathname === '/login';
+
+  // Scroll to top on route change
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname, location.search]);
 
   return (
     <div className="app-container">

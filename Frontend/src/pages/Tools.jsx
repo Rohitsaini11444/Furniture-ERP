@@ -526,7 +526,7 @@ function Tools() {
                   <thead>
                     <tr>
                       <th style={{ width: '40px' }}>Select</th>
-                      <th>Sample ID / Style No</th>
+                      <th>Style No</th>
                       <th>Product Name</th>
                       <th>Material / Wood</th>
                       <th>Finish Color</th>
@@ -561,7 +561,7 @@ function Tools() {
                               ? <CheckSquare size={18} color="#8b5cf6" />
                               : <Square size={18} color="#94a3b8" />}
                           </td>
-                          <td><strong>{sample.sample_id}</strong></td>
+                          <td><strong>{sample.style_no || sample.sample_id}</strong></td>
                           <td>{sample.product_name}</td>
                           <td>{sample.material || '—'}</td>
                           <td>{sample.finish_color || '—'}</td>
@@ -603,7 +603,7 @@ function Tools() {
                         </div>
                         <div>
                           <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.88rem', lineHeight: '1.2' }}>{sample.product_name}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 700, marginTop: '2px' }}>Style #: {sample.sample_id}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 700, marginTop: '2px' }}>Style #: {sample.style_no || sample.sample_id}</div>
                         </div>
                       </div>
 

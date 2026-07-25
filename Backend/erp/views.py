@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.http import HttpResponse
 import openpyxl
+import io
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenpyxlImage
@@ -258,9 +259,260 @@ class SampleViewSet(viewsets.ModelViewSet):
         return context
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'import_excel'):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get'], url_path='download-template')
+    def download_template(self, request):
+        """
+        GET /api/samples/download-template/
+        Returns an empty Excel template formatted with expected headers & example data.
+        """
+        import openpyxl
+        import io
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Sample_Import_Template"
+        ws.views.sheetView[0].showGridLines = True
+
+        headers = [
+            'Style No.*', 'Product Name*', 'Sample Photo / Image', 'Buyer Code', 'Material', 
+            'Finish / Color', 'Size Length (cm)', 'Size Breadth (cm)', 
+            'Size Height (cm)', 'USD ($)', 'CBM', 'Vendor Name', 'Remark'
+        ]
+
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="8b5a2b", end_color="8b5a2b", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+
+        sample_row = [
+            'STY-101', 'Handcrafted Dining Chair', '[Photo Embedded Below]', 'BUY-01', 'Solid Sheesham Wood',
+            'Honey Finish', 55.0, 50.0, 95.0,
+            120.00, 0.26, 'Raj Artisans', 'Insert sample photos into worksheet cells for auto-import'
+        ]
+        ws.append(sample_row)
+
+        # Embed demo sample image into Cell C2
+        try:
+            from PIL import Image as PILImage, ImageDraw
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+            
+            img_buf = io.BytesIO()
+            demo_img = PILImage.new('RGB', (140, 140), color='#8b5a2b')
+            draw = ImageDraw.Draw(demo_img)
+            draw.rectangle([(12, 12), (128, 128)], outline='#ffffff', width=3)
+            draw.text((22, 55), "SAMPLE PHOTO", fill='#ffffff')
+            demo_img.save(img_buf, format='PNG')
+            img_buf.seek(0)
+            
+            excel_img = OpenpyxlImage(img_buf)
+            excel_img.width = 65
+            excel_img.height = 65
+            ws.add_image(excel_img, 'C2')
+        except Exception as e:
+            print(f"Error creating template image: {e}")
+
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+        ws.column_dimensions['C'].width = 22
+        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[2].height = 60
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="Samples_Import_Template.xlsx"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import-excel')
+    def import_excel(self, request):
+        """
+        POST /api/samples/import-excel/
+        Uploads an .xlsx file containing sample data and optional embedded cell images.
+        """
+        import openpyxl
+        from django.core.files.base import ContentFile
+
+        excel_file = request.FILES.get('file')
+        if not excel_file:
+            return Response({
+                "error_type": "No File Uploaded",
+                "detail": "Please select a valid .xlsx file to upload."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (excel_file.name.lower().endswith('.xlsx')):
+            return Response({
+                "error_type": "Invalid Extension",
+                "detail": "File must be an Excel (.xlsx) spreadsheet. Please download the expected template below."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+            ws = wb.active
+        except Exception:
+            return Response({
+                "error_type": "Unreadable File",
+                "detail": "Unable to read Excel file. Please ensure the file is not corrupt."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        header_row = [str(cell.value or '').strip() for cell in list(ws.iter_rows(min_row=1, max_row=1))[0]]
+        
+        header_map = {}
+        for idx, col in enumerate(header_row):
+            col_norm = col.lower().replace('.', '').replace('*', '').replace('_', ' ').strip()
+            header_map[col_norm] = idx
+
+        style_idx = next((header_map[k] for k in ['style no', 'style', 'style #', 'style_no', 'sample id', 'sample_id'] if k in header_map), None)
+        product_name_idx = next((header_map[k] for k in ['product name', 'product', 'item name', 'name', 'product_name'] if k in header_map), None)
+
+        if style_idx is None or product_name_idx is None:
+            return Response({
+                "error_type": "Header / Schema Mismatch",
+                "detail": "Required headers 'Style No.' or 'Product Name' are missing. Please download the expected template below."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        buyer_idx = next((header_map[k] for k in ['buyer code', 'buyer', 'buyer name'] if k in header_map), None)
+        material_idx = next((header_map[k] for k in ['material', 'wood'] if k in header_map), None)
+        finish_idx = next((header_map[k] for k in ['finish / color', 'finish', 'color', 'finish color'] if k in header_map), None)
+        len_idx = next((header_map[k] for k in ['size length (cm)', 'length (cm)', 'length', 'size length'] if k in header_map), None)
+        breadth_idx = next((header_map[k] for k in ['size breadth (cm)', 'breadth (cm)', 'width (cm)', 'breadth', 'width', 'size breadth'] if k in header_map), None)
+        height_idx = next((header_map[k] for k in ['size height (cm)', 'height (cm)', 'height', 'size height'] if k in header_map), None)
+        usd_idx = next((header_map[k] for k in ['usd ($)', 'usd', 'price (usd)', 'price'] if k in header_map), None)
+        cbm_idx = next((header_map[k] for k in ['cbm', 'total cbm'] if k in header_map), None)
+        vendor_idx = next((header_map[k] for k in ['vendor name', 'vendor', 'supplier'] if k in header_map), None)
+        remark_idx = next((header_map[k] for k in ['remark', 'remarks', 'note', 'notes'] if k in header_map), None)
+
+        row_images = {}
+        if hasattr(ws, '_images'):
+            for img in ws._images:
+                try:
+                    img_row = img.anchor._from.row + 1
+                    if img_row not in row_images:
+                        row_images[img_row] = []
+                    row_images[img_row].append(img)
+                except Exception:
+                    pass
+
+        imported_count = 0
+        updated_count = 0
+        images_extracted = 0
+
+        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+
+        for excel_row_num, row_cells in enumerate(ws.iter_rows(min_row=2), start=2):
+            cells = [cell.value for cell in row_cells]
+            if not any(cells):
+                continue
+
+            style_no_val = str(cells[style_idx]).strip() if style_idx < len(cells) and cells[style_idx] is not None else ''
+            product_name_val = str(cells[product_name_idx]).strip() if product_name_idx < len(cells) and cells[product_name_idx] is not None else ''
+
+            if not style_no_val or not product_name_val:
+                continue
+
+            buyer_obj = None
+            if buyer_idx is not None and buyer_idx < len(cells) and cells[buyer_idx] is not None:
+                b_str = str(cells[buyer_idx]).strip().lower()
+                buyer_obj = buyers_by_code.get(b_str) or buyers_by_name.get(b_str)
+
+            def parse_dec(val):
+                if val is None or val == '': return None
+                try:
+                    return float(str(val).replace('$', '').replace('₹', '').replace(',', '').strip())
+                except ValueError:
+                    return None
+
+            material_val = str(cells[material_idx]).strip() if material_idx is not None and material_idx < len(cells) and cells[material_idx] is not None else ''
+            finish_val = str(cells[finish_idx]).strip() if finish_idx is not None and finish_idx < len(cells) and cells[finish_idx] is not None else ''
+            vendor_val = str(cells[vendor_idx]).strip() if vendor_idx is not None and vendor_idx < len(cells) and cells[vendor_idx] is not None else ''
+            remark_val = str(cells[remark_idx]).strip() if remark_idx is not None and remark_idx < len(cells) and cells[remark_idx] is not None else ''
+
+            size_len = parse_dec(cells[len_idx] if len_idx is not None and len_idx < len(cells) else None)
+            size_brd = parse_dec(cells[breadth_idx] if breadth_idx is not None and breadth_idx < len(cells) else None)
+            size_hgt = parse_dec(cells[height_idx] if height_idx is not None and height_idx < len(cells) else None)
+            usd_val = parse_dec(cells[usd_idx] if usd_idx is not None and usd_idx < len(cells) else None)
+            cbm_val = parse_dec(cells[cbm_idx] if cbm_idx is not None and cbm_idx < len(cells) else None)
+
+            sample_obj, created = Sample.objects.get_or_create(
+                style_no=style_no_val,
+                defaults={
+                    'sample_id': style_no_val,
+                    'product_name': product_name_val,
+                    'buyer': buyer_obj,
+                    'material': material_val,
+                    'finish_color': finish_val,
+                    'size_length': size_len,
+                    'size_breadth': size_brd,
+                    'size_height': size_hgt,
+                    'usd': usd_val,
+                    'cbm': cbm_val,
+                    'vendor_name': vendor_val,
+                    'remark': remark_val,
+                }
+            )
+
+            if not created:
+                sample_obj.product_name = product_name_val
+                if buyer_obj: sample_obj.buyer = buyer_obj
+                if material_val: sample_obj.material = material_val
+                if finish_val: sample_obj.finish_color = finish_val
+                if size_len is not None: sample_obj.size_length = size_len
+                if size_brd is not None: sample_obj.size_breadth = size_brd
+                if size_hgt is not None: sample_obj.size_height = size_hgt
+                if usd_val is not None: sample_obj.usd = usd_val
+                if cbm_val is not None: sample_obj.cbm = cbm_val
+                if vendor_val: sample_obj.vendor_name = vendor_val
+                if remark_val: sample_obj.remark = remark_val
+                sample_obj.save()
+                updated_count += 1
+            else:
+                imported_count += 1
+
+            if excel_row_num in row_images:
+                for img_idx, img_obj in enumerate(row_images[excel_row_num]):
+                    try:
+                        image_bytes = img_obj._data()
+                        ext = img_obj.format if hasattr(img_obj, 'format') and img_obj.format else 'png'
+                        file_name = f"{style_no_val.replace('/', '_')}_{img_idx+1}.{ext}"
+                        content_file = ContentFile(image_bytes, name=file_name)
+
+                        s_img = SampleImage.objects.create(sample=sample_obj, image=content_file)
+                        images_extracted += 1
+
+                        if not sample_obj.image and s_img.image:
+                            sample_obj.image = s_img.image
+                            sample_obj.save(update_fields=['image'])
+                    except Exception as img_err:
+                        print(f"Error saving image for row {excel_row_num}: {img_err}")
+
+        return Response({
+            "detail": f"Import complete! {imported_count} new sample(s) created, {updated_count} updated. {images_extracted} high-quality image(s) extracted.",
+            "imported_count": imported_count,
+            "updated_count": updated_count,
+            "images_extracted": images_extracted,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='compact')
     def compact(self, request):
@@ -381,7 +633,7 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update', 'destroy', 'import_excel'):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
@@ -442,6 +694,316 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         response = HttpResponse(buffer.getvalue(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
         return response
+
+    @action(detail=False, methods=['get'], url_path='download-template')
+    def download_template(self, request):
+        """
+        GET /api/buyer-masters/download-template/?with_details=true|false
+        Generates empty Excel template for Buyer Master.
+        """
+        import openpyxl
+        import io
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+
+        with_details = request.query_params.get('with_details') == 'true'
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Buyer_Master_Template"
+        ws.views.sheetView[0].showGridLines = True
+
+        headers = [
+            'Buyer Code*', 'Buyer Name*', 'Style No.*', 'Product Name*', 'Finishing Photo / Image',
+            'Material / Wood', 'Finish Color', 'Size Length (cm)', 'Size Breadth (cm)', 
+            'Size Height (cm)', 'Price USD ($)', 'Units', 'CBM', 'Remark'
+        ]
+
+        if with_details:
+            headers.extend([
+                'Vendor Details', 'Vendor Price', 'Costing', 'Purchase Price', 
+                'Net Weight', 'Gross Weight', 'Box Length (cm)', 'Box Breadth (cm)', 'Box Height (cm)'
+            ])
+
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="7c3aed", end_color="7c3aed", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+
+        sample_row = [
+            'BUY-01', 'Nkuku UK', 'STY-201', 'Solid Wood Bookshelf', '[Photo Embedded Below]',
+            'Mango Wood', 'Walnut Stain', 120.0, 40.0, 180.0,
+            245.00, 10, 0.864, 'Insert finishing photos into worksheet cells for auto-import'
+        ]
+        if with_details:
+            sample_row.extend([
+                'Rajesh Artisans, Jodhpur', 180.00, 210.00, 195.00,
+                32.5, 36.0, 125.0, 45.0, 185.0
+            ])
+
+        ws.append(sample_row)
+
+        # Embed demo finishing image into Cell E2
+        try:
+            from PIL import Image as PILImage, ImageDraw
+            from openpyxl.drawing.image import Image as OpenpyxlImage
+            
+            img_buf = io.BytesIO()
+            demo_img = PILImage.new('RGB', (140, 140), color='#7c3aed')
+            draw = ImageDraw.Draw(demo_img)
+            draw.rectangle([(12, 12), (128, 128)], outline='#ffffff', width=3)
+            draw.text((18, 55), "FINISHING PHOTO", fill='#ffffff')
+            demo_img.save(img_buf, format='PNG')
+            img_buf.seek(0)
+            
+            excel_img = OpenpyxlImage(img_buf)
+            excel_img.width = 65
+            excel_img.height = 65
+            ws.add_image(excel_img, 'E2')
+        except Exception as e:
+            print(f"Error creating template image: {e}")
+
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+        ws.column_dimensions['E'].width = 22
+        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[2].height = 60
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = "Buyer_Master_Detailed_Template.xlsx" if with_details else "Buyer_Master_Standard_Template.xlsx"
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import-excel')
+    def import_excel(self, request):
+        """
+        POST /api/buyer-masters/import-excel/
+        Import Buyer Master records & auto-create missing Buyers.
+        Does NOT insert into Sample table! Only populates Buyer & BuyerMaster tables.
+        Also extracts high-quality finishing images embedded in worksheet cells!
+        """
+        import openpyxl
+        from django.core.files.base import ContentFile
+
+        excel_file = request.FILES.get('file')
+        if not excel_file:
+            return Response({
+                "error_type": "No File Uploaded",
+                "detail": "Please select a valid .xlsx file to upload."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (excel_file.name.lower().endswith('.xlsx')):
+            return Response({
+                "error_type": "Invalid Extension",
+                "detail": "File must be an Excel (.xlsx) spreadsheet. Please download the expected template below."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(excel_file, data_only=True)
+            ws = wb.active
+        except Exception:
+            return Response({
+                "error_type": "Unreadable File",
+                "detail": "Unable to read Excel file. Please ensure the file is not corrupt."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        header_row = [str(cell.value or '').strip() for cell in list(ws.iter_rows(min_row=1, max_row=1))[0]]
+        
+        header_map = {}
+        for idx, col in enumerate(header_row):
+            col_norm = col.lower().replace('.', '').replace('*', '').replace('_', ' ').replace('/', ' ').strip()
+            header_map[col_norm] = idx
+
+        buyer_code_idx = next((header_map[k] for k in ['buyer code', 'buyer', 'code', 'buyer_code'] if k in header_map), None)
+        buyer_name_idx = next((header_map[k] for k in ['buyer name', 'buyer_name', 'name'] if k in header_map), None)
+        style_idx = next((header_map[k] for k in ['style no', 'style', 'style #', 'style_no', 'sample id', 'sample_id'] if k in header_map), None)
+        product_name_idx = next((header_map[k] for k in ['product name', 'product', 'item name', 'product_name'] if k in header_map), None)
+
+        if buyer_code_idx is None or style_idx is None or product_name_idx is None:
+            return Response({
+                "error_type": "Header / Schema Mismatch",
+                "detail": "Required headers ('Buyer Code', 'Style No.' or 'Product Name') are missing. Please download the expected template below."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        wood_idx = next((header_map[k] for k in ['material   wood', 'wood type', 'material', 'wood', 'material wood type'] if k in header_map), None)
+        finish_idx = next((header_map[k] for k in ['finish   color', 'finish color', 'finish', 'color'] if k in header_map), None)
+        len_idx = next((header_map[k] for k in ['size length (cm)', 'size length', 'length (cm)', 'length'] if k in header_map), None)
+        breadth_idx = next((header_map[k] for k in ['size breadth (cm)', 'size breadth', 'breadth (cm)', 'breadth', 'width (cm)', 'width'] if k in header_map), None)
+        height_idx = next((header_map[k] for k in ['size height (cm)', 'size height', 'height (cm)', 'height'] if k in header_map), None)
+        usd_idx = next((header_map[k] for k in ['price usd ($)', 'price usd', 'usd ($)', 'usd', 'price'] if k in header_map), None)
+        units_idx = next((header_map[k] for k in ['units', 'unit', 'qty', 'quantity'] if k in header_map), None)
+        cbm_idx = next((header_map[k] for k in ['cbm', 'total cbm'] if k in header_map), None)
+        remark_idx = next((header_map[k] for k in ['remark', 'remarks', 'note', 'notes'] if k in header_map), None)
+
+        vendor_details_idx = next((header_map[k] for k in ['vendor details', 'vendor', 'supplier'] if k in header_map), None)
+        vendor_price_idx = next((header_map[k] for k in ['vendor price'] if k in header_map), None)
+        costing_idx = next((header_map[k] for k in ['costing'] if k in header_map), None)
+        purchase_price_idx = next((header_map[k] for k in ['purchase price'] if k in header_map), None)
+        net_wt_idx = next((header_map[k] for k in ['net weight'] if k in header_map), None)
+        gross_wt_idx = next((header_map[k] for k in ['gross weight'] if k in header_map), None)
+        box_l_idx = next((header_map[k] for k in ['box length (cm)', 'box length'] if k in header_map), None)
+        box_b_idx = next((header_map[k] for k in ['box breadth (cm)', 'box breadth'] if k in header_map), None)
+        box_h_idx = next((header_map[k] for k in ['box height (cm)', 'box height'] if k in header_map), None)
+
+        row_images = {}
+        if hasattr(ws, '_images'):
+            for img in ws._images:
+                try:
+                    img_row = img.anchor._from.row + 1
+                    if img_row not in row_images:
+                        row_images[img_row] = []
+                    row_images[img_row].append(img)
+                except Exception:
+                    pass
+
+        imported_count = 0
+        updated_count = 0
+        buyers_created = 0
+        images_extracted = 0
+
+        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+
+        def parse_dec(val):
+            if val is None or val == '': return None
+            try:
+                return float(str(val).replace('$', '').replace('₹', '').replace(',', '').strip())
+            except ValueError:
+                return None
+
+        for excel_row_num, row_cells in enumerate(ws.iter_rows(min_row=2), start=2):
+            cells = [cell.value for cell in row_cells]
+            if not any(cells):
+                continue
+
+            b_code_val = str(cells[buyer_code_idx]).strip() if buyer_code_idx < len(cells) and cells[buyer_code_idx] is not None else ''
+            style_no_val = str(cells[style_idx]).strip() if style_idx < len(cells) and cells[style_idx] is not None else ''
+            product_name_val = str(cells[product_name_idx]).strip() if product_name_idx < len(cells) and cells[product_name_idx] is not None else ''
+
+            if not b_code_val or not style_no_val or not product_name_val:
+                continue
+
+            b_name_val = str(cells[buyer_name_idx]).strip() if buyer_name_idx is not None and buyer_name_idx < len(cells) and cells[buyer_name_idx] is not None else b_code_val
+            buyer_obj = buyers_by_code.get(b_code_val.lower()) or buyers_by_name.get(b_name_val.lower())
+            
+            if not buyer_obj:
+                buyer_obj = Buyer.objects.create(code=b_code_val, name=b_name_val)
+                buyers_by_code[b_code_val.lower()] = buyer_obj
+                buyers_by_name[b_name_val.lower()] = buyer_obj
+                buyers_created += 1
+
+            wood_val = str(cells[wood_idx]).strip() if wood_idx is not None and wood_idx < len(cells) and cells[wood_idx] is not None else ''
+            finish_val = str(cells[finish_idx]).strip() if finish_idx is not None and finish_idx < len(cells) and cells[finish_idx] is not None else ''
+            remark_val = str(cells[remark_idx]).strip() if remark_idx is not None and remark_idx < len(cells) and cells[remark_idx] is not None else ''
+            v_details_val = str(cells[vendor_details_idx]).strip() if vendor_details_idx is not None and vendor_details_idx < len(cells) and cells[vendor_details_idx] is not None else ''
+
+            size_len = parse_dec(cells[len_idx] if len_idx is not None and len_idx < len(cells) else None)
+            size_brd = parse_dec(cells[breadth_idx] if breadth_idx is not None and breadth_idx < len(cells) else None)
+            size_hgt = parse_dec(cells[height_idx] if height_idx is not None and height_idx < len(cells) else None)
+            price_usd = parse_dec(cells[usd_idx] if usd_idx is not None and usd_idx < len(cells) else None)
+            units_val = int(parse_dec(cells[units_idx]) or 1) if units_idx is not None and units_idx < len(cells) else 1
+            cbm_val = parse_dec(cells[cbm_idx] if cbm_idx is not None and cbm_idx < len(cells) else None)
+
+            v_price = parse_dec(cells[vendor_price_idx] if vendor_price_idx is not None and vendor_price_idx < len(cells) else None)
+            costing_val = parse_dec(cells[costing_idx] if costing_idx is not None and costing_idx < len(cells) else None)
+            pur_price = parse_dec(cells[purchase_price_idx] if purchase_price_idx is not None and purchase_price_idx < len(cells) else None)
+            net_wt = parse_dec(cells[net_wt_idx] if net_wt_idx is not None and net_wt_idx < len(cells) else None)
+            gross_wt = parse_dec(cells[gross_wt_idx] if gross_wt_idx is not None and gross_wt_idx < len(cells) else None)
+            box_l = parse_dec(cells[box_l_idx] if box_l_idx is not None and box_l_idx < len(cells) else None)
+            box_b = parse_dec(cells[box_b_idx] if box_b_idx is not None and box_b_idx < len(cells) else None)
+            box_h = parse_dec(cells[box_h_idx] if box_h_idx is not None and box_h_idx < len(cells) else None)
+
+            bm_obj, created = BuyerMaster.objects.get_or_create(
+                buyer=buyer_obj,
+                style_no=style_no_val,
+                defaults={
+                    'buyer_code': b_code_val,
+                    'product_name': product_name_val,
+                    'wood_type': wood_val,
+                    'finish_color': finish_val,
+                    'size_length': size_len,
+                    'size_breadth': size_brd,
+                    'size_height': size_hgt,
+                    'price_usd': price_usd,
+                    'units': units_val,
+                    'cbm': cbm_val,
+                    'remark': remark_val,
+                    'vendor_details': v_details_val,
+                    'vendor_price': v_price,
+                    'costing': costing_val,
+                    'purchase_price': pur_price,
+                    'net_weight': net_wt,
+                    'gross_weight': gross_wt,
+                    'box_length': box_l,
+                    'box_breadth': box_b,
+                    'box_height': box_h,
+                }
+            )
+
+            if not created:
+                bm_obj.product_name = product_name_val
+                bm_obj.buyer_code = b_code_val
+                if wood_val: bm_obj.wood_type = wood_val
+                if finish_val: bm_obj.finish_color = finish_val
+                if size_len is not None: bm_obj.size_length = size_len
+                if size_brd is not None: bm_obj.size_breadth = size_brd
+                if size_hgt is not None: bm_obj.size_height = size_hgt
+                if price_usd is not None: bm_obj.price_usd = price_usd
+                if units_val is not None: bm_obj.units = units_val
+                if cbm_val is not None: bm_obj.cbm = cbm_val
+                if remark_val: bm_obj.remark = remark_val
+                if v_details_val: bm_obj.vendor_details = v_details_val
+                if v_price is not None: bm_obj.vendor_price = v_price
+                if costing_val is not None: bm_obj.costing = costing_val
+                if pur_price is not None: bm_obj.purchase_price = pur_price
+                if net_wt is not None: bm_obj.net_weight = net_wt
+                if gross_wt is not None: bm_obj.gross_weight = gross_wt
+                if box_l is not None: bm_obj.box_length = box_l
+                if box_b is not None: bm_obj.box_breadth = box_b
+                if box_h is not None: bm_obj.box_height = box_h
+                bm_obj.save()
+                updated_count += 1
+            else:
+                imported_count += 1
+
+            if excel_row_num in row_images:
+                for img_idx, img_obj in enumerate(row_images[excel_row_num]):
+                    try:
+                        image_bytes = img_obj._data()
+                        ext = img_obj.format if hasattr(img_obj, 'format') and img_obj.format else 'png'
+                        file_name = f"BM_{style_no_val.replace('/', '_')}_{img_idx+1}.{ext}"
+                        content_file = ContentFile(image_bytes, name=file_name)
+
+                        BuyerMasterFinishingImage.objects.create(buyer_master=bm_obj, image=content_file)
+                        images_extracted += 1
+                    except Exception as img_err:
+                        print(f"Error saving image for row {excel_row_num}: {img_err}")
+
+        return Response({
+            "detail": f"Import complete! {imported_count} new Buyer Master style(s) created, {updated_count} updated. {buyers_created} new Buyer(s) created. {images_extracted} finishing image(s) extracted.",
+            "imported_count": imported_count,
+            "updated_count": updated_count,
+            "buyers_created": buyers_created,
+            "images_extracted": images_extracted,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='export-excel')
     def export_excel(self, request):

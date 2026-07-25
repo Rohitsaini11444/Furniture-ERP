@@ -48,12 +48,14 @@ export function StatusSelect({ options = [], value, onChange, placeholder = 'All
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem',
+          gap: '0.5rem',
           width: '100%',
-          padding: '0.6rem 0.9rem',
+          height: '38px',
+          boxSizing: 'border-box',
+          padding: '0 0.75rem',
           backgroundColor: '#ffffff',
           border: `1.5px solid ${open ? '#8b5a2b' : '#d6c7b2'}`,
-          borderRadius: '12px',
+          borderRadius: '10px',
           cursor: 'pointer',
           transition: 'all 0.15s ease',
           boxShadow: open ? '0 0 0 3px rgba(139,90,43,0.12)' : '0 1px 3px rgba(0,0,0,0.05)',
@@ -65,24 +67,24 @@ export function StatusSelect({ options = [], value, onChange, placeholder = 'All
       >
         {/* Icon badge */}
         {selected ? (
-          <StatusBadge icon={selected.icon} iconBg={selected.iconBg} iconColor={selected.iconColor} size={20} badgeSize={36} />
+          <StatusBadge icon={selected.icon} iconBg={selected.iconBg} iconColor={selected.iconColor} size={14} badgeSize={24} />
         ) : (
           <div style={{
-            width: '36px', height: '36px', borderRadius: '50%',
+            width: '24px', height: '24px', borderRadius: '50%',
             backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
           }}>
-            <Layers size={18} color="#94a3b8" />
+            <Layers size={14} color="#94a3b8" />
           </div>
         )}
 
         {/* Label */}
-        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.95rem', color: selected ? '#1e293b' : '#94a3b8' }}>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.9rem', color: selected ? '#1e293b' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {selected ? selected.label : placeholder}
         </span>
 
         {/* Chevron */}
         <ChevronDown
-          size={18}
+          size={16}
           color="#8b5a2b"
           style={{ transition: 'transform 0.2s ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}
         />
@@ -95,15 +97,14 @@ export function StatusSelect({ options = [], value, onChange, placeholder = 'All
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: 0,
-            right: 0,
             zIndex: 9999,
             backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07)',
+            minWidth: '170px',
+            maxWidth: '92vw',
             overflow: 'hidden',
             animation: 'fadeSlideDown 0.15s ease',
-            minWidth: '220px',
-            maxWidth: '92vw',
           }}
         >
           {options.map((opt, idx) => {
@@ -116,9 +117,9 @@ export function StatusSelect({ options = [], value, onChange, placeholder = 'All
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.9rem',
+                    gap: '0.6rem',
                     width: '100%',
-                    padding: '0.9rem 1.2rem',
+                    padding: '0.55rem 0.75rem',
                     backgroundColor: isSelected ? '#f5ede2' : '#ffffff',
                     border: 'none',
                     cursor: 'pointer',
@@ -134,21 +135,21 @@ export function StatusSelect({ options = [], value, onChange, placeholder = 'All
                     icon={opt.icon}
                     iconBg={isSelected ? opt.iconBg : '#f1f5f9'}
                     iconColor={isSelected ? opt.iconColor : '#64748b'}
-                    size={20}
-                    badgeSize={38}
+                    size={14}
+                    badgeSize={24}
                   />
 
                   {/* Label */}
-                  <span style={{ flex: 1, fontWeight: isSelected ? 700 : 500, fontSize: '0.95rem', color: isSelected ? '#8b5a2b' : '#334155' }}>
+                  <span style={{ flex: 1, fontWeight: isSelected ? 700 : 500, fontSize: '0.88rem', color: isSelected ? '#8b5a2b' : '#334155' }}>
                     {opt.label}
                   </span>
 
                   {/* Checkmark */}
-                  {isSelected && <Check size={18} color="#8b5a2b" strokeWidth={2.5} />}
+                  {isSelected && <Check size={15} color="#8b5a2b" strokeWidth={2.5} />}
                 </button>
 
                 {idx < options.length - 1 && (
-                  <div style={{ height: '1px', backgroundColor: '#f1ece5', margin: '0 1.2rem' }} />
+                  <div style={{ height: '1px', backgroundColor: '#f1ece5', margin: '0 0.75rem' }} />
                 )}
               </React.Fragment>
             );

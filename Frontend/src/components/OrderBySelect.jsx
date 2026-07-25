@@ -32,7 +32,7 @@ export function OrderBySelect({ options = [], value, onChange }) {
   return (
     <div
       ref={containerRef}
-      style={{ position: 'relative', display: 'inline-block', userSelect: 'none' }}
+      style={{ position: 'relative', width: '100%', userSelect: 'none' }}
     >
       {/* ── Trigger ── */}
       <button
@@ -41,14 +41,16 @@ export function OrderBySelect({ options = [], value, onChange }) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '0.6rem',
-          padding: '0.5rem 1rem 0.5rem 0.9rem',
+          gap: '0.5rem',
+          width: '100%',
+          height: '38px',
+          boxSizing: 'border-box',
+          padding: '0 0.75rem',
           backgroundColor: '#ffffff',
           border: `1.5px solid ${open ? '#8b5a2b' : '#d6c7b2'}`,
           borderRadius: '10px',
           cursor: 'pointer',
           transition: 'all 0.15s ease',
-          minWidth: '160px',
           boxShadow: open ? '0 0 0 3px rgba(139,90,43,0.12)' : '0 1px 2px rgba(0,0,0,0.04)',
           outline: 'none',
         }}
@@ -56,10 +58,10 @@ export function OrderBySelect({ options = [], value, onChange }) {
         onMouseLeave={e => { if (!open) e.currentTarget.style.borderColor = '#d6c7b2'; }}
       >
         {/* Sort icon */}
-        <SelectedIcon size={18} color="#8b5a2b" strokeWidth={2} />
+        <SelectedIcon size={16} color="#8b5a2b" strokeWidth={2} style={{ flexShrink: 0 }} />
 
         {/* Label */}
-        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.9rem', color: '#1e293b', textAlign: 'left' }}>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.9rem', color: '#1e293b', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {selected?.label || 'Select...'}
         </span>
 

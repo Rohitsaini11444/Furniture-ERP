@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import SearchableSelect from '../components/SearchableSelect';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
@@ -722,7 +722,9 @@ function BuyerPIs() {
       ) : (
         <>
           <div className="page-header">
-            <h2>Performa Invoices (PI)</h2>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FileSpreadsheet size={28} color="#2563eb" style={{ flexShrink: 0 }} /> Performa Invoices (PI)
+            </h2>
             <button onClick={() => navigate('/performa-invoices/new')} className="btn-primary">+ Create New PI</button>
           </div>
 

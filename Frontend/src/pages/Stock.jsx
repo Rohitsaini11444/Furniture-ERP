@@ -308,7 +308,9 @@ function Stock() {
           {/* Header */}
           <div className="page-header">
             <div>
-              <h2>Inventory Stock Registry</h2>
+              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Warehouse size={28} color="#059669" style={{ flexShrink: 0 }} /> Inventory Stock Registry
+              </h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
                 Track passed pieces and warehouse stock availability.
               </p>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight } from 'lucide-react';
+import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
@@ -165,6 +165,64 @@ function Samples() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  // Excel Import state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importErrorType, setImportErrorType] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/samples/download-template/', { responseType: 'blob' });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Samples_Import_Template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (link.parentNode) link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 200);
+    } catch (err) {
+      console.error('Template download error:', err);
+    }
+  };
+
+  const handleImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!importFile) return;
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+
+    const formData = new FormData();
+    formData.append('file', importFile);
+
+    try {
+      const res = await api.post('/samples/import-excel/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportSuccess(res.data.detail || 'Samples imported successfully!');
+      setImportFile(null);
+      fetchSamples();
+    } catch (err) {
+      console.error('Import error:', err);
+      const errData = err.response?.data;
+      const errMsg = errData?.detail || 'Invalid file format or missing required column headers. Please download expected template below.';
+      const errType = errData?.error_type || 'Format Error';
+      setImportError(errMsg);
+      setImportErrorType(errType);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -349,6 +407,7 @@ function Samples() {
 
       const updatedFormData = {
         ...formData,
+        sample_id: formData.style_no || formData.sample_id || `SMP-${Date.now()}`,
         material: materialJoined,
         finish_color: finishJoined,
       };
@@ -450,12 +509,8 @@ function Samples() {
                   <h3 className="form-section-title">📋 Basic Info</h3>
                   <div className="form-grid-2">
                     <div className="form-group">
-                      <label className="form-label">Sample ID *</label>
-                      <input required type="text" name="sample_id" className="form-input" value={formData.sample_id} onChange={handleChange} placeholder="e.g. SMP-1021" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Style No.</label>
-                      <input type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-204" />
+                      <label className="form-label">Style No. *</label>
+                      <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-204" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Buyer</label>
@@ -653,10 +708,22 @@ function Samples() {
             </div>
           </div>
 
-          {/* Page Header (Contains + Create New) */}
-          <div className="page-header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0.5rem 1rem' }}>
-            <h2 className="desktop-only" style={{ marginRight: 'auto' }}>Samples</h2>
-            <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+          {/* Page Header (Contains Import Excel & + Create New) */}
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 1rem' }}>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Package size={28} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
+            </h2>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <button 
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }} 
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer' }}
+              >
+                <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
+              </button>
+              <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+            </div>
           </div>
 
           {/* Table (Desktop) */}
@@ -673,7 +740,6 @@ function Samples() {
                     />
                   </th>
                   <th>Images</th>
-                  <th>Sample ID</th>
                   <th>Style No.</th>
                   <th>Product Name</th>
                   <th>Buyer</th>
@@ -730,8 +796,7 @@ function Samples() {
                           )}
                         </div>
                       </td>
-                      <td>{s.sample_id}</td>
-                      <td>{s.style_no || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td><strong>{s.style_no || s.id}</strong></td>
                       <td><strong>{s.product_name}</strong></td>
                       <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                       <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
@@ -819,6 +884,187 @@ function Samples() {
           startIndex={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
         />
+      )}
+      {/* ── Excel Import Modal ── */}
+      {isImportModalOpen && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setIsImportModalOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '1rem'
+          }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={e => e.stopPropagation()} 
+            style={{ 
+              maxWidth: '540px', 
+              width: '100%',
+              backgroundColor: '#ffffff', 
+              borderRadius: '16px',
+              padding: '1.5rem',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}
+          >
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
+                <FileSpreadsheet size={22} color="#8b5a2b" /> Import Samples via Excel
+              </h3>
+              <button onClick={() => setIsImportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ paddingTop: '1.25rem' }}>
+              <style>{`
+                @keyframes errorShakeSlide {
+                  0% { opacity: 0; transform: translateY(-12px) scale(0.97); }
+                  30% { opacity: 1; transform: translateY(0) scale(1); }
+                  45% { transform: translateX(-6px); }
+                  60% { transform: translateX(6px); }
+                  75% { transform: translateX(-3px); }
+                  90% { transform: translateX(3px); }
+                  100% { transform: translateX(0); }
+                }
+              `}</style>
+
+              {/* Template Download Alert (ONLY shown when there is NO error) */}
+              {!importError && !importSuccess && (
+                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#334155' }}>Need the expected Excel format?</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>Download pre-formatted template with headers & examples.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="btn-secondary"
+                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}
+                  >
+                    <Download size={14} /> Download Template
+                  </button>
+                </div>
+              )}
+
+              {/* Error Alert Box with Motion & Shake Animation */}
+              {importError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  borderRadius: '12px',
+                  padding: '1.1rem 1.25rem',
+                  marginBottom: '1.25rem',
+                  animation: 'errorShakeSlide 0.45s ease-in-out forwards',
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.14)'
+                }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <AlertCircle size={22} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, color: '#991b1b', fontSize: '0.95rem' }}>Invalid File or Format</span>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          backgroundColor: '#fee2e2',
+                          color: '#dc2626',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          {importErrorType || 'Schema Error'}
+                        </span>
+                      </div>
+                      <div style={{ color: '#7f1d1d', fontSize: '0.85rem', marginTop: '6px', lineHeight: 1.45, fontWeight: 500 }}>
+                        {importError}
+                      </div>
+                      <div style={{ marginTop: '0.9rem' }}>
+                        <button
+                          type="button"
+                          onClick={handleDownloadTemplate}
+                          style={{
+                            backgroundColor: '#dc2626',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.84rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#b91c1c'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#dc2626'}
+                        >
+                          <Download size={15} /> Download Expected Excel Template
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Success Alert Box */}
+              {importSuccess && (
+                <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', color: '#166534', fontSize: '0.88rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CheckCircle size={18} color="#16a34a" /> {importSuccess}
+                </div>
+              )}
+
+              {/* Upload Form */}
+              <form onSubmit={handleImportSubmit}>
+                <div style={{ border: '2px dashed #cbd5e1', borderRadius: '12px', padding: '1.75rem 1rem', textAlign: 'center', backgroundColor: '#faf6f0', cursor: 'pointer' }}
+                  onClick={() => document.getElementById('excelFileInput').click()}
+                >
+                  <FileSpreadsheet size={36} color="#8b5a2b" style={{ margin: '0 auto 0.5rem' }} />
+                  <div style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.95rem' }}>
+                    {importFile ? importFile.name : 'Click to upload or drag & drop Excel file (.xlsx)'}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                    Includes automatic high-quality cell image extraction
+                  </div>
+                  <input
+                    id="excelFileInput"
+                    type="file"
+                    accept=".xlsx, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      if (e.target.files?.[0]) {
+                        setImportFile(e.target.files[0]);
+                        setImportError('');
+                        setImportSuccess('');
+                      }
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setIsImportModalOpen(false)}>Close</button>
+                  <button type="submit" className="btn-primary" disabled={!importFile || importing}>
+                    {importing ? 'Processing & Extracting Images...' : 'Upload & Import Data'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
