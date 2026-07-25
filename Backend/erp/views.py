@@ -10,12 +10,14 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenpyxlImage
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from PIL import Image as PILImage
 import tempfile
 import os
 from decimal import Decimal
 from num2words import num2words
-
+from django.db.models import Q, Case, When, Value, IntegerField
 from django.conf import settings
 from .models import (
     User, Sample, SampleImage,
@@ -193,6 +195,12 @@ class SampleViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
+            # Support compact/minimal response either via dedicated endpoint
+            # `/api/samples/compact/` or by adding `compact=true` to the
+            # regular list endpoint: `/api/samples/?compact=true`.
+            if self.request.query_params.get('compact') == 'true':
+                from .serializers import SampleCompactSerializer
+                return SampleCompactSerializer
             if self.request.query_params.get('nopage') == 'true':
                 from .serializers import SampleDropdownSerializer
                 return SampleDropdownSerializer
@@ -201,15 +209,48 @@ class SampleViewSet(viewsets.ModelViewSet):
         from .serializers import SampleSerializer
         return SampleSerializer
 
+    # def get_queryset(self):
+    #     qs = Sample.objects.select_related('buyer').prefetch_related('images').all()
+    #     buyer = self.request.query_params.get('buyer')
+    #     material = self.request.query_params.get('material')
+    #     if buyer:
+    #         qs = qs.filter(buyer_id=buyer)
+    #     if material:
+    #         qs = qs.filter(material__icontains=material)
+    #     return qs
+
     def get_queryset(self):
         qs = Sample.objects.select_related('buyer').prefetch_related('images').all()
+
         buyer = self.request.query_params.get('buyer')
         material = self.request.query_params.get('material')
+        q = self.request.query_params.get('search')
+
         if buyer:
             qs = qs.filter(buyer_id=buyer)
         if material:
             qs = qs.filter(material__icontains=material)
-        return qs
+
+        if q:
+            q = q.strip()
+            # 1. Filter ONLY by style_no or product_name
+            qs = qs.filter(
+                Q(style_no__icontains=q) |
+                Q(product_name__icontains=q)
+            )
+
+            # 2. Prioritize exact matches at the top of the list
+            qs = qs.annotate(
+                match_priority=Case(
+                    When(style_no__iexact=q, then=Value(1)),      # Exact style_no match first
+                    When(product_name__iexact=q, then=Value(2)),  # Exact product_name match second
+                    When(style_no__istartswith=q, then=Value(3)), # Starts with search query third
+                    default=Value(4),
+                    output_field=IntegerField(),
+                )
+            ).order_by('match_priority', 'style_no')
+
+        return qs   
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -220,6 +261,27 @@ class SampleViewSet(viewsets.ModelViewSet):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get'], url_path='compact')
+    def compact(self, request):
+        """GET /api/samples/compact/?search=... — returns minimal fields for quick search/dropdowns."""
+        from django.db.models import Q
+        from .serializers import SampleCompactSerializer
+
+        qs = self.get_queryset()
+        q = request.query_params.get('search')
+        if q:
+            qs = qs.filter(
+                Q(sample_id__icontains=q) |
+                Q(style_no__icontains=q) |
+                Q(product_name__icontains=q)
+            )
+
+        page = self.paginate_queryset(qs)
+        serializer = SampleCompactSerializer(page or qs, many=True, context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 
 class SampleImageViewSet(viewsets.ModelViewSet):
@@ -670,9 +732,9 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
         # ── Business data ──────────────────────────────────────────────────────
         CNAME  = 'PINKCITY ENTERPRISES'
-        CADDR1 = 'G-78, EPIP, Sitapura Industrial Area, Tonk Road,'
-        CADDR2 = 'Jaipur-302022 Rajasthan, India'
-        CIEC   = 'IEC CODE :  1397002620'
+        CADDR1 = 'G-78, EPIP, Indl. Area Sitapura,'
+        CADDR2 = 'JAIPUR'
+        CIEC   = 'IEC CODE : 1397002620'
         CGSTIN = 'GSTIN/UIN: 08ABXPS4077R1Z8'
         CSTATE = 'State Name : Rajasthan, Code : 08'
         CPAN   = 'ABXPS4077R'
@@ -754,111 +816,137 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
         # ── LEFT column ──────────────────────────────────────────────────────
         LX      = ML + P
-        LOGO_W  = 16.0 * mm
-        LOGO_H  = 14.0 * mm
+        LOGO_SIZE = 16.0 * mm
         logo_x  = ML + P
-        logo_y  = HDR_TOP - P - LOGO_H
+        logo_y  = HDR_TOP - P - LOGO_SIZE
 
-        # Stylised 'pe' logo box
-        c.setLineWidth(1.0)
-        c.rect(logo_x, logo_y, LOGO_W, LOGO_H, stroke=1, fill=0)
-        # Horizontal overline above 'e' (reference shows a bar above the letter)
-        bar_y = logo_y + LOGO_H - 3.2*mm
-        c.setLineWidth(1.2)
-        c.line(logo_x + 6.5*mm, bar_y, logo_x + LOGO_W - 1.0*mm, bar_y)
-        c.setLineWidth(0.5)
-        ds(logo_x + 1.0*mm, logo_y + 3.5*mm,  'p', 'Helvetica-Bold', 11)
-        ds(logo_x + 6.5*mm, logo_y + 3.5*mm,  'e', 'Helvetica-Bold', 11)
+        # Draw PNG Logo image if exists, otherwise fallback to stylized logo
+        logo_drawn = False
+        import os
+        logo_path = r"C:\Users\User\OneDrive\Desktop\ERP Furniture\Frontend\src\assets\Pinkcity_Logo.png"
+        if os.path.exists(logo_path):
+            try:
+                c.drawImage(logo_path, logo_x, logo_y, width=LOGO_SIZE, height=LOGO_SIZE, mask='auto')
+                logo_drawn = True
+            except Exception:
+                pass
+
+        if not logo_drawn:
+            # Stylised 'pe' logo box fallback
+            LOGO_W = 16.0 * mm
+            LOGO_H = 14.0 * mm
+            fallback_logo_y = HDR_TOP - P - LOGO_H
+            c.setLineWidth(1.0)
+            c.rect(logo_x, fallback_logo_y, LOGO_W, LOGO_H, stroke=1, fill=0)
+            bar_y = fallback_logo_y + LOGO_H - 3.2*mm
+            c.setLineWidth(1.2)
+            c.line(logo_x + 6.5*mm, bar_y, logo_x + LOGO_W - 1.0*mm, bar_y)
+            c.setLineWidth(0.5)
+            ds(logo_x + 1.0*mm, fallback_logo_y + 3.5*mm,  'p', 'Helvetica-Bold', 11)
+            ds(logo_x + 6.5*mm, fallback_logo_y + 3.5*mm,  'e', 'Helvetica-Bold', 11)
 
         # "Invoice To" label beside logo
-        ds(logo_x + LOGO_W + 1.5*mm, logo_y + LOGO_H - 2.5*mm,
-           'Invoice To', 'Helvetica', 7)
+        info_x = logo_x + LOGO_SIZE + 3.0 * mm
+        ds(info_x, HDR_TOP - 3.0 * mm, 'Invoice To', 'Helvetica', 7)
 
-        # Company details below logo
-        cy = logo_y - 1.5*mm
-        ds(logo_x + LOGO_W + 1.5*mm, cy, CNAME,  'Helvetica-Bold', 13);  cy -= 4.5*mm
-        
-        # Now switch to full width for address
-        cy -= 1.0*mm
-        ds(LX, cy, CADDR1, 'Helvetica', 8);        cy -= 3.5*mm
-        ds(LX, cy, CADDR2, 'Helvetica', 8);        cy -= 3.5*mm
-        ds(LX, cy, CIEC,   'Helvetica', 8);        cy -= 3.5*mm
-        ds(LX, cy, CGSTIN, 'Helvetica', 8);        cy -= 3.5*mm
-        ds(LX, cy, CSTATE, 'Helvetica', 8);        cy -= 3.5*mm
+        # Company details beside logo (Invoice To block)
+        ds(info_x, HDR_TOP - 6.5 * mm, CNAME, 'Helvetica-Bold', 10)
+        ds(info_x, HDR_TOP - 10.5 * mm, CADDR1, 'Helvetica', 8)
+        ds(info_x, HDR_TOP - 14.0 * mm, CADDR2, 'Helvetica', 8)
+        ds(info_x, HDR_TOP - 17.5 * mm, CIEC, 'Helvetica', 8)
+        ds(info_x, HDR_TOP - 21.0 * mm, CGSTIN, 'Helvetica', 8)
+        ds(info_x, HDR_TOP - 24.5 * mm, CSTATE, 'Helvetica', 8)
 
-        # Horizontal divider between company and supplier
-        div_y = cy - 1.5*mm
+        # Horizontal divider between company and supplier (exactly halfway)
+        div_y = HDR_TOP - 34.0 * mm
         hline(ML, div_y, SPX, lw=0.5)
 
-        # Supplier block
-        cy = div_y - 3.5*mm
-        ds(LX, cy, 'Supplier (Bill from)', 'Helvetica', 7);  cy -= 4.0*mm
-        ds(LX, cy, sup.name, 'Helvetica-Bold', 10);          cy -= 4.5*mm
+        # Supplier block (bottom half)
+        ds(LX, div_y - 3.0 * mm, 'Supplier (Bill from)', 'Helvetica', 7)
+        ds(LX, div_y - 6.5 * mm, sup.name, 'Helvetica-Bold', 10)
 
-        sup_max_w = LEFT_W - 3.0*mm
+        cy = div_y - 10.5 * mm
+        sup_max_w = LEFT_W - 4.0 * mm
+        lines_to_draw = []
         if sup.address:
             for addr_seg in sup.address.split('\n'):
                 addr_seg = addr_seg.strip()
-                if not addr_seg:
-                    continue
-                for wl in wrap_line(addr_seg, 'Helvetica', 8, sup_max_w):
-                    ds(LX, cy, wl, 'Helvetica', 8);  cy -= 3.5*mm
+                if addr_seg:
+                    lines_to_draw.extend(wrap_line(addr_seg, 'Helvetica', 8, sup_max_w))
         if sup.phone:
-            ds(LX, cy, f'(M) {sup.phone}',           'Helvetica', 8);  cy -= 3.5*mm
+            for ph in sup.phone.split('\n'):
+                ph = ph.strip()
+                if ph:
+                    prefix = "" if (ph.startswith("M.") or ph.startswith("M. ")) else "M."
+                    lines_to_draw.append(f"{prefix}{ph}")
         if sup.gstin:
-            ds(LX, cy, f'GSTIN/UIN   :   {sup.gstin}', 'Helvetica', 8);  cy -= 3.5*mm
+            lines_to_draw.append(f"GSTIN/UIN   : {sup.gstin}")
         if sup.state_name:
-            ds(LX, cy, f'State Name  :   {sup.state_name}', 'Helvetica', 8)
+            lines_to_draw.append(f"State Name  : {sup.state_name}")
 
-        # ── RIGHT column grid ─────────────────────────────────────────────────
-        R_MID  = SPX + RIGHT_W / 2      # inner vertical divider of right grid
-        vline(R_MID, HDR_TOP - 20.0*mm, HDR_TOP)  # draw it partially height (only top 3 rows)
+        spacing = 3.2 * mm if len(lines_to_draw) > 5 else 3.5 * mm
+        for ln in lines_to_draw:
+            if cy >= HDR_BOT + 1.5 * mm:
+                ds(LX, cy, ln, 'Helvetica', 8)
+                cy -= spacing
+
+        # ── RIGHT column grid (4 equal rows) ──────────────────────────────────
+        row_h = 17.0 * mm
+        row1_bot = HDR_TOP - row_h
+        row2_bot = HDR_TOP - 2 * row_h
+        row3_bot = HDR_TOP - 3 * row_h
+        row4_bot = HDR_TOP - 4 * row_h  # HDR_BOT
+
+        # Draw horizontal lines for the right grid
+        hline(SPX, row1_bot, SPX + RIGHT_W)
+        hline(SPX, row2_bot, SPX + RIGHT_W)
+        hline(SPX, row3_bot, SPX + RIGHT_W)
+
+        # Draw vertical lines for specific split rows
+        # Row 1 is split ~55/45
+        vline(SPX + RIGHT_W * 0.55, row1_bot, HDR_TOP)
+        # Row 3 is split ~75/25
+        vline(SPX + RIGHT_W * 0.75, row3_bot, row2_bot)
 
         R_LABEL_H = 3.8 * mm
-        R_VALUE_H = 6.2 * mm
-        R_ROW_H   = R_LABEL_H + R_VALUE_H
+        R_VALUE_BOT = 2.0 * mm
 
-        def right_row(top_y, label_l, label_r, val_l, val_r):
-            """Draw one label+value row in the right header grid."""
-            bot_y = top_y - R_ROW_H
-            hline(SPX, bot_y, SPX + RIGHT_W)
-            ds(SPX + P, top_y - R_LABEL_H,  label_l, 'Helvetica', 7)
-            ds(R_MID + P, top_y - R_LABEL_H, label_r, 'Helvetica', 7)
-            if val_l:
-                ds(SPX + P, bot_y + 1.5*mm, val_l, 'Helvetica-Bold', 10)
-            if val_r:
-                ds(R_MID + P, bot_y + 1.5*mm, val_r, 'Helvetica-Bold', 10)
-            return bot_y
+        # Row 1: Purchase Order No. & Dated
+        ds(SPX + P, HDR_TOP - R_LABEL_H, 'Purchase Order No.', 'Helvetica', 7)
+        ds(SPX + P, row1_bot + R_VALUE_BOT, po.po_number, 'Helvetica-Bold', 10)
+        ds(SPX + RIGHT_W * 0.55 + P, HDR_TOP - R_LABEL_H, 'Dated', 'Helvetica', 7)
+        ds(SPX + RIGHT_W * 0.55 + P, row1_bot + R_VALUE_BOT, po_date_str, 'Helvetica-Bold', 10)
 
-        r1_bot = right_row(HDR_TOP,
-                           'Purchase Order No.', 'Dated',
-                           po.po_number, po_date_str)
+        # Row 2: Mode/Terms of Payment
+        ds(SPX + P, row1_bot - R_LABEL_H, 'Mode/Terms of Payment', 'Helvetica', 7)
+        ds(SPX + P, row2_bot + R_VALUE_BOT, po.mode_of_payment or '', 'Helvetica-Bold', 10)
 
-        r2_bot = right_row(r1_bot,
-                           'PO Due Date', 'Mode/Terms of Payment',
-                           due_date_str,
-                           po.mode_of_payment or '')
+        # Row 3: PO Due Date & Supervisor
+        ds(SPX + P, row2_bot - R_LABEL_H, 'PO Due Date', 'Helvetica', 7)
+        due_date_val = f"{due_date_str}, No Delay Please" if due_date_str else ""
+        ds(SPX + P, row3_bot + R_VALUE_BOT, due_date_val, 'Helvetica-Bold', 9)
+        ds(SPX + RIGHT_W * 0.75 + P, row2_bot - R_LABEL_H, 'Supervisor', 'Helvetica', 7)
+        ds(SPX + RIGHT_W * 0.75 + P, row3_bot + R_VALUE_BOT, po.supervisor or '', 'Helvetica-Bold', 10)
 
-        # 3rd row: Terms of delivery / Supervisor
-        # Note: We do NOT draw bottom line here if it's the open NKU space
-        r3_top_y = r2_bot
-        r3_bot_y = r3_top_y - R_ROW_H
-        # hline(SPX, r3_bot_y, SPX + RIGHT_W) # Do not draw line
-        ds(SPX + P, r3_top_y - R_LABEL_H,  'Terms of Delivery', 'Helvetica', 7)
-        ds(R_MID + P, r3_top_y - R_LABEL_H, 'Supervisor', 'Helvetica', 7)
+        # Row 4: Terms of Delivery
+        ds(SPX + P, row3_bot - R_LABEL_H, 'Terms of Delivery', 'Helvetica', 7)
+        delivery_lines = []
         if po.terms_of_delivery:
-             ds(SPX + P, r3_bot_y + 1.5*mm, po.terms_of_delivery, 'Helvetica-Bold', 10)
-        if po.supervisor:
-             ds(R_MID + P, r3_bot_y + 1.5*mm, po.supervisor, 'Helvetica', 10)
-        
-        # NKU refs — large open area, no middle divider
+            for ln in po.terms_of_delivery.split('\n'):
+                ln = ln.strip()
+                if ln:
+                    delivery_lines.extend(wrap_line(ln, 'Helvetica-Bold', 10, RIGHT_W - 4.0 * mm))
         if po.nku_refs:
-            nku_y = r3_bot_y - 2.0*mm
-            for ref_ln in po.nku_refs.split('\n'):
-                ref_ln = ref_ln.strip()
-                if ref_ln:
-                    ds(SPX + P, nku_y, ref_ln, 'Helvetica-Bold', 10)
-                    nku_y -= 4.5*mm
+            for ln in po.nku_refs.split('\n'):
+                ln = ln.strip()
+                if ln:
+                    delivery_lines.extend(wrap_line(ln, 'Helvetica-Bold', 10, RIGHT_W - 4.0 * mm))
+
+        dy_deliv = row3_bot - 8.0 * mm
+        for d_ln in delivery_lines[:2]:
+            ds(SPX + P, dy_deliv, d_ln, 'Helvetica-Bold', 10)
+            dy_deliv -= 4.0 * mm
+
 
         # ═══════════════════════════════════════════════════════════════════════
         # 3. ITEMS TABLE
@@ -1631,13 +1719,14 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
 
         font_bold_lg = Font(name='Calibri', size=14, bold=True)
         font_bold_md = Font(name='Calibri', size=11, bold=True)
-        font_bold_sm = Font(name='Calibri', size=9, bold=True)
+        font_bold_sm = Font(name='Calibri', size=10, bold=True)
         font_regular = Font(name='Calibri', size=9)
-        fill_gray = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
+        fill_gray = PatternFill(start_color='EAEAEA', end_color='EAEAEA', fill_type='solid')
 
         align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
         align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
         align_right = Alignment(horizontal='right', vertical='center', wrap_text=True)
+        align_top_left = Alignment(horizontal='left', vertical='top', wrap_text=True, indent=1)
 
         def style_box(row_start, col_start, row_end, col_end, text="", font=font_regular, alignment=align_center, fill=None):
             if row_start != row_end or col_start != col_end:
@@ -1645,7 +1734,8 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
             
             top_left = ws.cell(row=row_start, column=col_start)
             top_left.value = text
-            top_left.font = font
+            if not isinstance(text, CellRichText):
+                top_left.font = font
             top_left.alignment = alignment
             
             for r in range(row_start, row_end + 1):
@@ -1655,54 +1745,118 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
                     if fill:
                         cell.fill = fill
 
-        ws.row_dimensions[1].height = 65
+        ws.row_dimensions[1].height = 110
 
         # Block 1: Pinkcity Enterprises Header (A1:E1)
-        company_text = (
-            "Pinkcity Enterprises\n"
-            "G-78, EPIP, Sitapura Industrial Area, Tonk Road,\n"
-            "Jaipur-302022 Rajasthan, India\n"
-            "Tele #: +91-141-2771144 / 2770033 | GSTIN: 08ABXPS4077R1Z8"
+        font_company = InlineFont(rFont='Times New Roman', sz=20, b=True)
+        font_block1_addr = InlineFont(rFont='Times New Roman', sz=10)
+        company_text = CellRichText(
+            TextBlock(font_company, "Pinkcity Enterprises\n"),
+            TextBlock(font_block1_addr, "G 78 EPIP, Sitapura Industrial Area,\n"),
+            TextBlock(font_block1_addr, "Jaipur 302022 -\n"),
+            TextBlock(font_block1_addr, "Phone: +91 141 277 1144\n")  # Trailing newline to push title slightly higher
         )
-        style_box(1, 1, 1, 5, company_text, font=font_bold_md, alignment=align_center)
+        style_box(1, 1, 1, 5, company_text, alignment=align_center)
 
         # Block 2: Buyer Address (F1:J1)
         buyer_name = pi.buyer.name if pi.buyer else "BUYER"
         buyer_addr = pi.buyer.address if (pi.buyer and pi.buyer.address) else ""
-        buyer_text = f"{buyer_name.upper()}\n{buyer_addr}"
-        style_box(1, 6, 1, 10, buyer_text, font=font_bold_md, alignment=align_left, fill=fill_gray)
+        font_buyer_title = InlineFont(rFont='Calibri', sz=20, b=True)
+        font_buyer_addr = InlineFont(rFont='Calibri', sz=10)
+        font_spacer_calibri = InlineFont(rFont='Calibri', sz=5)
+        
+        buyer_blocks = [
+            TextBlock(font_spacer_calibri, "\n"),  # Top padding
+            TextBlock(font_buyer_title, f"{buyer_name.upper()}\n"),
+            TextBlock(font_spacer_calibri, "\n")   # Spacing between title and address
+        ]
+        if buyer_addr:
+            buyer_blocks.append(TextBlock(font_buyer_addr, buyer_addr))
+        style_box(1, 6, 1, 10, CellRichText(*buyer_blocks), alignment=align_top_left, fill=fill_gray)
 
-        # Block 3: Delivered To (K1:O1)
+        # Block 3: Delivered To (K1:N1)
         delivered_contact = pi.delivered_to_name or ""
         delivered_comp = pi.delivered_to_company or (pi.buyer.name if pi.buyer else "")
         delivered_addr = pi.delivered_to_address or ""
-        delivered_text = f"DELIVERED TO: {delivered_contact}\n{delivered_comp}\n{delivered_addr}".strip()
-        style_box(1, 11, 1, 15, delivered_text, font=font_bold_md, alignment=align_left, fill=fill_gray)
+        font_delim = InlineFont(rFont='Calibri', sz=9)
+        font_comp = InlineFont(rFont='Calibri', sz=20, b=True)
+        font_addr = InlineFont(rFont='Calibri', sz=10)
+        
+        deliv_blocks = [
+            TextBlock(font_spacer_calibri, "\n")  # Top padding
+        ]
+        if delivered_contact:
+            deliv_blocks.append(TextBlock(font_delim, f"DELIVERED TO: {delivered_contact}\n"))
+        else:
+            deliv_blocks.append(TextBlock(font_delim, "DELIVERED TO:\n"))
+        deliv_blocks.append(TextBlock(font_comp, f"{delivered_comp}\n"))
+        deliv_blocks.append(TextBlock(font_spacer_calibri, "\n"))  # Spacing
+        if delivered_addr:
+            deliv_blocks.append(TextBlock(font_addr, delivered_addr))
+        style_box(1, 11, 1, 14, CellRichText(*deliv_blocks), alignment=align_top_left, fill=fill_gray)
 
-        # Block 4: PI Summary Info (P1:Q1)
+        # Block 4: PI Summary Info (O1:Q1)
         formatted_date = pi.pi_date.strftime('%d/%m/%Y') if pi.pi_date else ''
         formatted_ex_fac = pi.ex_factory_date.strftime('%d %B, %Y') if pi.ex_factory_date else ''
-        pi_summary_text = (
-            f"PI of PO # {pi.pi_no}\n"
-            f"Date : {formatted_date}\n"
-            f"Ex-Factory : {formatted_ex_fac}\n"
-            f"Payment: {pi.payment_terms or '100% TT 30 Days from BL'}"
+        font_pi_bold = InlineFont(rFont='Times New Roman', sz=12, b=True)
+        font_spacer_times = InlineFont(rFont='Times New Roman', sz=6)
+        
+        pi_summary_text = CellRichText(
+            TextBlock(font_spacer_times, "\n"),  # Top padding
+            TextBlock(font_pi_bold, f"PI of PO # {pi.pi_no}\n"),
+            TextBlock(font_pi_bold, f"Date : {formatted_date}\n"),
+            TextBlock(font_pi_bold, f"Ex-Factory : {formatted_ex_fac}\n"),
+            TextBlock(font_pi_bold, f"Payment: {pi.payment_terms or '100% TT 30 Days from BL'}")
         )
-        style_box(1, 16, 1, 17, pi_summary_text, font=font_bold_md, alignment=align_left, fill=fill_gray)
+        style_box(1, 15, 1, 17, pi_summary_text, alignment=align_top_left, fill=fill_gray)
 
         # ─── Table Headers (Row 2) ───────────────────────────────────────────
-        ws.row_dimensions[2].height = 25
-        headers = [
-            "S. No.", "Barcode", "Buyer #", "Style No.", "Picture",
-            "Name", "Size CMs", "Material", "Finish", "CBM",
-            "Price USD", "Units", "Total CBM", "Total Amount", "Remarks"
+        ws.row_dimensions[2].height = 28
+        headers_first_part = [
+            ("S. No.", 1, 1),
+            ("Barcode", 2, 2),
+            ("Buyer #", 3, 3),
+            ("Style No.", 4, 4),
+            ("Picture", 5, 5),
+            ("Name", 6, 6),
+            ("Size CMs", 7, 9),
+        ]
+        headers_second_part = [
+            ("Material", 10),
+            ("Finish", 11),
+            ("CBM", 12),
+            ("Price USD", 13),
+            ("Units", 14),
+            ("Total CBM", 15),
+            ("Total Amount", 16),
+            ("Remarks", 17),
         ]
 
-        for col_idx, h_text in enumerate(headers, 1):
-            c = ws.cell(row=2, column=col_idx, value=h_text)
-            c.font = font_bold_sm
-            c.alignment = align_center
-            c.border = border_all
+        for title, start_col, end_col in headers_first_part:
+            style_box(2, start_col, 2, end_col, title, font=font_bold_sm, alignment=align_center)
+        for title, col_idx in headers_second_part:
+            style_box(2, col_idx, 2, col_idx, title, font=font_bold_sm, alignment=align_center)
+
+        # Apply custom borders to the header blocks and headers row (Rows 1 & 2)
+        blue_medium = Side(style='medium', color='1F4E78')
+        thin_black = Side(style='thin', color='000000')
+
+        for r in range(1, 3):
+            for c in range(1, 18):
+                cell = ws.cell(row=r, column=c)
+                
+                # Determine individual sides
+                left_side = blue_medium if c == 1 else (thin_black if c in (6, 11, 15) else Side(style=None))
+                right_side = blue_medium if c == 17 else (thin_black if c in (5, 10, 14) else Side(style=None))
+                top_side = blue_medium if r == 1 else thin_black
+                bottom_side = thin_black
+                
+                # For Row 2, every vertical divider should be thin black except the outer edges
+                if r == 2:
+                    left_side = blue_medium if c == 1 else thin_black
+                    right_side = blue_medium if c == 17 else thin_black
+                
+                cell.border = Border(left=left_side, right=right_side, top=top_side, bottom=bottom_side)
 
         # ─── Line Items (Row 3 onwards) ──────────────────────────────────────
         curr_row = 3
@@ -1713,108 +1867,118 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
 
         items = list(pi.items.all())
         for idx, item in enumerate(items, 1):
-            ws.row_dimensions[curr_row].height = 60
+            ws.row_dimensions[curr_row].height = 80
 
-            # S. No.
+            # S. No. (Col 1)
             c = ws.cell(row=curr_row, column=1, value=idx)
             c.font = font_regular
             c.alignment = align_center
             c.border = border_all
 
-            # Barcode
+            # Barcode (Col 2)
             c = ws.cell(row=curr_row, column=2, value=item.barcode or "")
             c.font = font_regular
             c.alignment = align_center
             c.border = border_all
 
-            # Buyer #
+            # Buyer # (Col 3)
             c = ws.cell(row=curr_row, column=3, value=item.buyer_no or "")
             c.font = font_regular
             c.alignment = align_center
             c.border = border_all
 
-            # Style No
+            # Style No (Col 4)
             c = ws.cell(row=curr_row, column=4, value=item.style_no or "")
             c.font = font_bold_sm
             c.alignment = align_center
             c.border = border_all
 
-            # Picture (Col E = Col 5)
+            # Picture (Col 5)
             c = ws.cell(row=curr_row, column=5, value="")
             c.border = border_all
 
-            # Name
+            # Name (Col 6)
             c = ws.cell(row=curr_row, column=6, value=item.product_name or "")
             c.font = font_regular
             c.alignment = align_left
             c.border = border_all
 
-            # Size CMs
-            l = float(item.size_length) if item.size_length else 0
-            b_dim = float(item.size_breadth) if item.size_breadth else 0
-            h = float(item.size_height) if item.size_height else 0
-            size_str = f"{l} x {b_dim} x {h}" if (l or b_dim or h) else ""
-            c = ws.cell(row=curr_row, column=7, value=size_str)
+            # Size CMs (L, W, H in Cols 7, 8, 9)
+            l = float(item.size_length) if item.size_length else ""
+            b_dim = float(item.size_breadth) if item.size_breadth else ""
+            h = float(item.size_height) if item.size_height else ""
+            
+            c_l = ws.cell(row=curr_row, column=7, value=l)
+            c_l.font = font_regular
+            c_l.alignment = align_center
+            c_l.border = border_all
+            
+            c_b = ws.cell(row=curr_row, column=8, value=b_dim)
+            c_b.font = font_regular
+            c_b.alignment = align_center
+            c_b.border = border_all
+            
+            c_h = ws.cell(row=curr_row, column=9, value=h)
+            c_h.font = font_regular
+            c_h.alignment = align_center
+            c_h.border = border_all
+
+            # Material (Col 10)
+            c = ws.cell(row=curr_row, column=10, value=item.material or "")
             c.font = font_regular
             c.alignment = align_center
             c.border = border_all
 
-            # Material
-            c = ws.cell(row=curr_row, column=8, value=item.material or "")
+            # Finish (Col 11)
+            c = ws.cell(row=curr_row, column=11, value=item.finish_color or "")
             c.font = font_regular
             c.alignment = align_center
             c.border = border_all
 
-            # Finish
-            c = ws.cell(row=curr_row, column=9, value=item.finish_color or "")
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # CBM
+            # CBM (Col 12)
             cbm_val = float(item.cbm) if item.cbm else 0.0
-            c = ws.cell(row=curr_row, column=10, value=cbm_val)
+            c = ws.cell(row=curr_row, column=12, value=cbm_val)
             c.font = font_regular
             c.alignment = align_right
             c.number_format = '0.0000'
             c.border = border_all
 
-            # Price USD
+            # Price USD (Col 13)
             price_val = float(item.price_usd) if item.price_usd else 0.0
-            c = ws.cell(row=curr_row, column=11, value=price_val)
+            c = ws.cell(row=curr_row, column=13, value=price_val)
             c.font = font_regular
             c.alignment = align_right
             c.number_format = '"$"#,##0.00'
             c.border = border_all
 
-            # Units
+            # Units (Col 14)
             u_val = item.units or 0
             tot_units += u_val
-            c = ws.cell(row=curr_row, column=12, value=u_val)
+            c = ws.cell(row=curr_row, column=14, value=u_val)
             c.font = font_bold_sm
             c.alignment = align_center
             c.border = border_all
 
-            # Total CBM
+            # Total CBM (Col 15)
             tcbm_val = float(item.total_cbm) if item.total_cbm else (u_val * cbm_val)
             tot_cbm += tcbm_val
-            c = ws.cell(row=curr_row, column=13, value=tcbm_val)
+            c = ws.cell(row=curr_row, column=15, value=tcbm_val)
             c.font = font_regular
             c.alignment = align_right
             c.number_format = '0.0000'
             c.border = border_all
 
-            # Total Amount
+            # Total Amount (Col 16)
             tamt_val = float(item.total_amount) if item.total_amount else (u_val * price_val)
             tot_amt += tamt_val
-            c = ws.cell(row=curr_row, column=14, value=tamt_val)
+            c = ws.cell(row=curr_row, column=16, value=tamt_val)
             c.font = font_bold_sm
             c.alignment = align_right
             c.number_format = '"$"#,##0.00'
             c.border = border_all
 
-            # Remarks
-            c = ws.cell(row=curr_row, column=15, value=item.remarks or "")
+            # Remarks (Col 17)
+            c = ws.cell(row=curr_row, column=17, value=item.remarks or "")
             c.font = font_regular
             c.alignment = align_left
             c.border = border_all
@@ -1845,38 +2009,40 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
             curr_row += 1
 
         # Totals Row
-        ws.row_dimensions[curr_row].height = 22
-        style_box(curr_row, 1, curr_row, 11, "TOTAL", font=font_bold_md, alignment=align_right)
+        ws.row_dimensions[curr_row].height = 30
+        style_box(curr_row, 1, curr_row, 13, "TOTAL", font=font_bold_md, alignment=align_right)
         
-        c_u = ws.cell(row=curr_row, column=12, value=tot_units)
+        c_u = ws.cell(row=curr_row, column=14, value=tot_units)
         c_u.font = font_bold_md
         c_u.alignment = align_center
         c_u.border = border_all
 
-        c_cbm = ws.cell(row=curr_row, column=13, value=tot_cbm)
+        c_cbm = ws.cell(row=curr_row, column=15, value=tot_cbm)
         c_cbm.font = font_bold_md
         c_cbm.alignment = align_right
         c_cbm.number_format = '0.0000'
         c_cbm.border = border_all
 
-        c_amt = ws.cell(row=curr_row, column=14, value=tot_amt)
+        c_amt = ws.cell(row=curr_row, column=16, value=tot_amt)
         c_amt.font = font_bold_md
         c_amt.alignment = align_right
         c_amt.number_format = '"$"#,##0.00'
         c_amt.border = border_all
 
-        c_rem = ws.cell(row=curr_row, column=15, value="")
+        c_rem = ws.cell(row=curr_row, column=17, value="")
         c_rem.border = border_all
 
         # Adjust column widths
         col_widths = {
-            1: 8, 2: 14, 3: 14, 4: 16, 5: 16,
-            6: 22, 7: 16, 8: 14, 9: 14, 10: 12,
-            11: 14, 12: 10, 13: 14, 14: 16, 15: 18, 16: 18, 17: 18
+            1: 5, 2: 12, 3: 12, 4: 14, 5: 20,
+            6: 30, 7: 7, 8: 7, 9: 7, 10: 12,
+            11: 14, 12: 9, 13: 12, 14: 9, 15: 12, 16: 14, 17: 22
         }
         for col_idx, width in col_widths.items():
             col_letter = get_column_letter(col_idx)
             ws.column_dimensions[col_letter].width = width
+            if col_idx == 9:
+                ws.column_dimensions[col_letter].hidden = True
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="PI_{pi.pi_no}.xlsx"'

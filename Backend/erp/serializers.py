@@ -173,6 +173,16 @@ class SampleListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class SampleCompactSerializer(serializers.ModelSerializer):
+    """Minimal serializer for quick search / dropdowns: returns a thumbnail, style no and product name."""
+    # Reuse full image serializer for compatibility with existing UI
+    images = SampleImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Sample
+        fields = ['id', 'sample_id', 'style_no', 'product_name', 'images']
+
+
 class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 

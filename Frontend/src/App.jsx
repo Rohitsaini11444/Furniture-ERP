@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -19,6 +19,7 @@ import PIs            from './pages/PIs';
 import BuyerPIs       from './pages/BuyerPIs';
 import Stock          from './pages/Stock';
 import Tools          from './pages/Tools';
+import NotificationsPage from './pages/NotificationsPage';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
 
@@ -35,6 +36,39 @@ function Navbar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // ── Global Search State ──
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchDrop, setShowSearchDrop] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = useRef(null);
+  const searchDebounceRef = useRef(null);
+
+  const [settings, setSettingsState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('notification_preferences');
+      return saved ? JSON.parse(saved) : { logins: true, production: true, orders: true, system: true };
+    } catch (e) {
+      return { logins: true, production: true, orders: true, system: true };
+    }
+  });
+
+  const handleSaveSettings = () => {
+    setSaving(true);
+    setTimeout(() => {
+      localStorage.setItem('notification_preferences', JSON.stringify(settings));
+      setSaving(false);
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setShowSettingsModal(false);
+      }, 1000);
+    }, 600);
+  };
 
   const fetchNotifications = useCallback(() => {
     if (user) {
@@ -103,8 +137,12 @@ function Navbar() {
   const notifRefDesktop = useRef(null);
   const notifRefMobile = useRef(null);
 
+  // ── Search debounce + outside click ──
   useEffect(() => {
     const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSearchDrop(false);
+      }
       if (
         (notifRefDesktop.current && !notifRefDesktop.current.contains(event.target)) &&
         (notifRefMobile.current && !notifRefMobile.current.contains(event.target))
@@ -112,63 +150,348 @@ function Navbar() {
         setShowNotifications(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const renderBell = (ref, containerClass) => (
-    <div ref={ref} className={containerClass} style={{ position: 'relative' }}>
-      <div 
-        style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-        onClick={() => setShowNotifications(!showNotifications)}
-      >
-        <Bell size={28} color="#0f172a" className="navbar-action-icon" />
-        {notifications.filter(n => !n.is_read).length > 0 && (
-          <span style={{
-            position: 'absolute', top: '0', right: '-2px',
-            backgroundColor: '#ef4444', color: 'white',
-            fontSize: '0.6rem', fontWeight: 'bold',
-            width: '16px', height: '16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            borderRadius: '50%'
-          }}>
-            {notifications.filter(n => !n.is_read).length}
-          </span>
-        )}
-      </div>
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    clearTimeout(searchDebounceRef.current);
+    if (!val.trim()) {
+      setSearchResults([]);
+      setShowSearchDrop(false);
+      return;
+    }
+    setSearchLoading(true);
+    setShowSearchDrop(true);
+    searchDebounceRef.current = setTimeout(() => {
+      api.get('/samples/', { params: { search: val.trim(), page_size: 8, compact: true } })
+        .then(res => {
+          setSearchResults(res.data.results || res.data || []);
+        })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    }, 300);
+  };
+
+  const handleSearchSelect = (sample) => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchDrop(false);
+    navigate(`/samples/${sample.id}`);
+  };
+
+  const formatNotificationTime = (dateStr) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
       
-      {showNotifications && (
-        <div style={{
-          position: 'absolute', top: '100%', right: '-10px', marginTop: '12px',
-          width: '320px', backgroundColor: 'white',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
-          borderRadius: '8px', border: '1px solid #e2e8f0', zIndex: 50,
-          maxHeight: '400px', overflowY: 'auto'
-        }}>
-          <div style={{ padding: '10px 15px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#0f172a' }}>Notifications</h4>
-            <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}>Mark all read</button>
-          </div>
-          {notifications.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>No notifications</div>
-          ) : (
-            <div>
-              {notifications.map(n => (
-                <div key={n.id} onClick={() => handleNotificationClick(n)}
-                  style={{
-                    padding: '12px 15px', borderBottom: '1px solid #f1f5f9', cursor: n.link ? 'pointer' : 'default',
-                    backgroundColor: n.is_read ? 'white' : '#f0fdf4'
-                  }}>
-                  <p style={{ margin: '0 0 4px', fontSize: '0.85rem', color: '#334155', fontWeight: n.is_read ? 'normal' : '600' }}>{n.message}</p>
-                  <small style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{new Date(n.created_at).toLocaleString()}</small>
-                </div>
-              ))}
-            </div>
+      const dDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      const diffTime = dNow - dDate;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else if (diffDays === 1) {
+        return 'Yesterday';
+      } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const renderNotificationIcon = (msg, isRead) => {
+    const msgLower = msg.toLowerCase();
+    const isSuccess = msgLower.includes('success') || msgLower.includes('verified') || msgLower.includes('received') || msgLower.includes('approved') || msgLower.includes('completed');
+    const isLogin = msgLower.includes('login') || msgLower.includes('logged');
+    
+    // Choose icon based on context
+    const Icon = isSuccess ? ShieldCheck : (isLogin ? Shield : Clock);
+    const bgColor = isSuccess ? '#f0fdf4' : '#fdfaf6';
+    const borderColor = isSuccess ? '#e6f4ea' : '#f5ece1';
+    const iconColor = isSuccess ? '#16a34a' : '#8b5a2b';
+    
+    return (
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: bgColor,
+        border: `1.2px solid ${borderColor}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0
+      }}>
+        <Icon size={15} color={iconColor} />
+      </div>
+    );
+  };
+
+  const renderBell = (ref, containerClass) => {
+    const unreadCount = notifications.filter(n => !n.is_read).length;
+    
+    return (
+      <div ref={ref} className={containerClass} style={{ position: 'relative' }}>
+        {/* Bell Trigger Icon */}
+        <div 
+          className={`bell-trigger-wrapper ${unreadCount > 0 ? 'bell-shake-loop' : ''}`}
+          style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+          onClick={() => setShowNotifications(!showNotifications)}
+        >
+          <Bell size={28} color="#8b5a2b" className="navbar-action-icon bell-shake-hover" />
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute', top: '-1px', right: '-2px',
+              backgroundColor: '#8b5a2b', color: 'white',
+              fontSize: '0.62rem', fontWeight: '800',
+              width: '17px', height: '17px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '50%',
+              boxShadow: '0 0 0 2px #ffffff'
+            }}>
+              {unreadCount}
+            </span>
           )}
         </div>
-      )}
-    </div>
-  );
+        
+        {/* Dropdown Card */}
+        {showNotifications && (
+          <div className="notif-panel">
+            {/* Arrow pointer top */}
+            <div className="notif-arrow-pointer" />
+
+            {/* Header */}
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid #f1ece5',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              position: 'relative',
+              zIndex: 1002,
+              backgroundColor: '#ffffff'
+            }}>
+              <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#1e293b', fontWeight: 700 }}>Notifications</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <button 
+                  onClick={markAllAsRead} 
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    color: '#8b5a2b', 
+                    fontSize: '0.8rem', 
+                    fontWeight: 700, 
+                    cursor: 'pointer', 
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    transition: 'opacity 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  <CheckCircle size={14} color="#8b5a2b" /> Mark all read
+                </button>
+                <div style={{ width: '1px', height: '14px', backgroundColor: '#e2e8f0' }} />
+                <Settings 
+                  size={15} 
+                  color="#8b5a2b" 
+                  style={{ cursor: 'pointer', transition: 'transform 0.3s ease' }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'rotate(45deg)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'rotate(0deg)'}
+                  onClick={() => { setShowNotifications(false); setShowSettingsModal(true); }}
+                />
+              </div>
+            </div>
+
+            {/* List */}
+            <div style={{ maxHeight: '300px', overflowY: 'auto', backgroundColor: '#ffffff' }}>
+              {notifications.length === 0 ? (
+                <div style={{ padding: '2rem 1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No notifications
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {notifications.map(n => {
+                    let title = n.message || '';
+                    let details = [];
+                    
+                    if (title.includes('\n')) {
+                      const lines = title.split('\n');
+                      title = lines[0];
+                      details = lines.slice(1);
+                    } else {
+                      const regex = /^New\s+login\s+detected\s+from\s+([^\s]+)\s*\((.+)\)$/i;
+                      const match = title.match(regex);
+                      if (match) {
+                        title = "New login detected";
+                        details = [
+                          `from ${match[1]}`,
+                          match[2]
+                        ];
+                      }
+                    }
+                    
+                    return (
+                      <div 
+                        key={n.id} 
+                        onClick={() => handleNotificationClick(n)}
+                        style={{
+                          display: 'flex',
+                          gap: '0.75rem',
+                          padding: '0.75rem 1rem',
+                          borderBottom: '1px solid #f1ece5',
+                          cursor: 'pointer',
+                          backgroundColor: '#ffffff',
+                          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.backgroundColor = '#faf8f5';
+                          e.currentTarget.style.transform = 'translateX(4px)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.backgroundColor = '#ffffff';
+                          e.currentTarget.style.transform = 'translateX(0)';
+                        }}
+                      >
+                        {renderNotificationIcon(n.message, n.is_read)}
+                        
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.15rem' }}>
+                            <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.85rem' }}>
+                              {title}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {formatNotificationTime(n.created_at)}
+                            </span>
+                          </div>
+                          {details.map((line, idx) => (
+                            <div key={idx} style={{ fontSize: '0.76rem', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.05rem' }}>
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Status dot indicator */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: '0.15rem' }}>
+                          <div style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: n.is_read ? '#cbd5e1' : (n.message.toLowerCase().includes('success') ? '#22c55e' : '#3b82f6'),
+                            transition: 'background-color 0.25s ease'
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div 
+              onClick={() => { setShowNotifications(false); navigate('/notifications'); }}
+              style={{
+                padding: '0.7rem 1rem',
+                backgroundColor: '#faf6f0',
+                borderTop: '1px solid #f1ece5',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                transition: 'background-color 0.15s ease',
+                position: 'relative',
+                zIndex: 1002
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f3ebd9'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#faf6f0'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Inbox size={16} color="#8b5a2b" />
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#8b5a2b' }}>
+                  View all notifications
+                </span>
+              </div>
+              <ChevronRight size={16} color="#8b5a2b" />
+            </div>
+          </div>
+        )}
+
+        <style>{`
+          .notif-panel {
+            position: absolute;
+            top: 100%;
+            right: -12px;
+            margin-top: 12px;
+            width: 360px;
+            background-color: white;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+            border-radius: 14px;
+            border: 1px solid #e7e5e4;
+            z-index: 1000;
+            animation: notifPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+          }
+          .notif-arrow-pointer {
+            position: absolute;
+            top: -6px;
+            right: 20px;
+            width: 12px;
+            height: 12px;
+            backgroundColor: #ffffff;
+            border-left: 1px solid #e7e5e4;
+            border-top: 1px solid #e7e5e4;
+            transform: rotate(45deg);
+            z-index: 1001;
+          }
+          @media (max-width: 600px) {
+            .notif-panel {
+              position: fixed;
+              top: 70px;
+              left: 12px;
+              right: 12px;
+              width: auto;
+              max-width: none;
+            }
+            .notif-arrow-pointer {
+              display: none;
+            }
+          }
+          @keyframes bellRing {
+            0% { transform: rotate(0); }
+            10% { transform: rotate(15deg); }
+            20% { transform: rotate(-10deg); }
+            30% { transform: rotate(10deg); }
+            40% { transform: rotate(-8deg); }
+            50% { transform: rotate(6deg); }
+            60% { transform: rotate(-4deg); }
+            70% { transform: rotate(3deg); }
+            80% { transform: rotate(-2deg); }
+            90% { transform: rotate(1deg); }
+            100% { transform: rotate(0); }
+          }
+          .bell-shake-hover:hover {
+            animation: bellRing 0.8s ease-in-out;
+          }
+          .bell-shake-loop {
+            animation: bellRing 1.2s ease-in-out;
+            animation-iteration-count: 2;
+          }
+          @keyframes notifPop {
+            from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+          }
+        `}</style>
+      </div>
+    );
+  };
 
   const handleLogout = () => {
     logout();
@@ -195,20 +518,133 @@ function Navbar() {
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle menu"
           >
-            {mobileMenuOpen ? <X size={24} color="#64748b" /> : <Menu size={24} color="#64748b" />}
+            <div 
+              style={{
+                width: '20px',
+                height: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transform: mobileMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'relative'
+              }}
+            >
+              <span style={{
+                width: '100%',
+                height: '2px',
+                backgroundColor: '#64748b',
+                borderRadius: '2px',
+                transform: mobileMenuOpen ? 'translateY(6px) rotate(45deg)' : 'translateY(0) rotate(0deg)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'absolute',
+                top: '0'
+              }} />
+              <span style={{
+                width: '100%',
+                height: '2px',
+                backgroundColor: '#64748b',
+                borderRadius: '2px',
+                opacity: mobileMenuOpen ? 0 : 1,
+                transition: 'opacity 0.2s ease',
+                position: 'absolute',
+                top: '6px'
+              }} />
+              <span style={{
+                width: '100%',
+                height: '2px',
+                backgroundColor: '#64748b',
+                borderRadius: '2px',
+                transform: mobileMenuOpen ? 'translateY(-6px) rotate(-45deg)' : 'translateY(0) rotate(0deg)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'absolute',
+                bottom: '0'
+              }} />
+            </div>
           </button>
         </div>
 
         {/* Navbar links & actions */}
         <div className={`navbar-menu ${mobileMenuOpen ? 'is-open' : ''}`}>
           {/* Search bar */}
-          <div className="navbar-search-wrapper">
+          <div className="navbar-search-wrapper" ref={searchRef} style={{ position: 'relative', flex: 1, maxWidth: '520px' }}>
+            <Search size={16} color="#94a3b8" className="navbar-search-icon" />
             <input
               type="text"
-              placeholder="Search menus..."
+              placeholder="Search samples by style no. or name…"
               className="navbar-search-input"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onFocus={() => searchQuery.trim() && setShowSearchDrop(true)}
+              autoComplete="off"
             />
-            <Search size={16} color="#64748b" className="navbar-search-icon" />
+
+            {/* Animated dropdown panel — always rendered, toggled via .is-visible */}
+            <div className={`search-dropdown-panel ${showSearchDrop ? 'is-visible' : ''}`}>
+
+              {/* ── Skeleton loader (shimmer rows) ── */}
+              {searchLoading && [0, 1, 2, 3].map(i => (
+                <div key={i} className="search-skeleton-row" style={{ borderBottom: i < 3 ? '1px solid #f1f5f9' : 'none' }}>
+                  <div className="search-skeleton-thumb" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div className="search-skeleton-text" style={{ width: '30%', animationDelay: `${i * 0.08}s` }} />
+                    <div className="search-skeleton-text" style={{ width: '65%', animationDelay: `${i * 0.08 + 0.05}s` }} />
+                  </div>
+                </div>
+              ))}
+
+              {/* ── No results ── */}
+              {!searchLoading && searchResults.length === 0 && (
+                <div style={{ padding: '1.1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem' }}>
+                  No samples found
+                </div>
+              )}
+
+              {/* ── Results ── */}
+              {!searchLoading && searchResults.map((sample, idx) => (
+                <div
+                  key={sample.id}
+                  className="search-result-row"
+                  style={{
+                    borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    animationDelay: `${idx * 0.045}s`
+                  }}
+                  onClick={() => handleSearchSelect(sample)}
+                >
+                  {/* Thumbnail */}
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    {sample.images?.[0]?.image ? (
+                      <img src={sample.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="m21 15-5-5L5 21"/>
+                      </svg>
+                    )}
+                  </div>
+                  {/* Style No */}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
+                    {sample.sample_id || sample.style_no || '—'}
+                  </span>
+                  {/* Product name */}
+                  <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {sample.product_name}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Action buttons & User profile info */}
@@ -387,6 +823,196 @@ function Navbar() {
           </div>
         </div>
       )}
+
+      {/* Notification Settings Modal */}
+      {showSettingsModal && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setShowSettingsModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '420px', borderRadius: '12px', padding: '1.5rem', animation: 'notifPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header" style={{ borderBottom: 'none', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-color)', margin: 0 }}>Notification Settings</h2>
+              <button className="modal-close" onClick={() => setShowSettingsModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
+            </div>
+            
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1ece5', paddingBottom: '0.75rem' }}>
+              Configure your notifications. Toggled options will alert you via the navbar bell icon.
+            </p>
+
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Security switch */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid #f8fafc' }}>
+                <div style={{ flex: 1, paddingRight: '1rem' }}>
+                  <span style={{ fontWeight: 650, color: 'var(--text-color)', display: 'block', fontSize: '0.88rem' }}>Security & Logins</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Notify on new logins from unrecognized devices.</span>
+                </div>
+                <div 
+                  onClick={() => setSettingsState(prev => ({ ...prev, logins: !prev.logins }))}
+                  style={{
+                    width: '42px',
+                    height: '22px',
+                    borderRadius: '11px',
+                    backgroundColor: settings.logins ? '#8b5a2b' : '#cbd5e1',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s ease',
+                    flexShrink: 0
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: 'white',
+                    position: 'absolute',
+                    top: '2px',
+                    left: settings.logins ? '22px' : '2px',
+                    transition: 'left 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
+              </div>
+
+              {/* Production switch */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid #f8fafc' }}>
+                <div style={{ flex: 1, paddingRight: '1rem' }}>
+                  <span style={{ fontWeight: 650, color: 'var(--text-color)', display: 'block', fontSize: '0.88rem' }}>Production Milestones</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Notify when products enter Sanding, Gate QC or Finished Goods.</span>
+                </div>
+                <div 
+                  onClick={() => setSettingsState(prev => ({ ...prev, production: !prev.production }))}
+                  style={{
+                    width: '42px',
+                    height: '22px',
+                    borderRadius: '11px',
+                    backgroundColor: settings.production ? '#8b5a2b' : '#cbd5e1',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s ease',
+                    flexShrink: 0
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: 'white',
+                    position: 'absolute',
+                    top: '2px',
+                    left: settings.production ? '22px' : '2px',
+                    transition: 'left 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
+              </div>
+
+              {/* Orders switch */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem', borderBottom: '1px solid #f8fafc' }}>
+                <div style={{ flex: 1, paddingRight: '1rem' }}>
+                  <span style={{ fontWeight: 650, color: 'var(--text-color)', display: 'block', fontSize: '0.88rem' }}>Order & PI Operations</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Notify on new sample orders, PO arrivals, or PI generation.</span>
+                </div>
+                <div 
+                  onClick={() => setSettingsState(prev => ({ ...prev, orders: !prev.orders }))}
+                  style={{
+                    width: '42px',
+                    height: '22px',
+                    borderRadius: '11px',
+                    backgroundColor: settings.orders ? '#8b5a2b' : '#cbd5e1',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s ease',
+                    flexShrink: 0
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: 'white',
+                    position: 'absolute',
+                    top: '2px',
+                    left: settings.orders ? '22px' : '2px',
+                    transition: 'left 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
+              </div>
+
+              {/* System alerts switch */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.75rem' }}>
+                <div style={{ flex: 1, paddingRight: '1rem' }}>
+                  <span style={{ fontWeight: 650, color: 'var(--text-color)', display: 'block', fontSize: '0.88rem' }}>System Announcements</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Notify on system maintenance, downtime, or general notices.</span>
+                </div>
+                <div 
+                  onClick={() => setSettingsState(prev => ({ ...prev, system: !prev.system }))}
+                  style={{
+                    width: '42px',
+                    height: '22px',
+                    borderRadius: '11px',
+                    backgroundColor: settings.system ? '#8b5a2b' : '#cbd5e1',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s ease',
+                    flexShrink: 0
+                  }}
+                >
+                  <div style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    backgroundColor: 'white',
+                    position: 'absolute',
+                    top: '2px',
+                    left: settings.system ? '22px' : '2px',
+                    transition: 'left 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.75rem' }}>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={() => setShowSettingsModal(false)}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSaveSettings}
+                disabled={saving || saveSuccess}
+                style={{ 
+                  flex: 1, 
+                  padding: '0.5rem', 
+                  backgroundColor: '#8b5a2b', 
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: (saving || saveSuccess) ? 'default' : 'pointer',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  fontWeight: 600,
+                  opacity: (saving || saveSuccess) ? 0.8 : 1,
+                  transition: 'opacity 0.2s'
+                }}
+              >
+                {saving ? (
+                  <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid white', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+                ) : saveSuccess ? (
+                  'Saved ✓'
+                ) : (
+                  'Save Settings'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
@@ -491,6 +1117,15 @@ function AppLayout() {
               element={
                 <ProtectedRoute>
                   <ProductionPipeline />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <NotificationsPage />
                 </ProtectedRoute>
               }
             />

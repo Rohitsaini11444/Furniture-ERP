@@ -242,23 +242,23 @@ export function CustomDatePicker({
             zIndex: 1000,
             backgroundColor: '#ffffff',
             border: '1px solid #e7e5e4',
-            borderRadius: '16px',
-            boxShadow: '0 12px 32px -4px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)',
-            padding: '1.15rem',
+            borderRadius: '12px',
+            boxShadow: '0 8px 24px -4px rgba(0,0,0,0.1), 0 3px 8px rgba(0,0,0,0.05)',
+            padding: '0.75rem',
             animation: 'fadeIn 0.15s ease-out',
-            width: '290px',
-            maxWidth: '92vw'
+            width: '238px',
+            maxWidth: '88vw'
           }}
         >
           {/* Calendar Header: Prev / Month Year / Next */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.15rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
             <button
               type="button"
               onClick={handlePrevMonth}
               style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
                 backgroundColor: '#f5efe6',
                 border: 'none',
                 display: 'flex',
@@ -270,10 +270,10 @@ export function CustomDatePicker({
               onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ebe2d6'}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = '#f5efe6'}
             >
-              <ChevronLeft size={16} color="#8b5a2b" />
+              <ChevronLeft size={13} color="#8b5a2b" />
             </button>
 
-            <span style={{ fontWeight: 700, fontSize: '0.98rem', color: '#8b5a2b' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#8b5a2b' }}>
               {monthNames[navMonth]} {navYear}
             </span>
 
@@ -281,9 +281,9 @@ export function CustomDatePicker({
               type="button"
               onClick={handleNextMonth}
               style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
                 backgroundColor: '#f5efe6',
                 border: 'none',
                 display: 'flex',
@@ -295,30 +295,30 @@ export function CustomDatePicker({
               onMouseEnter={e => e.currentTarget.style.backgroundColor = '#ebe2d6'}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = '#f5efe6'}
             >
-              <ChevronRight size={16} color="#8b5a2b" />
+              <ChevronRight size={13} color="#8b5a2b" />
             </button>
           </div>
 
           {/* Weekday Labels */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.45rem', marginBottom: '0.45rem', textAlign: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.25rem', marginBottom: '0.25rem', textAlign: 'center' }}>
             {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d, i) => (
-              <span key={i} style={{ fontSize: '0.78rem', fontWeight: 600, color: '#78716c' }}>
+              <span key={i} style={{ fontSize: '0.66rem', fontWeight: 600, color: '#78716c' }}>
                 {d}
               </span>
             ))}
           </div>
 
           {/* Day Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.45rem', textAlign: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.2rem', textAlign: 'center' }}>
             {calendarDays.map((item, idx) => {
               const currentSelected = isSelected(item.day, item.offset);
               const currentToday = isToday(item.day, item.offset);
 
               let cellStyle = {
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                fontSize: '0.85rem',
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
@@ -374,7 +374,7 @@ export function CustomDatePicker({
           </div>
 
           {/* Footer Action Buttons */}
-          <div style={{ display: 'flex', borderTop: '1px solid #f1ece5', marginTop: '0.95rem', paddingTop: '0.75rem', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', borderTop: '1px solid #f1ece5', marginTop: '0.55rem', paddingTop: '0.5rem', gap: '0.5rem' }}>
             <button
               type="button"
               onClick={handleClear}
@@ -384,9 +384,9 @@ export function CustomDatePicker({
                 border: 'none',
                 color: '#8b5a2b',
                 fontWeight: 700,
-                fontSize: '0.82rem',
+                fontSize: '0.75rem',
                 cursor: 'pointer',
-                padding: '0.45rem',
+                padding: '0.3rem',
                 textAlign: 'left'
               }}
             >
@@ -402,9 +402,9 @@ export function CustomDatePicker({
                 border: 'none',
                 color: '#8b5a2b',
                 fontWeight: 700,
-                fontSize: '0.82rem',
+                fontSize: '0.75rem',
                 cursor: 'pointer',
-                padding: '0.45rem',
+                padding: '0.3rem',
                 textAlign: 'right'
               }}
             >

@@ -131,11 +131,11 @@ export function SearchableSelect({
   // Render Trigger Display Text
   const renderTriggerContent = () => {
     if (!selectedOption) {
-      return <span style={{ color: '#94a3b8', fontSize: '0.92rem', fontWeight: 500 }}>{placeholder}</span>;
+      return <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>{placeholder}</span>;
     }
 
     if (typeof selectedOption !== 'object') {
-      return <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.92rem' }}>{selectedOption}</span>;
+      return <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{selectedOption}</span>;
     }
 
     const code = selectedOption[codeKey] || selectedOption.sample_id || selectedOption.style_no || selectedOption.code || '';
@@ -144,7 +144,7 @@ export function SearchableSelect({
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0 }}>
         {code && (
-          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.92rem', flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem', flexShrink: 0 }}>
             {code}
           </span>
         )}
@@ -170,19 +170,25 @@ export function SearchableSelect({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0.65rem 1rem',
+          padding: '0.5rem 1rem 0.5rem 0.9rem',
           backgroundColor: '#ffffff',
           border: isOpen ? '1.5px solid #8b5a2b' : '1.5px solid #d6c7b2',
-          borderRadius: '12px',
-          boxShadow: isOpen ? '0 0 0 3px rgba(139, 90, 43, 0.15)' : '0 1px 3px rgba(0,0,0,0.04)',
+          borderRadius: '10px',
+          boxShadow: isOpen ? '0 0 0 3px rgba(139, 90, 43, 0.12)' : '0 1px 2px rgba(0,0,0,0.04)',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          transition: 'all 0.2s ease',
+          transition: 'all 0.15s ease',
           opacity: disabled ? 0.6 : 1,
-          userSelect: 'none'
+          userSelect: 'none',
+          outline: 'none'
         }}
+        onMouseEnter={e => { if (!disabled && !isOpen) e.currentTarget.style.borderColor = '#8b5a2b'; }}
+        onMouseLeave={e => { if (!disabled && !isOpen) e.currentTarget.style.borderColor = '#d6c7b2'; }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1, minWidth: 0 }}>
-          {selectedOption ? renderOptionIcon(selectedOption) : (DefaultIcon ? <DefaultIcon size={18} color="#8b5a2b" /> : null)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden', flex: 1, minWidth: 0 }}>
+          {/* Outlined Icon for standard trigger size (DefaultIcon or selectedOption.icon) */}
+          {(selectedOption && typeof selectedOption === 'object' && selectedOption.icon) ? (
+            React.createElement(selectedOption.icon, { size: 18, color: '#8b5a2b', style: { flexShrink: 0 } })
+          ) : (DefaultIcon ? <DefaultIcon size={18} color="#8b5a2b" style={{ flexShrink: 0 }} /> : null)}
           {renderTriggerContent()}
         </div>
 
@@ -206,11 +212,12 @@ export function SearchableSelect({
             </div>
           )}
           <ChevronDown
-            size={18}
+            size={16}
             color="#8b5a2b"
             style={{
               transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
+              transition: 'transform 0.2s ease',
+              flexShrink: 0
             }}
           />
         </div>

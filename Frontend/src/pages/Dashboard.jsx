@@ -30,8 +30,58 @@ const WORKFLOW_STEPS = [
   { name: 'Finished Goods',   icon: <Boxes size={18} />,         color: '#15803d' },
 ];
 
-function InteractiveRevenueChart({ monthlyData }) {
+function AnimatedCounter({ value, duration = 1500, suffix = '', decimals = 0, start = false }) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!start) return;
+    let startTime = null;
+    const targetValue = Number(value) || 0;
+
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = timestamp - startTime;
+      const progressPercentage = Math.min(progress / duration, 1);
+      
+      // Easing out quad
+      const easeProgress = progressPercentage * (2 - progressPercentage);
+      
+      const currentVal = easeProgress * targetValue;
+      setCount(currentVal);
+
+      if (progress < duration) {
+        requestAnimationFrame(animate);
+      } else {
+        setCount(targetValue);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [value, duration, start]);
+
+  return <span>{decimals > 0 ? count.toFixed(decimals) : Math.floor(count)}{suffix}</span>;
+}
+
+function InteractiveRevenueChart({ monthlyData, startAnimation }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [animatedHeights, setAnimatedHeights] = useState([]);
+
+  useEffect(() => {
+    if (startAnimation) {
+      setAnimatedHeights(monthlyData.map(() => 0));
+      monthlyData.forEach((d, idx) => {
+        setTimeout(() => {
+          setAnimatedHeights(prev => {
+            const next = [...prev];
+            next[idx] = d.revenue;
+            return next;
+          });
+        }, idx * 100);
+      });
+    } else {
+      setAnimatedHeights(monthlyData.map(() => 0));
+    }
+  }, [startAnimation, monthlyData]);
 
   const maxValue = Math.max(...monthlyData.map(d => d.revenue), 10000);
 
@@ -59,7 +109,8 @@ function InteractiveRevenueChart({ monthlyData }) {
         {monthlyData.map((d, idx) => {
           const barWidth = 36;
           const x = 30 + idx * 85;
-          const barHeight = Math.max(12, (d.revenue / maxValue) * 140);
+          const revenueVal = animatedHeights[idx] !== undefined ? animatedHeights[idx] : 0;
+          const barHeight = Math.max(4, (revenueVal / maxValue) * 140);
           const y = 190 - barHeight;
           const isHovered = hoveredIndex === idx;
 
@@ -76,7 +127,7 @@ function InteractiveRevenueChart({ monthlyData }) {
                 rx={6}
                 fill="url(#barGrad)"
                 opacity={hoveredIndex === null || isHovered ? 1 : 0.65}
-                style={{ transition: 'all 0.25s ease' }}
+                style={{ transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}
               />
               {/* Value Label above bar */}
               {isHovered && (
@@ -98,6 +149,56 @@ function InteractiveRevenueChart({ monthlyData }) {
 
 function Dashboard() {
   const { user, isAdmin, isSupervisor, isContractor, isSandingSupervisor } = useAuth();
+  
+  const [startChartAnimation, setStartChartAnimation] = useState(false);
+  const chartsGridRef = React.useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setStartChartAnimation(true);
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (chartsGridRef.current) {
+      observer.observe(chartsGridRef.current);
+    }
+
+    return () => {
+      if (chartsGridRef.current) {
+        observer.unobserve(chartsGridRef.current);
+      }
+    };
+  }, []);
+
+  const [startWorkflowAnimation, setStartWorkflowAnimation] = useState(false);
+  const workflowRef = React.useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setStartWorkflowAnimation(true);
+          observer.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (workflowRef.current) {
+      observer.observe(workflowRef.current);
+    }
+
+    return () => {
+      if (workflowRef.current) {
+        observer.unobserve(workflowRef.current);
+      }
+    };
+  }, []);
   
   const [stats, setStats] = useState({
     totalSamples: 0,
@@ -356,7 +457,7 @@ function Dashboard() {
       </div>
 
       {/* Analytics Charts Grid */}
-      <div className="admin-charts-grid">
+      <div className="admin-charts-grid" ref={chartsGridRef}>
         {/* Chart 1: Revenue & Order Analytics */}
 
         <div className="admin-chart-card">
@@ -376,7 +477,7 @@ function Dashboard() {
               </select>
             </div>
           </div>
-          <InteractiveRevenueChart monthlyData={monthlyRevenueData} />
+          <InteractiveRevenueChart monthlyData={monthlyRevenueData} startAnimation={startChartAnimation} />
         </div>
 
         {/* Chart 2: Manufacturing Pipeline Progress */}
@@ -386,7 +487,7 @@ function Dashboard() {
               <Activity size={20} color="#3b82f6" /> Production Workflow Pipeline
             </h3>
             <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700 }}>
-              {pipelineMetrics.passRate}% QC Pass
+              <AnimatedCounter value={pipelineMetrics.passRate} decimals={1} start={startChartAnimation} suffix="% QC Pass" />
             </span>
           </div>
           
@@ -394,40 +495,40 @@ function Dashboard() {
             <div className="pipeline-item">
               <div className="pipeline-item-label">
                 <span>Gate Entry & QC</span>
-                <span>{pipelineMetrics.gateEntry}% Completed</span>
+                <span><AnimatedCounter value={pipelineMetrics.gateEntry} start={startChartAnimation} suffix="% Completed" /></span>
               </div>
               <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: `${pipelineMetrics.gateEntry}%`, background: '#10b981' }} />
+                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.gateEntry}%` : '0%', background: '#10b981', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
               </div>
             </div>
 
             <div className="pipeline-item">
               <div className="pipeline-item-label">
                 <span>Sanding Batch</span>
-                <span>{pipelineMetrics.sanding}% Completed</span>
+                <span><AnimatedCounter value={pipelineMetrics.sanding} start={startChartAnimation} suffix="% Completed" /></span>
               </div>
               <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: `${pipelineMetrics.sanding}%`, background: '#3b82f6' }} />
+                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.sanding}%` : '0%', background: '#3b82f6', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
               </div>
             </div>
 
             <div className="pipeline-item">
               <div className="pipeline-item-label">
                 <span>Polishing & Finish</span>
-                <span>{pipelineMetrics.polishing}% Completed</span>
+                <span><AnimatedCounter value={pipelineMetrics.polishing} start={startChartAnimation} suffix="% Completed" /></span>
               </div>
               <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: `${pipelineMetrics.polishing}%`, background: '#a855f7' }} />
+                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.polishing}%` : '0%', background: '#a855f7', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
               </div>
             </div>
 
             <div className="pipeline-item">
               <div className="pipeline-item-label">
                 <span>Packaging & Export Stock</span>
-                <span>{pipelineMetrics.packaging}% Completed</span>
+                <span><AnimatedCounter value={pipelineMetrics.packaging} start={startChartAnimation} suffix="% Completed" /></span>
               </div>
               <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: `${pipelineMetrics.packaging}%`, background: '#f59e0b' }} />
+                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.packaging}%` : '0%', background: '#f59e0b', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
               </div>
             </div>
           </div>
@@ -436,18 +537,46 @@ function Dashboard() {
 
 
       {/* Workflow Process Diagram */}
-      <div className="workflow-section">
+      <div className="workflow-section" ref={workflowRef}>
         <h3 className="workflow-title">Pinkcity Manufacturing Lifecycle</h3>
         <div className="workflow-steps">
           {WORKFLOW_STEPS.map((step, index) => (
             <React.Fragment key={index}>
-              <div className="workflow-step">
-                <div className="workflow-step-icon" style={{ backgroundColor: step.color }}>
+              <div 
+                className="workflow-step"
+                style={{
+                  opacity: startWorkflowAnimation ? 1 : 0,
+                  transform: startWorkflowAnimation ? 'scale(1) translateY(0)' : 'scale(0.8) translateY(15px)',
+                  transition: 'opacity 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transitionDelay: `${index * 150}ms`
+                }}
+              >
+                <div 
+                  className="workflow-step-icon" 
+                  style={{ 
+                    backgroundColor: step.color,
+                    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15) rotate(8deg)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1) rotate(0deg)'}
+                >
                   {step.icon}
                 </div>
                 <span className="workflow-step-label">{step.name}</span>
               </div>
-              {index < WORKFLOW_STEPS.length - 1 && <ArrowRight size={20} className="workflow-arrow" />}
+              {index < WORKFLOW_STEPS.length - 1 && (
+                <ArrowRight 
+                  size={20} 
+                  className="workflow-arrow" 
+                  style={{
+                    opacity: startWorkflowAnimation ? 1 : 0,
+                    transform: startWorkflowAnimation ? 'translateX(0)' : 'translateX(-10px)',
+                    transition: 'opacity 0.5s ease, transform 0.5s ease',
+                    transitionDelay: `${(index * 150) + 75}ms`
+                  }}
+                />
+              )}
             </React.Fragment>
           ))}
         </div>

@@ -219,16 +219,13 @@ function Tools() {
   ];
 
   return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '3rem' }}>
+    <div style={{ width: '100%', paddingBottom: '3rem' }}>
       {/* ── Header ── */}
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Sparkles size={26} color="#8b5cf6" /> Presentation & Tools Suite
           </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-            Generate buyer presentation slide decks, price tags, QC audit logs, and manufacturing costing
-          </p>
         </div>
       </div>
 
@@ -313,9 +310,6 @@ function Tools() {
               <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700, color: '#1e293b' }}>
                 📽️ Generate Buyer Presentation Slide Deck
               </h3>
-              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.88rem' }}>
-                Select a buyer and furniture samples to automatically assemble a presentation (.pptx / .pdf)
-              </p>
             </div>
 
             {/* Download Button */}
@@ -353,10 +347,10 @@ function Tools() {
             gap: '1.25rem'
           }}>
             {/* Step 1: Select Buyer & Source */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
+            <div className="tools-step1-layout">
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Step 1: Select Buyer (Branding & Catalog)
+                  Step 1: Select Buyer
                 </label>
                 <select
                   className="filter-input"
@@ -424,24 +418,16 @@ function Tools() {
             </div>
 
             {/* Dynamic Layout & Content Customization Options */}
-            <div style={{
-              display: 'flex',
-              gap: '1.25rem',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              paddingTop: '0.75rem',
-              borderTop: '1px stroke #cbd5e1',
-              fontSize: '0.88rem'
-            }}>
+            <div className="tools-custom-options">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ fontWeight: 700, color: '#475569' }}>Items Per Slide:</span>
                 <select
                   value={itemsPerSlide}
                   onChange={e => setItemsPerSlide(Number(e.target.value))}
-                  style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                  style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 600, maxWidth: '100%' }}
                 >
-                  <option value={2}>2 Items / Slide (Side by Side)</option>
-                  <option value={1}>1 Item / Slide (Full Detail)</option>
+                  <option value={2}>2 Items / Slide</option>
+                  <option value={1}>1 Item / Slide</option>
                 </select>
               </div>
 
@@ -462,14 +448,14 @@ function Tools() {
                   onChange={e => setIncludeSpecs(e.target.checked)}
                   style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
                 />
-                Include Specs (Material, Finish, Dimensions)
+                Include Specs
               </label>
             </div>
           </div>
 
           {/* ── Step 2: Select Items with Dynamic Filters ── */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div className="tools-step2-header">
               <div>
                 <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Step 2: Select Items for Slide Deck ({itemSource === 'buyer_masters' ? 'Buyer Master' : 'Samples Catalog'})
@@ -479,13 +465,13 @@ function Tools() {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="tools-filters-bar">
                 {/* Dynamic Material Filter */}
                 {dynamicMaterials.length > 0 && (
                   <select
                     value={selectedMaterial}
                     onChange={e => setSelectedMaterial(e.target.value)}
-                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600 }}
+                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, width: '100%' }}
                   >
                     <option value="">All Materials ({dynamicMaterials.length})</option>
                     {dynamicMaterials.map(m => (
@@ -499,7 +485,7 @@ function Tools() {
                   <select
                     value={selectedFinish}
                     onChange={e => setSelectedFinish(e.target.value)}
-                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600 }}
+                    style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: 600, width: '100%' }}
                   >
                     <option value="">All Finishes ({dynamicFinishes.length})</option>
                     {dynamicFinishes.map(f => (
@@ -509,19 +495,19 @@ function Tools() {
                 )}
 
                 {/* Search Bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                <div className="tools-search-wrapper">
                   <Search size={15} color="#64748b" />
                   <input
                     type="text"
                     placeholder="Search items..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', width: '150px' }}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.88rem', width: '100%' }}
                   />
                 </div>
 
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary tools-select-all-btn"
                   onClick={selectAllFilteredSamples}
                   style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
                 >
@@ -606,40 +592,33 @@ function Tools() {
                     key={sample.id}
                     className={`tools-mobile-card ${isSelected ? 'selected' : ''}`}
                     onClick={() => toggleSelectSample(sample.id)}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div onClick={e => { e.stopPropagation(); toggleSelectSample(sample.id); }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                        <div style={{ paddingTop: '0.15rem' }} onClick={e => { e.stopPropagation(); toggleSelectSample(sample.id); }}>
                           {isSelected
-                            ? <CheckSquare size={22} color="#8b5cf6" />
-                            : <Square size={22} color="#94a3b8" />}
+                            ? <CheckSquare size={18} color="#8b5cf6" />
+                            : <Square size={18} color="#94a3b8" />}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1rem' }}>{sample.product_name}</div>
-                          <div style={{ fontSize: '0.8rem', color: '#8b5cf6', fontWeight: 700 }}>Style #: {sample.sample_id}</div>
+                          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.88rem', lineHeight: '1.2' }}>{sample.product_name}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 700, marginTop: '2px' }}>Style #: {sample.sample_id}</div>
                         </div>
                       </div>
 
-                      <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#8b5a2b', backgroundColor: '#fef3c7', padding: '0.3rem 0.6rem', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#8b5a2b', backgroundColor: '#fef3c7', padding: '0.15rem 0.4rem', borderRadius: '6px', flexShrink: 0 }}>
                         {sample.usd ? `$${parseFloat(sample.usd).toFixed(2)}` : '—'}
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.78rem' }}>
-                      {sample.material && (
-                        <span style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                          🪵 {sample.material}
-                        </span>
-                      )}
-                      {sample.finish_color && (
-                        <span style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                          🎨 {sample.finish_color}
-                        </span>
-                      )}
-                      <span style={{ backgroundColor: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
-                        📐 {sample.size_length || 0}×{sample.size_breadth || 0}×{sample.size_height || 0} cm
-                      </span>
+                    {/* Compact clean bullet indicators */}
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', fontSize: '0.74rem', color: '#64748b', fontWeight: 500, paddingLeft: '24px' }}>
+                      {sample.material && <span>{sample.material}</span>}
+                      {sample.material && <span>•</span>}
+                      {sample.finish_color && <span>{sample.finish_color}</span>}
+                      {sample.finish_color && <span>•</span>}
+                      <span>{sample.size_length || 0}×{sample.size_breadth || 0}×{sample.size_height || 0} cm</span>
                     </div>
                   </div>
                 );
