@@ -75,6 +75,30 @@ class User(AbstractUser):
         return self.role == RoleChoices.CONTRACTOR
 
 
+# ─── Finish / Polish Catalog Model ───────────────────────────────────────────
+
+class Finish(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150, verbose_name="Finish Name")
+    finish_code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Finish Code")
+    color = models.CharField(max_length=100, blank=True, null=True, verbose_name="Color")
+    finish_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Finish Type")
+    texture = models.CharField(max_length=100, blank=True, null=True, verbose_name="Texture")
+    description = models.TextField(blank=True, null=True, verbose_name="Description")
+    image = models.ImageField(upload_to='finishes/', blank=True, null=True, verbose_name="Finish Image")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Finish"
+        verbose_name_plural = "Finishes"
+
+    def __str__(self):
+        code_str = f" ({self.finish_code})" if self.finish_code else ""
+        return f"{self.name}{code_str}"
+
+
 # ─── Existing ERP Models ──────────────────────────────────────────────────────
 
 class Sample(models.Model):
@@ -84,6 +108,7 @@ class Sample(models.Model):
     buyer = models.ForeignKey('Buyer', on_delete=models.SET_NULL, null=True, blank=True, related_name='samples', verbose_name='Buyer')
     product_name = models.CharField(max_length=100)
     material = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material')
+    finish = models.ForeignKey('Finish', on_delete=models.SET_NULL, null=True, blank=True, related_name='samples', verbose_name='Finish / Color Catalog')
     finish_color = models.CharField(max_length=255, blank=True, null=True)
     remark = models.TextField(blank=True, null=True)
 

@@ -5,7 +5,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     LoginView, LogoutView, CurrentUserView, ActiveDevicesView,
     UserViewSet,
-    SampleViewSet, SampleImageViewSet,
+    FinishViewSet, SampleViewSet, SampleImageViewSet,
     ProductionJobViewSet, ProductionQCLogViewSet,
     BuyerViewSet, BuyerMasterViewSet, BuyerMasterFinishingImageViewSet,
     SupplierViewSet, SupplierPOViewSet,
@@ -21,6 +21,7 @@ from .views import (
 router = DefaultRouter()
 
 # ERP Core
+router.register(r'finishes', FinishViewSet, basename='finish')
 router.register(r'samples', SampleViewSet, basename='sample')
 router.register(r'sample-images', SampleImageViewSet, basename='sample-image')
 router.register(r'buyers', BuyerViewSet, basename='buyer')

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Box, Boxes, FileText, ShoppingCart,
+  Box, Boxes, FileText, ShoppingCart, Palette,
   Sparkles, Wrench, Package, Truck, Receipt, ArrowRight,
   Users, Layers, ClipboardList, ClipboardCheck, Warehouse,
   TrendingUp, TrendingDown, DollarSign, Activity, BarChart3,
@@ -12,6 +12,7 @@ import api from '../api/axios';
 
 const ALL_TILES = [
   { name: 'Sample',                  icon: <Box size={28} />,           color: '#22c55e', link: '/samples',           roles: ['admin'] },
+  { name: 'Finishing Catalog',       icon: <Palette size={28} />,       color: '#8b5a2b', link: '/finishing',         roles: ['admin', 'supervisor'] },
   { name: 'Buyers',                  icon: <Users size={28} />,         color: '#ec4899', link: '/buyers',            roles: ['admin'] },
   { name: 'Buyer Master',            icon: <Layers size={28} />,        color: '#6366f1', link: '/buyer-masters',     roles: ['admin'] },
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={28} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },

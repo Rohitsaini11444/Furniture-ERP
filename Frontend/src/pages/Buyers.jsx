@@ -795,23 +795,28 @@ function Buyers() {
 
           {/* Filter / Search Bar */}
           <div className="filter-bar">
-            <div className="filter-bar-inner">
-              <Search size={16} className="filter-icon" />
-              <span className="filter-label">Search:</span>
-              <input
-                type="text"
-                className="filter-input"
-                placeholder="Search by name or code..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{ flexGrow: 1 }}
-              />
-              <span className="filter-label" style={{ marginLeft: 'auto' }}>ORDER BY:</span>
-              <OrderBySelect
-                options={ORDER_OPTIONS_DATE_NAME}
-                value={ordering}
-                onChange={setOrdering}
-              />
+            <div className="filter-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 220px', maxWidth: '400px' }}>
+                <Search size={16} className="filter-icon" />
+                <span className="filter-label">Search:</span>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="Search by name or code..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto', flexShrink: 0 }}>
+                <span className="filter-label" style={{ margin: 0 }}>ORDER BY:</span>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_NAME}
+                  value={ordering}
+                  onChange={setOrdering}
+                  width="200px"
+                />
+              </div>
             </div>
           </div>
 

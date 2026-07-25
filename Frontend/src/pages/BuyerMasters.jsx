@@ -845,11 +845,63 @@ function BuyerMasters() {
         </div>
       ) : (
         <>
-          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 1rem' }}>
+          <style>{`
+            @media (max-width: 768px) {
+              .bm-header-actions {
+                width: 100% !important;
+                display: flex !important;
+                gap: 0.5rem !important;
+              }
+              .bm-header-actions button {
+                flex: 1 !important;
+                justify-content: center !important;
+              }
+              .bm-filter-container {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.65rem !important;
+              }
+              .bm-search {
+                width: 100% !important;
+                max-width: 100% !important;
+              }
+              .bm-search input {
+                height: 42px !important;
+                max-height: 42px !important;
+                box-sizing: border-box !important;
+                border-radius: 10px !important;
+              }
+              .bm-export {
+                width: 100% !important;
+                flex-wrap: wrap !important;
+                gap: 0.5rem !important;
+              }
+              .bm-export select {
+                flex: 1 !important;
+                min-width: 0 !important;
+                border-radius: 10px !important;
+              }
+              .bm-export button {
+                border-radius: 10px !important;
+                padding: 0.55rem 1rem !important;
+              }
+              .bm-order {
+                width: 100% !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.25rem !important;
+              }
+              .bm-order > div {
+                width: 100% !important;
+              }
+            }
+          `}</style>
+
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
             <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <FolderTree size={28} color="#7c3aed" style={{ flexShrink: 0 }} /> Buyer Master Style Registry
             </h2>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div className="bm-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button 
                 type="button"
                 onClick={() => { setIsImportModalOpen(true); setImportError(''); setImportErrorType(''); setImportSuccess(''); setImportFile(null); }} 
@@ -877,7 +929,7 @@ function BuyerMasters() {
               </div>
 
               <div className="bm-export">
-                <span className="filter-label">Export Buyer Master:</span>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>EXPORT BUYER MASTER:</span>
                 <select
                   className="filter-input"
                   value={exportBuyerId}
@@ -1093,17 +1145,17 @@ function BuyerMasters() {
             onClick={e => e.stopPropagation()} 
             style={{ 
               maxWidth: '560px', 
-              width: '100%',
+              width: '95vw',
               backgroundColor: '#ffffff', 
               borderRadius: '16px',
-              padding: '1.5rem',
+              padding: '1.25rem 1rem',
               boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
               maxHeight: '90vh',
               overflowY: 'auto'
             }}
           >
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
                 <FileSpreadsheet size={22} color="#7c3aed" /> Import Buyer Master Excel
               </h3>
               <button onClick={() => setIsImportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
@@ -1129,7 +1181,7 @@ function BuyerMasters() {
                 <label style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155', display: 'block', marginBottom: '0.5rem' }}>
                   Select Import Option:
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={() => { setImportWithDetails(false); setImportError(''); setImportErrorType(''); }}
@@ -1169,7 +1221,7 @@ function BuyerMasters() {
 
               {/* Template Download Alert (ONLY shown when there is NO error) */}
               {!importError && !importSuccess && (
-                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#334155' }}>
                       Need expected {importWithDetails ? 'Detailed' : 'Standard'} format?
@@ -1182,7 +1234,7 @@ function BuyerMasters() {
                     type="button"
                     onClick={() => handleDownloadTemplate(importWithDetails)}
                     className="btn-secondary"
-                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, backgroundColor: '#ffffff' }}
+                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, backgroundColor: '#ffffff', whiteSpace: 'nowrap' }}
                   >
                     <Download size={14} /> Download Template
                   </button>

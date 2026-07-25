@@ -11,7 +11,7 @@ import { ChevronDown, Check, Clock, History, ArrowDownAZ, ArrowUpZA, ArrowUpDown
  *   value    - currently selected value string
  *   onChange - called with new value string
  */
-export function OrderBySelect({ options = [], value, onChange }) {
+export function OrderBySelect({ options = [], value, onChange, width = '200px', style = {} }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -32,7 +32,7 @@ export function OrderBySelect({ options = [], value, onChange }) {
   return (
     <div
       ref={containerRef}
-      style={{ position: 'relative', width: '100%', userSelect: 'none' }}
+      style={{ position: 'relative', width: width || '200px', maxWidth: '100%', userSelect: 'none', ...style }}
     >
       {/* ── Trigger ── */}
       <button

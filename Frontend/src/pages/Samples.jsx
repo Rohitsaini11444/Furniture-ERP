@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
@@ -14,6 +14,7 @@ const emptyForm = {
   sample_id: '',
   style_no: '',
   buyer: '',
+  finish: '',
   product_name: '',
   material: '',
   finish_color: '',
@@ -137,6 +138,7 @@ function Samples() {
 
   const [samples, setSamples] = useState([]);
   const [buyers, setBuyers] = useState([]);
+  const [finishesOptions, setFinishesOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
@@ -156,6 +158,7 @@ function Samples() {
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   // Filters
+  const [filterSearch, setFilterSearch] = useState('');
   const [filterBuyer, setFilterBuyer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
@@ -232,9 +235,16 @@ function Samples() {
       .catch(err => console.error(err));
   };
 
+  const fetchFinishesOptions = () => {
+    api.get('/finishes/', { params: { nopage: true } })
+      .then(res => setFinishesOptions(res.data.results || res.data))
+      .catch(err => console.error(err));
+  };
+
   const fetchSamples = useCallback(() => {
     setLoading(true);
     const params = { page: currentPage, ordering: ordering };
+    if (filterSearch) params.search = filterSearch;
     if (filterBuyer) params.buyer = filterBuyer;
     if (filterMaterial) params.material = filterMaterial;
     api.get('/samples/', { params })
@@ -250,10 +260,11 @@ function Samples() {
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [filterBuyer, filterMaterial, currentPage, ordering]);
+  }, [filterSearch, filterBuyer, filterMaterial, currentPage, ordering]);
 
   useEffect(() => {
     fetchBuyers();
+    fetchFinishesOptions();
   }, []);
 
   useEffect(() => { fetchSamples(); }, [fetchSamples]);
@@ -526,6 +537,18 @@ function Samples() {
                       <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Walnut Dining Table" />
                     </div>
 
+                    <div className="form-group">
+                      <label className="form-label">Finish (Catalog Reference)</label>
+                      <select name="finish" className="form-input" value={formData.finish || ''} onChange={handleChange}>
+                        <option value="">Select Registered Finish...</option>
+                        {finishesOptions.map(f => (
+                          <option key={f.id} value={f.id}>
+                            {f.finish_code ? `[${f.finish_code}] ` : ''}{f.name} ({f.color || f.finish_type || 'Catalog'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* ── Material(s) ── */}
                     <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -668,52 +691,64 @@ function Samples() {
         </div>
       ) : (
         <>
-          {/* Filter Bar (Top on Mobile) */}
-          <div className="filter-bar">
-            <div className="filter-bar-inner">
-              <Filter size={16} className="filter-icon" />
-              <span className="filter-label">Filter</span>
-              <select
-                className="filter-input desktop-only"
-                value={filterBuyer}
-                onChange={e => setFilterBuyer(e.target.value)}
-                style={{ minWidth: '150px' }}
-              >
-                <option value="">All Buyers...</option>
-                {buyers.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                className="filter-input desktop-only"
-                placeholder="Material..."
-                value={filterMaterial}
-                onChange={e => setFilterMaterial(e.target.value)}
-              />
-              {(filterBuyer || filterMaterial) && (
-                <button
-                  className="filter-clear-btn desktop-only"
-                  onClick={() => { setFilterBuyer(''); setFilterMaterial(''); }}
-                >
-                  <X size={14} /> Clear
-                </button>
-              )}
-              
-              <OrderBySelect
-                options={ORDER_OPTIONS_DATE_PRODUCT}
-                value={ordering}
-                onChange={setOrdering}
-              />
-            </div>
-          </div>
+          <style>{`
+            @media (max-width: 768px) {
+              .samples-header-actions {
+                width: 100% !important;
+                display: flex !important;
+                gap: 0.5rem !important;
+              }
+
+              .samples-header-actions button {
+                flex: 1 !important;
+                justify-content: center !important;
+              }
+
+              .samples-filter-bar-inner {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.5rem !important;
+              }
+
+              .samples-filter-search-wrap {
+                max-width: 100% !important;
+                width: 100% !important;
+                height: 42px !important;
+                max-height: 42px !important;
+                flex: none !important;
+                box-sizing: border-box !important;
+              }
+
+              .samples-filter-dropdowns-wrap {
+                width: 100% !important;
+                display: flex !important;
+                gap: 0.5rem !important;
+              }
+
+              .samples-filter-dropdowns-wrap select,
+              .samples-filter-dropdowns-wrap input {
+                flex: 1 !important;
+                min-width: 0 !important;
+                width: 100% !important;
+              }
+
+              .samples-orderby-wrap {
+                width: 100% !important;
+                margin-left: 0 !important;
+              }
+
+              .samples-orderby-wrap > div {
+                width: 100% !important;
+              }
+            }
+          `}</style>
 
           {/* Page Header (Contains Import Excel & + Create New) */}
-          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.5rem 1rem' }}>
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
             <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Package size={28} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
             </h2>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div className="samples-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button 
                 type="button"
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }} 
@@ -723,6 +758,64 @@ function Samples() {
                 <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
               </button>
               <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="filter-bar">
+            <div className="filter-bar-inner samples-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              {/* Search input */}
+              <div className="samples-filter-search-wrap" style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0 0.75rem', backgroundColor: '#ffffff', flex: '1 1 240px', maxWidth: '380px', height: '42px', boxSizing: 'border-box' }}>
+                <Search size={16} style={{ color: 'var(--text-muted)', marginRight: '0.4rem', flexShrink: 0 }} />
+                <input
+                  type="text"
+                  style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: '0.875rem' }}
+                  placeholder="Search by style or product..."
+                  value={filterSearch}
+                  onChange={e => { setFilterSearch(e.target.value); setCurrentPage(1); }}
+                />
+              </div>
+
+              <div className="samples-filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Filter size={16} className="filter-icon" />
+                <span className="filter-label">Filter</span>
+                <select
+                  className="filter-input"
+                  value={filterBuyer}
+                  onChange={e => { setFilterBuyer(e.target.value); setCurrentPage(1); }}
+                  style={{ minWidth: '130px', borderRadius: '10px' }}
+                >
+                  <option value="">All Buyers...</option>
+                  {buyers.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="Material..."
+                  value={filterMaterial}
+                  onChange={e => { setFilterMaterial(e.target.value); setCurrentPage(1); }}
+                  style={{ minWidth: '110px', width: '130px', borderRadius: '10px' }}
+                />
+                {(filterBuyer || filterMaterial || filterSearch) && (
+                  <button
+                    className="filter-clear-btn"
+                    onClick={() => { setFilterBuyer(''); setFilterMaterial(''); setFilterSearch(''); setCurrentPage(1); }}
+                  >
+                    <X size={14} /> Clear
+                  </button>
+                )}
+              </div>
+              
+              <div className="samples-orderby-wrap" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                <OrderBySelect
+                  options={ORDER_OPTIONS_DATE_PRODUCT}
+                  value={ordering}
+                  onChange={setOrdering}
+                  width="200px"
+                />
+              </div>
             </div>
           </div>
 
@@ -910,17 +1003,17 @@ function Samples() {
             onClick={e => e.stopPropagation()} 
             style={{ 
               maxWidth: '540px', 
-              width: '100%',
+              width: '95vw',
               backgroundColor: '#ffffff', 
               borderRadius: '16px',
-              padding: '1.5rem',
+              padding: '1.25rem 1rem',
               boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
               maxHeight: '90vh',
               overflowY: 'auto'
             }}
           >
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #e2e8f0', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
                 <FileSpreadsheet size={22} color="#8b5a2b" /> Import Samples via Excel
               </h3>
               <button onClick={() => setIsImportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
@@ -943,7 +1036,7 @@ function Samples() {
 
               {/* Template Download Alert (ONLY shown when there is NO error) */}
               {!importError && !importSuccess && (
-                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.9rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#334155' }}>Need the expected Excel format?</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>Download pre-formatted template with headers & examples.</div>
@@ -952,7 +1045,7 @@ function Samples() {
                     type="button"
                     onClick={handleDownloadTemplate}
                     className="btn-secondary"
-                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}
+                    style={{ fontSize: '0.82rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, whiteSpace: 'nowrap' }}
                   >
                     <Download size={14} /> Download Template
                   </button>

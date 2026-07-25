@@ -21,7 +21,7 @@ from num2words import num2words
 from django.db.models import Q, Case, When, Value, IntegerField
 from django.conf import settings
 from .models import (
-    User, Sample, SampleImage,
+    User, Finish, Sample, SampleImage,
     Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
@@ -30,6 +30,7 @@ from .models import (
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
     UserSessionSerializer,
+    FinishSerializer, FinishDropdownSerializer,
     SampleSerializer, SampleImageSerializer,
     ProductionJobSerializer, ProductionQCLogSerializer,
     BuyerSerializer, BuyerMasterSerializer,
@@ -41,6 +42,50 @@ from .permissions import (
     IsAdmin, IsSupervisor, IsContractor,
     IsAdminOrSupervisor, IsSandingSupervisor, IsAdminOrSandingSupervisor,
 )
+
+from django.db.models import Q
+from .serializers import SampleCompactSerializer
+from .serializers import SampleDropdownSerializer
+from .serializers import SampleListSerializer
+from .serializers import SampleSerializer
+import openpyxl
+import io
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
+from PIL import Image as PILImage, ImageDraw
+from openpyxl.drawing.image import Image as OpenpyxlImage
+from django.core.files.base import ContentFile
+from .serializers import BuyerDropdownSerializer
+from .serializers import BuyerSerializer
+from .serializers import BuyerMasterFinishingImageSerializer
+from .models import BuyerMasterFinishingImage
+from .serializers import BuyerMasterListSerializer
+from .serializers import BuyerMasterSerializer
+import zipfile
+from .serializers import SupplierPOListSerializer
+from .serializers import SupplierPOSerializer
+from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib import colors
+from decimal import Decimal
+from num2words import num2words
+from io import BytesIO
+import math
+import os
+from .models import StockItem
+from .models import StockItem, ProductionQCLog
+from .serializers import BuyerPIListSerializer
+from .serializers import BuyerPISerializer
+from .models import SupplierPOItemDefect
+from .serializers import SupplierPOItemDefectSerializer
+from .models import Notification, User, SupplierPOItemDefectImage
+from .models import Notification
+from .models import SupplierPOItem
+from .serializers import SupplierPOItemSerializer
+from .models import StockItem, SupplierPOItemDefect
+from .serializers import NotificationSerializer
+from .presentation_generator import generate_pptx_presentation
 
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
@@ -143,7 +188,6 @@ class UserViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated(), IsAdmin()]
 
     def get_queryset(self):
-        from django.db.models import Q
         user = self.request.user
         qs = User.objects.all().order_by('role', 'username')
         role = self.request.query_params.get('role')
@@ -187,6 +231,49 @@ class CurrentUserView(APIView):
 
 # ─── ERP Core ViewSets ────────────────────────────────────────────────────────
 
+class FinishViewSet(viewsets.ModelViewSet):
+    """
+    Finishes / Polish Catalog ViewSet.
+    Accessible to all authenticated users. Admins can CRUD.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'list' and self.request.query_params.get('nopage') == 'true':
+            return FinishDropdownSerializer
+        return FinishSerializer
+
+    def get_queryset(self):
+        qs = Finish.objects.all().order_by('-created_at')
+        q = self.request.query_params.get('search')
+        finish_type = self.request.query_params.get('finish_type')
+        color = self.request.query_params.get('color')
+
+        if q:
+            q = q.strip()
+            qs = qs.filter(
+                Q(name__icontains=q) |
+                Q(finish_code__icontains=q) |
+                Q(color__icontains=q) |
+                Q(finish_type__icontains=q) |
+                Q(texture__icontains=q)
+            )
+        if finish_type:
+            qs = qs.filter(finish_type__icontains=finish_type)
+        if color:
+            qs = qs.filter(color__icontains=color)
+
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
+
 class SampleViewSet(viewsets.ModelViewSet):
     """
     Samples — accessible to all authenticated users.
@@ -200,14 +287,10 @@ class SampleViewSet(viewsets.ModelViewSet):
             # `/api/samples/compact/` or by adding `compact=true` to the
             # regular list endpoint: `/api/samples/?compact=true`.
             if self.request.query_params.get('compact') == 'true':
-                from .serializers import SampleCompactSerializer
                 return SampleCompactSerializer
             if self.request.query_params.get('nopage') == 'true':
-                from .serializers import SampleDropdownSerializer
                 return SampleDropdownSerializer
-            from .serializers import SampleListSerializer
             return SampleListSerializer
-        from .serializers import SampleSerializer
         return SampleSerializer
 
     # def get_queryset(self):
@@ -269,10 +352,6 @@ class SampleViewSet(viewsets.ModelViewSet):
         GET /api/samples/download-template/
         Returns an empty Excel template formatted with expected headers & example data.
         """
-        import openpyxl
-        import io
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -306,8 +385,6 @@ class SampleViewSet(viewsets.ModelViewSet):
 
         # Embed demo sample image into Cell C2
         try:
-            from PIL import Image as PILImage, ImageDraw
-            from openpyxl.drawing.image import Image as OpenpyxlImage
             
             img_buf = io.BytesIO()
             demo_img = PILImage.new('RGB', (140, 140), color='#8b5a2b')
@@ -351,8 +428,6 @@ class SampleViewSet(viewsets.ModelViewSet):
         POST /api/samples/import-excel/
         Uploads an .xlsx file containing sample data and optional embedded cell images.
         """
-        import openpyxl
-        from django.core.files.base import ContentFile
 
         excel_file = request.FILES.get('file')
         if not excel_file:
@@ -517,8 +592,6 @@ class SampleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='compact')
     def compact(self, request):
         """GET /api/samples/compact/?search=... — returns minimal fields for quick search/dropdowns."""
-        from django.db.models import Q
-        from .serializers import SampleCompactSerializer
 
         qs = self.get_queryset()
         q = request.query_params.get('search')
@@ -568,9 +641,7 @@ class BuyerViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list' and self.request.query_params.get('nopage') == 'true':
-            from .serializers import BuyerDropdownSerializer
             return BuyerDropdownSerializer
-        from .serializers import BuyerSerializer
         return BuyerSerializer
 
     def get_queryset(self):
@@ -602,11 +673,9 @@ class BuyerMasterFinishingImageViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
 
     def get_serializer_class(self):
-        from .serializers import BuyerMasterFinishingImageSerializer
         return BuyerMasterFinishingImageSerializer
 
     def get_queryset(self):
-        from .models import BuyerMasterFinishingImage
         qs = BuyerMasterFinishingImage.objects.select_related('buyer_master')
         bm_id = self.request.query_params.get('buyer_master')
         if bm_id:
@@ -620,9 +689,7 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
-            from .serializers import BuyerMasterListSerializer
             return BuyerMasterListSerializer
-        from .serializers import BuyerMasterSerializer
         return BuyerMasterSerializer
 
     def get_queryset(self):
@@ -640,7 +707,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         buyer_master = serializer.save()
         images = self.request.FILES.getlist('finishing_images')
-        from .models import BuyerMasterFinishingImage
         for img in images:
             BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
 
@@ -649,7 +715,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             serializer.instance.packaging_image = None
         buyer_master = serializer.save()
         images = self.request.FILES.getlist('finishing_images')
-        from .models import BuyerMasterFinishingImage
         for img in images:
             BuyerMasterFinishingImage.objects.create(buyer_master=buyer_master, image=img)
 
@@ -671,8 +736,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='download-finishing-images')
     def download_finishing_images(self, request, pk=None):
-        import io
-        import zipfile
         bm = self.get_object()
         images = bm.finishing_images.all()
         if not images.exists():
@@ -701,10 +764,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         GET /api/buyer-masters/download-template/?with_details=true|false
         Generates empty Excel template for Buyer Master.
         """
-        import openpyxl
-        import io
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
 
         with_details = request.query_params.get('with_details') == 'true'
 
@@ -752,8 +811,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
         # Embed demo finishing image into Cell E2
         try:
-            from PIL import Image as PILImage, ImageDraw
-            from openpyxl.drawing.image import Image as OpenpyxlImage
             
             img_buf = io.BytesIO()
             demo_img = PILImage.new('RGB', (140, 140), color='#7c3aed')
@@ -800,8 +857,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         Does NOT insert into Sample table! Only populates Buyer & BuyerMaster tables.
         Also extracts high-quality finishing images embedded in worksheet cells!
         """
-        import openpyxl
-        from django.core.files.base import ContentFile
 
         excel_file = request.FILES.get('file')
         if not excel_file:
@@ -1185,9 +1240,7 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
-            from .serializers import SupplierPOListSerializer
             return SupplierPOListSerializer
-        from .serializers import SupplierPOSerializer
         return SupplierPOSerializer
 
     def get_queryset(self):
@@ -1218,14 +1271,6 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         Uses absolute positioning exclusively — no Platypus Tables.
         Business logic / queries / serializers are untouched.
         """
-        from reportlab.pdfgen import canvas as rl_canvas
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.units import mm
-        from reportlab.lib import colors
-        from decimal import Decimal
-        from num2words import num2words
-        from io import BytesIO
-        import math
 
         po  = self.get_object()
         buf = BytesIO()
@@ -1384,7 +1429,6 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
         # Draw PNG Logo image if exists, otherwise fallback to stylized logo
         logo_drawn = False
-        import os
         logo_path = r"C:\Users\User\OneDrive\Desktop\ERP Furniture\Frontend\src\assets\Pinkcity_Logo.png"
         if os.path.exists(logo_path):
             try:
@@ -1692,8 +1736,6 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        from decimal import Decimal
-        from .models import StockItem
         user = self.request.user
         data = serializer.validated_data
         
@@ -1727,8 +1769,6 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='perform-qc')
     def perform_qc(self, request, pk=None):
         """Supervisor inspects job: passes X pieces, rejects Y pieces."""
-        from decimal import Decimal
-        from .models import StockItem, ProductionQCLog
         job = self.get_object()
         user = request.user
         
@@ -2245,9 +2285,7 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'list':
-            from .serializers import BuyerPIListSerializer
             return BuyerPIListSerializer
-        from .serializers import BuyerPISerializer
         return BuyerPISerializer
 
     def get_queryset(self):
@@ -2620,8 +2658,6 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
 
 
 class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
-    from .models import SupplierPOItemDefect
-    from .serializers import SupplierPOItemDefectSerializer
     queryset = SupplierPOItemDefect.objects.all()
     serializer_class = SupplierPOItemDefectSerializer
     permission_classes = [IsAuthenticated]
@@ -2640,7 +2676,6 @@ class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        from .models import Notification, User, SupplierPOItemDefectImage
         defect = serializer.save()
         
         # Save multiple images if uploaded
@@ -2659,7 +2694,6 @@ class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
                 )
 
     def perform_update(self, serializer):
-        from .models import Notification
         old_defect = self.get_object()
         new_defect = serializer.save()
         
@@ -2673,8 +2707,6 @@ class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
                 )
 
 class SupplierPOItemViewSet(viewsets.ModelViewSet):
-    from .models import SupplierPOItem
-    from .serializers import SupplierPOItemSerializer
     queryset = SupplierPOItem.objects.all()
     serializer_class = SupplierPOItemSerializer
     permission_classes = [IsAuthenticated]
@@ -2688,7 +2720,6 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
         item = serializer.save()
         po = item.supplier_po
         if po:
-            from decimal import Decimal
             all_received = True
             for it in po.items.all():
                 passed_tot = it.passed_quantity or Decimal(0)
@@ -2702,8 +2733,6 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='receive-qc')
     def receive_qc(self, request, pk=None):
         """Supervisor inspects gate entry items: passed pcs enter Raw Stock, rejected pcs log defect."""
-        from decimal import Decimal
-        from .models import StockItem, SupplierPOItemDefect
         po_item = self.get_object()
         passed_qty = Decimal(str(request.data.get('passed_qty', 0)))
         rejected_qty = Decimal(str(request.data.get('rejected_qty', 0)))
@@ -2767,18 +2796,14 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
-    from .models import Notification
-    from .serializers import NotificationSerializer
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        from .models import Notification
         return Notification.objects.filter(user=self.request.user).order_by('-created_at')
 
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
-        from .models import Notification
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
         return Response({'status': 'ok'})
 
@@ -2809,7 +2834,6 @@ class StockItemViewSet(viewsets.ModelViewSet):
         if buyer_param:
             qs = qs.filter(buyer_id=buyer_param)
         if search_param:
-            from django.db.models import Q
             qs = qs.filter(
                 Q(style_no__icontains=search_param) |
                 Q(item_name__icontains=search_param) |
@@ -2874,7 +2898,6 @@ class GeneratePresentationView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from .presentation_generator import generate_pptx_presentation
         buyer_id = request.data.get('buyer_id')
         sample_ids = request.data.get('sample_ids', [])
         buyer_master_ids = request.data.get('buyer_master_ids', [])

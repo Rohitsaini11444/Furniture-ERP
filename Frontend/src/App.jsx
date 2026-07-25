@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login          from './pages/Login';
 import Dashboard          from './pages/Dashboard';
 import Samples            from './pages/Samples';
+import Finishing          from './pages/Finishing';
 import UserManagement     from './pages/UserManagement';
 import ProductionPipeline from './pages/ProductionPipeline';
 import Buyers         from './pages/Buyers';
@@ -40,12 +41,14 @@ function Navbar() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // ── Global Search State ──
+  // ── Global & Expandable Search State ──
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchDrop, setShowSearchDrop] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
   const searchDebounceRef = useRef(null);
 
   const [settings, setSettingsState] = useState(() => {
@@ -137,6 +140,47 @@ function Navbar() {
   const notifRefDesktop = useRef(null);
   const notifRefMobile = useRef(null);
 
+  // ── Search Mode Open / Close / Keyboard Listener ──
+  const handleOpenSearch = () => {
+    setIsSearchOpen(true);
+    setMobileMenuOpen(false);
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    }, 40);
+  };
+
+  const handleCloseSearch = () => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchDrop(false);
+  };
+
+  const handleClearOrClose = () => {
+    if (searchQuery && searchQuery.trim().length > 0) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowSearchDrop(false);
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    } else {
+      handleCloseSearch();
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isSearchOpen) {
+        handleCloseSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen]);
+
   // ── Search debounce + outside click ──
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -176,9 +220,7 @@ function Navbar() {
   };
 
   const handleSearchSelect = (sample) => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearchDrop(false);
+    handleCloseSearch();
     navigate(`/samples/${sample.id}`);
   };
 
@@ -428,40 +470,44 @@ function Navbar() {
           .notif-panel {
             position: absolute;
             top: 100%;
-            right: -12px;
-            margin-top: 12px;
+            right: 0;
+            margin-top: 8px;
             width: 360px;
+            max-width: calc(100vw - 24px);
             background-color: white;
-            box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.06);
             border-radius: 14px;
             border: 1px solid #e7e5e4;
-            z-index: 1000;
+            z-index: 9999;
             animation: notifPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             overflow: hidden;
           }
           .notif-arrow-pointer {
             position: absolute;
             top: -6px;
-            right: 20px;
+            right: 16px;
             width: 12px;
             height: 12px;
             backgroundColor: #ffffff;
             border-left: 1px solid #e7e5e4;
             border-top: 1px solid #e7e5e4;
             transform: rotate(45deg);
-            z-index: 1001;
+            z-index: 10001;
           }
-          @media (max-width: 600px) {
+          @media (max-width: 768px) {
             .notif-panel {
-              position: fixed;
-              top: 70px;
-              left: 12px;
-              right: 12px;
-              width: auto;
-              max-width: none;
+              position: absolute;
+              top: calc(100% + 12px);
+              right: -42px;
+              left: auto;
+              width: min(340px, calc(100vw - 24px));
+              max-width: calc(100vw - 24px);
+              box-shadow: 0 16px 40px rgba(0,0,0,0.22);
+              z-index: 99999;
             }
             .notif-arrow-pointer {
-              display: none;
+              display: block;
+              right: 48px;
             }
           }
           @keyframes bellRing {
@@ -500,17 +546,69 @@ function Navbar() {
   };
 
   return (
-    <nav className="navbar">
-      <div className="navbar-container">
-        <Link to="/" className="navbar-brand" onClick={() => setMobileMenuOpen(false)}>
+    <>
+      <nav className="navbar" style={{ position: 'sticky', top: 0, zIndex: 1000, backgroundColor: '#ffffff' }}>
+      <div className="navbar-container" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        
+        {/* ── Brand Logo & Name ── */}
+        <Link 
+          to="/" 
+          className="navbar-brand" 
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            transition: 'opacity 250ms ease-in-out, transform 250ms ease-in-out, visibility 250ms ease-in-out',
+            opacity: isSearchOpen ? 0 : 1,
+            transform: isSearchOpen ? 'scale(0.9)' : 'scale(1)',
+            visibility: isSearchOpen ? 'hidden' : 'visible',
+            pointerEvents: isSearchOpen ? 'none' : 'auto'
+          }}
+        >
           <img src={pinkcityLogo} alt="Pinkcity Logo" className="navbar-logo-img" />
           <span className="navbar-brand-text">Pinkcity Enterprises</span>
         </Link>
 
-        {/* Notification & Mobile toggle wrapper */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* ── Mobile-Only Right Header Action Controls ── */}
+        <div 
+          className="navbar-mobile-right-actions mobile-only"
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '10px',
+            transition: 'opacity 250ms ease-in-out, transform 250ms ease-in-out, visibility 250ms ease-in-out',
+            opacity: isSearchOpen ? 0 : 1,
+            transform: isSearchOpen ? 'translateY(-8px)' : 'translateY(0)',
+            visibility: isSearchOpen ? 'hidden' : 'visible',
+            pointerEvents: isSearchOpen ? 'none' : 'auto'
+          }}
+        >
+          {/* Mobile Search Trigger Icon */}
+          <button 
+            type="button" 
+            className="navbar-search-btn"
+            onClick={handleOpenSearch}
+            aria-label="Open Search"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '6px',
+              color: '#8b5a2b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '50%',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            <Search size={22} color="#8b5a2b" />
+          </button>
+
           {/* Mobile Notification Bell */}
-          {renderBell(notifRefMobile, "mobile-only")}
+          {renderBell(notifRefMobile, "navbar-mobile-bell-container")}
 
           {/* Mobile menu toggle */}
           <button 
@@ -564,10 +662,172 @@ function Navbar() {
           </button>
         </div>
 
-        {/* Navbar links & actions */}
+        {/* ── Mobile-Only Expandable Search Mode Overlay (Gmail / YouTube Style) ── */}
+        <div
+          ref={searchRef}
+          className="navbar-expandable-search mobile-only"
+          style={{
+            position: 'absolute',
+            top: '-4px',
+            bottom: '-4px',
+            left: '-8px',
+            right: '-8px',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '10px',
+            backgroundColor: '#ffffff',
+            padding: '0 8px',
+            zIndex: 100,
+            transition: 'opacity 250ms ease-in-out, transform 250ms ease-in-out, visibility 250ms ease-in-out',
+            opacity: isSearchOpen ? 1 : 0,
+            transform: isSearchOpen ? 'scale(1)' : 'scale(0.98)',
+            visibility: isSearchOpen ? 'visible' : 'hidden',
+            pointerEvents: isSearchOpen ? 'auto' : 'none'
+          }}
+        >
+          {/* Back Arrow Button */}
+          <button
+            type="button"
+            onClick={handleCloseSearch}
+            aria-label="Close search"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#8b5a2b',
+              borderRadius: '50%',
+              flexShrink: 0
+            }}
+          >
+            <ArrowLeft size={22} color="#8b5a2b" />
+          </button>
+
+          {/* Search Input Box */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#F8F6F2',
+            border: '1px solid rgba(0, 0, 0, 0.08)',
+            borderRadius: '999px',
+            height: '40px',
+            padding: '0 14px',
+            position: 'relative'
+          }}>
+            <Search size={17} color="#94a3b8" style={{ marginRight: '8px', flexShrink: 0 }} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search Buyer, Supplier, PO, PI..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onFocus={() => searchQuery.trim() && setShowSearchDrop(true)}
+              autoComplete="off"
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                width: '100%',
+                fontSize: '0.88rem',
+                color: '#1e293b',
+                fontFamily: 'inherit'
+              }}
+            />
+            {/* Clear / Close X Button */}
+            <button
+              type="button"
+              onClick={handleClearOrClose}
+              aria-label="Clear search text or close search"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+                flexShrink: 0
+              }}
+            >
+              <X size={18} color="#64748b" />
+            </button>
+          </div>
+
+          {/* Dropdown Results Panel */}
+          <div className={`search-dropdown-panel ${showSearchDrop && isSearchOpen ? 'is-visible' : ''}`} style={{ top: 'calc(100% + 4px)', left: 0, right: 0 }}>
+            {searchLoading && [0, 1, 2, 3].map(i => (
+              <div key={i} className="search-skeleton-row" style={{ borderBottom: i < 3 ? '1px solid #f1f5f9' : 'none' }}>
+                <div className="search-skeleton-thumb" />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div className="search-skeleton-text" style={{ width: '30%', animationDelay: `${i * 0.08}s` }} />
+                  <div className="search-skeleton-text" style={{ width: '65%', animationDelay: `${i * 0.08 + 0.05}s` }} />
+                </div>
+              </div>
+            ))}
+
+            {!searchLoading && searchResults.length === 0 && (
+              <div style={{ padding: '1.1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem' }}>
+                No samples found
+              </div>
+            )}
+
+            {!searchLoading && searchResults.map((sample, idx) => (
+              <div
+                key={sample.id}
+                className="search-result-row"
+                style={{
+                  borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  animationDelay: `${idx * 0.045}s`
+                }}
+                onClick={() => {
+                  handleSearchSelect(sample);
+                  handleCloseSearch();
+                }}
+              >
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  background: '#f1f5f9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid #e2e8f0'
+                }}>
+                  {sample.images?.[0]?.image ? (
+                    <img src={sample.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <path d="m21 15-5-5L5 21"/>
+                    </svg>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
+                  {sample.style_no || sample.id || '—'}
+                </span>
+                <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {sample.product_name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Standard Desktop Navbar Menu & Mobile Drawer Menu ── */}
         <div className={`navbar-menu ${mobileMenuOpen ? 'is-open' : ''}`}>
-          {/* Search bar */}
-          <div className="navbar-search-wrapper" ref={searchRef} style={{ position: 'relative', flex: '1 1 450px', maxWidth: '680px', margin: '0 auto' }}>
+          
+          {/* Centered Desktop Search Bar (Hidden on Mobile) */}
+          <div className="navbar-search-wrapper desktop-only" ref={searchRef} style={{ position: 'relative', flex: '1 1 450px', maxWidth: '680px', margin: '0 auto' }}>
             <Search size={16} color="#94a3b8" className="navbar-search-icon" />
             <input
               type="text"
@@ -579,10 +839,8 @@ function Navbar() {
               autoComplete="off"
             />
 
-            {/* Animated dropdown panel — always rendered, toggled via .is-visible */}
-            <div className={`search-dropdown-panel ${showSearchDrop ? 'is-visible' : ''}`}>
-
-              {/* ── Skeleton loader (shimmer rows) ── */}
+            {/* Desktop search dropdown results panel */}
+            <div className={`search-dropdown-panel ${showSearchDrop && !isSearchOpen ? 'is-visible' : ''}`}>
               {searchLoading && [0, 1, 2, 3].map(i => (
                 <div key={i} className="search-skeleton-row" style={{ borderBottom: i < 3 ? '1px solid #f1f5f9' : 'none' }}>
                   <div className="search-skeleton-thumb" />
@@ -593,14 +851,12 @@ function Navbar() {
                 </div>
               ))}
 
-              {/* ── No results ── */}
               {!searchLoading && searchResults.length === 0 && (
                 <div style={{ padding: '1.1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem' }}>
                   No samples found
                 </div>
               )}
 
-              {/* ── Results ── */}
               {!searchLoading && searchResults.map((sample, idx) => (
                 <div
                   key={sample.id}
@@ -611,7 +867,6 @@ function Navbar() {
                   }}
                   onClick={() => handleSearchSelect(sample)}
                 >
-                  {/* Thumbnail */}
                   <div style={{
                     width: '38px',
                     height: '38px',
@@ -634,11 +889,9 @@ function Navbar() {
                       </svg>
                     )}
                   </div>
-                  {/* Style No */}
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
                     {sample.style_no || sample.id || '—'}
                   </span>
-                  {/* Product name */}
                   <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {sample.product_name}
                   </span>
@@ -647,7 +900,7 @@ function Navbar() {
             </div>
           </div>
 
-          {/* Action buttons & User profile info */}
+          {/* Desktop Actions & User Section */}
           <div className="navbar-actions">
             <div className="navbar-action-icons">
               {/* Desktop Notification Bell */}
@@ -702,7 +955,9 @@ function Navbar() {
             )}
           </div>
         </div>
+
       </div>
+    </nav>
 
       {/* Profile Details Modal */}
       {showProfileModal && user && (
@@ -1013,7 +1268,7 @@ function Navbar() {
           </div>
         </div>
       )}
-    </nav>
+    </>
   );
 }
 
@@ -1088,6 +1343,8 @@ function AppLayout() {
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
             <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
+            <Route path="/finishing" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Finishing /></ProtectedRoute>} />
+            <Route path="/finishing/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Finishing /></ProtectedRoute>} />
             <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />

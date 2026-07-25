@@ -3,7 +3,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
-    User, Sample, SampleImage,
+    User, Finish, Sample, SampleImage,
     Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
@@ -95,6 +95,43 @@ class UserMinimalSerializer(serializers.ModelSerializer):
 
 # ─── ERP Core Serializers ─────────────────────────────────────────────────────
 
+class FinishSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Finish
+        fields = [
+            'id', 'name', 'finish_code', 'color', 'finish_type',
+            'texture', 'description', 'image', 'image_url',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+
+class FinishDropdownSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Finish
+        fields = ['id', 'name', 'finish_code', 'color', 'finish_type', 'image_url']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
+
 class SampleImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 
@@ -126,18 +163,19 @@ class BuyerDropdownSerializer(serializers.ModelSerializer):
 class SampleSerializer(serializers.ModelSerializer):
     images = SampleImageSerializer(many=True, read_only=True)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+    finish_detail = FinishSerializer(source='finish', read_only=True)
 
     class Meta:
         model = Sample
         fields = [
             'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
-            'material', 'finish_color', 'remark',
+            'material', 'finish', 'finish_detail', 'finish_color', 'remark',
             'cbm', 'usd', 'vendor_name',
             'size_length', 'size_breadth', 'size_height',
             'size_length_inch', 'size_breadth_inch', 'size_height_inch',
             'images',
         ]
-        read_only_fields = ['id', 'images', 'buyer_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
+        read_only_fields = ['id', 'images', 'buyer_detail', 'finish_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
 
 
 class BuyerCodeSerializer(serializers.ModelSerializer):
@@ -147,24 +185,26 @@ class BuyerCodeSerializer(serializers.ModelSerializer):
 
 class SampleDropdownSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerCodeSerializer(source='buyer', read_only=True)
+    finish_detail = FinishDropdownSerializer(source='finish', read_only=True)
 
     class Meta:
         model = Sample
         fields = [
             'id', 'sample_id', 'style_no', 'buyer_detail', 'product_name',
-            'material', 'finish_color', 'remark',
+            'material', 'finish', 'finish_detail', 'finish_color', 'remark',
             'size_length', 'size_breadth', 'size_height'
         ]
 
 class SampleListSerializer(serializers.ModelSerializer):
     images = SampleImageSerializer(many=True, read_only=True)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
+    finish_detail = FinishSerializer(source='finish', read_only=True)
 
     class Meta:
         model = Sample
         fields = [
             'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
-            'material', 'finish_color',
+            'material', 'finish', 'finish_detail', 'finish_color',
             'cbm', 'usd', 'vendor_name',
             'size_length', 'size_breadth', 'size_height',
             'size_length_inch', 'size_breadth_inch', 'size_height_inch',

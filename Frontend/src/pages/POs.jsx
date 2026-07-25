@@ -653,8 +653,54 @@ function POs() {
         <GateEntry />
       ) : (
         <>
+          <style>{`
+            @media (max-width: 768px) {
+              .po-header-actions {
+                width: 100% !important;
+                margin-top: 0.5rem !important;
+              }
+              .po-header-actions button {
+                width: 100% !important;
+                justify-content: center !important;
+              }
+              .po-stat-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 0.75rem !important;
+              }
+              .po-filter-bar-inner {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.65rem !important;
+              }
+              .po-search-wrap {
+                width: 100% !important;
+                max-width: 100% !important;
+                flex: none !important;
+              }
+              .po-search-wrap input {
+                height: 42px !important;
+                max-height: 42px !important;
+                box-sizing: border-box !important;
+                border-radius: 10px !important;
+              }
+              .po-filters-wrap {
+                width: 100% !important;
+                flex-direction: column !important;
+                gap: 0.5rem !important;
+              }
+              .po-filter-item {
+                width: 100% !important;
+                justify-content: space-between !important;
+              }
+              .po-filter-item > div {
+                flex: 1 !important;
+                width: auto !important;
+              }
+            }
+          `}</style>
+
           {/* ── Page Header ── */}
-          <div className="page-header">
+          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
             <div>
               <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <ShoppingBag size={28} color="#8b5a2b" style={{ flexShrink: 0 }} /> Purchase Orders & Gate Entry
@@ -663,14 +709,16 @@ function POs() {
                 Supplier POs, material receipts, and quality check inspection
               </p>
             </div>
-            <button className="btn-primary" onClick={() => navigate('/pos/new')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Plus size={16}/> Create New PO
-            </button>
+            <div className="po-header-actions">
+              <button className="btn-primary" onClick={() => navigate('/pos/new')}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#8b5a2b', borderRadius: '10px' }}>
+                <Plus size={16}/> Create New PO
+              </button>
+            </div>
           </div>
 
           {/* ── Stat Cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="po-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
             {[
               { label: 'Total POs', value: stats.total, color: '#8b5a2b', bg: '#8b5a2b15' },
               { label: 'Pending', value: stats.pending, color: '#d97706', bg: '#fef3c7' },
@@ -686,8 +734,8 @@ function POs() {
 
           {/* ── Filter Bar ── */}
           <div className="filter-bar">
-            <div className="filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 260px', minWidth: '200px', maxWidth: '380px' }}>
+            <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 260px', minWidth: '200px', maxWidth: '380px' }}>
                 <Search size={15} className="filter-icon"/>
                 <input
                   type="text"
@@ -695,12 +743,12 @@ function POs() {
                   placeholder="Search by PO number or supplier..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flex: 1, height: '38px', boxSizing: 'border-box' }}
+                  style={{ flex: 1, height: '42px', boxSizing: 'border-box', borderRadius: '10px' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>STATUS:</span>
                   <div style={{ width: '165px' }}>
                     <StatusSelect
@@ -712,7 +760,7 @@ function POs() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>ORDER BY:</span>
                   <div style={{ width: '165px' }}>
                     <OrderBySelect
