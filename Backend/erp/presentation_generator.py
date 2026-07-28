@@ -448,3 +448,306 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
     prs.save(buf)
     return buf.getvalue()
 
+
+def generate_brand_pptx_presentation(buyer_name="", buyer_po_numbers="", title="BRAND PRESENTATION", company_name="PINKCITY ENTERPRISES", slides_data=None):
+    """
+    Generates a 16:9 widescreen PowerPoint Presentation for Brand PPT / Buyer Inspection Deck.
+    - Slide 1: Cover Page with Company Logo, Title, Buyer Name, Buyer PO Numbers, Date.
+    - Slide 2..N: Product Collage Slides with 5-15+ images per product (tags, labels, stickers, equipment, barcode).
+    - Slide N+1: Ending / Thank You Page.
+    """
+    if not slides_data:
+        slides_data = []
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank_layout = prs.slide_layouts[6]
+
+    # Color Palette Tokens
+    C_WALNUT = RGBColor(139, 90, 43)      # #8B5A2B Brand Theme
+    C_GOLD = RGBColor(217, 119, 6)        # #D97706 Gold Accent
+    C_CREAM_BG = RGBColor(248, 246, 242)  # #F8F6F2 Light Luxury Background
+    C_DARK = RGBColor(30, 41, 59)         # #1E293B Primary Text
+    C_SLATE = RGBColor(71, 85, 105)       # #475569 Subtitle Text
+    C_MUTED = RGBColor(100, 116, 139)     # #64748B Label Muted Text
+    C_WHITE = RGBColor(255, 255, 255)
+    C_BORDER = RGBColor(203, 213, 225)    # #CBD5E1 Slate Light Border
+
+    # ── SLIDE 1: Cover Page ──
+    slide1 = prs.slides.add_slide(blank_layout)
+    bg1 = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    bg1.fill.solid()
+    bg1.fill.fore_color.rgb = C_CREAM_BG
+    bg1.line.fill.background()
+
+    # Brand Header Bar
+    top_bar = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(1.3))
+    top_bar.fill.solid()
+    top_bar.fill.fore_color.rgb = C_WALNUT
+    top_bar.line.fill.background()
+
+    # Company Logo Insertion
+    logo_path = os.path.join(settings.BASE_DIR, '..', 'Frontend', 'src', 'assets', 'Pinkcity_Logo.png')
+    if not os.path.exists(logo_path):
+        logo_path = r"C:\Users\User\OneDrive\Desktop\ERP Furniture\Frontend\src\assets\Pinkcity_Logo.png"
+
+    text_left = Inches(0.4)
+    if os.path.exists(logo_path):
+        try:
+            slide1.shapes.add_picture(logo_path, Inches(0.4), Inches(0.15), width=Inches(1.0), height=Inches(1.0))
+            text_left = Inches(1.6)
+        except Exception as e:
+            print("Error rendering logo in Brand PPT:", e)
+
+    tf_brand = slide1.shapes.add_textbox(text_left, Inches(0.25), Inches(11.0), Inches(0.8)).text_frame
+    tf_brand.word_wrap = True
+    p_brand = tf_brand.paragraphs[0]
+    p_brand.text = (company_name or "PINKCITY ENTERPRISES").upper()
+    p_brand.font.size = Pt(26)
+    p_brand.font.bold = True
+    p_brand.font.color.rgb = C_WHITE
+
+    gold_line = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(1.3), Inches(13.333), Inches(0.06))
+    gold_line.fill.solid()
+    gold_line.fill.fore_color.rgb = C_GOLD
+    gold_line.line.fill.background()
+
+    title_box = slide1.shapes.add_textbox(Inches(1.0), Inches(1.8), Inches(11.333), Inches(2.2))
+    tf_title = title_box.text_frame
+    tf_title.word_wrap = True
+    
+    p_title = tf_title.paragraphs[0]
+    p_title.text = (title or "BRAND PRESENTATION").upper()
+    p_title.font.size = Pt(34)
+    p_title.font.bold = True
+    p_title.font.color.rgb = C_DARK
+
+    p_sub = tf_title.add_paragraph()
+    p_sub.text = "Product Equipment, Tags & Compliance Photo Deck"
+    p_sub.font.size = Pt(18)
+    p_sub.font.bold = True
+    p_sub.font.color.rgb = C_WALNUT
+
+    card_box = slide1.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.0), Inches(4.2), Inches(11.333), Inches(2.6))
+    card_box.fill.solid()
+    card_box.fill.fore_color.rgb = C_WHITE
+    card_box.line.color.rgb = C_BORDER
+
+    tf_info = card_box.text_frame
+    tf_info.word_wrap = True
+    
+    p_b1 = tf_info.paragraphs[0]
+    p_b1.text = "PREPARED SPECIALLY FOR:"
+    p_b1.font.size = Pt(11)
+    p_b1.font.bold = True
+    p_b1.font.color.rgb = C_MUTED
+
+    p_b2 = tf_info.add_paragraph()
+    p_b2.text = buyer_name or "Valued Buyer"
+    p_b2.font.size = Pt(22)
+    p_b2.font.bold = True
+    p_b2.font.color.rgb = C_DARK
+
+    if buyer_po_numbers:
+        p_po = tf_info.add_paragraph()
+        p_po.text = f"BUYER PO NO(S): {buyer_po_numbers}"
+        p_po.font.size = Pt(15)
+        p_po.font.bold = True
+        p_po.font.color.rgb = C_WALNUT
+
+    p_dt = tf_info.add_paragraph()
+    p_dt.text = f"Date: {timezone.now().strftime('%d %B %Y')}   |   Total Products: {len(slides_data)}"
+    p_dt.font.size = Pt(13)
+    p_dt.font.color.rgb = C_SLATE
+
+    # ── SLIDE 2..N: Product Collage Slides ──
+    for slide_idx, s_data in enumerate(slides_data, start=1):
+        prod_title = s_data.get('title') or s_data.get('product_name') or f"Product #{slide_idx}"
+        images = s_data.get('images', [])
+
+        slide = prs.slides.add_slide(blank_layout)
+
+        s_bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+        s_bg.fill.solid()
+        s_bg.fill.fore_color.rgb = RGBColor(250, 250, 249)
+        s_bg.line.fill.background()
+
+        # Top Header Banner
+        h_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.4), Inches(0.3), Inches(12.533), Inches(0.65))
+        h_bar.fill.solid()
+        h_bar.fill.fore_color.rgb = C_WALNUT
+        h_bar.line.fill.background()
+
+        h_tf = h_bar.text_frame
+        h_tf.word_wrap = True
+        h_p = h_tf.paragraphs[0]
+        po_str = f"  |  PO: {buyer_po_numbers}" if buyer_po_numbers else ""
+        h_p.text = f"  {(company_name or 'PINKCITY ENTERPRISES').upper()}   |   PRODUCT {slide_idx} OF {len(slides_data)}: {prod_title.upper()}{po_str}"
+        h_p.font.size = Pt(14)
+        h_p.font.bold = True
+        h_p.font.color.rgb = C_WHITE
+        h_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        if not images:
+            no_img_box = slide.shapes.add_textbox(Inches(1.0), Inches(3.0), Inches(11.333), Inches(1.5))
+            tf_no = no_img_box.text_frame
+            p_no = tf_no.paragraphs[0]
+            p_no.text = f"No photos provided for {prod_title}"
+            p_no.font.size = Pt(18)
+            p_no.font.color.rgb = C_MUTED
+            p_no.alignment = PP_ALIGN.CENTER
+            continue
+
+        # Smart Grid Collage Placement
+        n_img = len(images)
+        if n_img <= 3:
+            R, C = 1, n_img
+        elif n_img == 4:
+            R, C = 2, 2
+        elif n_img <= 6:
+            R, C = 2, 3
+        elif n_img <= 8:
+            R, C = 2, 4
+        elif n_img <= 10:
+            R, C = 2, 5
+        elif n_img <= 12:
+            R, C = 2, 6
+        elif n_img <= 14:
+            R, C = 2, 7
+        elif n_img <= 18:
+            R, C = 3, 6
+        else:
+            R = 3
+            C = (n_img + 2) // 3
+
+        grid_left = Inches(0.4)
+        grid_top = Inches(1.1)
+        grid_width = Inches(12.533)
+        grid_height = Inches(6.0)
+
+        gap_x = Inches(0.12)
+        gap_y = Inches(0.12)
+
+        cell_w = (grid_width - (C - 1) * gap_x) / C
+        cell_h = (grid_height - (R - 1) * gap_y) / R
+
+        for idx, img_input in enumerate(images):
+            r = idx // C
+            c = idx % C
+            if r >= R:
+                break # Grid full
+
+            c_left = grid_left + c * (cell_w + gap_x)
+            c_top = grid_top + r * (cell_h + gap_y)
+
+            # Container Box Frame
+            frame = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, c_left, c_top, cell_w, cell_h)
+            frame.fill.solid()
+            frame.fill.fore_color.rgb = C_WHITE
+            frame.line.color.rgb = C_BORDER
+            frame.line.width = Pt(1)
+
+            try:
+                pil_img = None
+                img_stream = None
+
+                if isinstance(img_input, (str, os.PathLike)) and os.path.exists(img_input):
+                    pil_img = PILImage.open(img_input)
+                    img_stream = img_input
+                elif isinstance(img_input, bytes):
+                    pil_img = PILImage.open(BytesIO(img_input))
+                    img_stream = BytesIO(img_input)
+                elif hasattr(img_input, 'read'):
+                    img_bytes = img_input.read()
+                    if hasattr(img_input, 'seek'):
+                        img_input.seek(0)
+                    pil_img = PILImage.open(BytesIO(img_bytes))
+                    img_stream = BytesIO(img_bytes)
+                elif isinstance(img_input, PILImage.Image):
+                    pil_img = img_input
+                    buf = BytesIO()
+                    pil_img.save(buf, format='JPEG')
+                    img_stream = BytesIO(buf.getvalue())
+                
+                if pil_img and img_stream:
+                    w, h = pil_img.size
+                    if w > 0 and h > 0:
+                        aspect_ratio = w / h
+                        pad = Inches(0.04)
+                        max_w = cell_w - (2 * pad)
+                        max_h = cell_h - (2 * pad)
+
+                        if aspect_ratio > (max_w / max_h):
+                            target_w = max_w
+                            target_h = target_w / aspect_ratio
+                        else:
+                            target_h = max_h
+                            target_w = target_h * aspect_ratio
+
+                        img_l = c_left + (cell_w - target_w) / 2
+                        img_t = c_top + (cell_h - target_h) / 2
+
+                        slide.shapes.add_picture(img_stream, img_l, img_t, width=target_w, height=target_h)
+            except Exception as ex:
+                print(f"Error adding image {idx} to brand slide {slide_idx}: {ex}")
+
+    # ── SLIDE N+1: Closing / Thank You ──
+    end_slide = prs.slides.add_slide(blank_layout)
+    e_bg = end_slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    e_bg.fill.solid()
+    e_bg.fill.fore_color.rgb = C_WALNUT
+    e_bg.line.fill.background()
+
+    e_card = end_slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1.5), Inches(1.2), Inches(10.333), Inches(5.1))
+    e_card.fill.solid()
+    e_card.fill.fore_color.rgb = C_WHITE
+    e_card.line.color.rgb = C_BORDER
+
+    e_tf = e_card.text_frame
+    e_tf.word_wrap = True
+
+    ep1 = e_tf.paragraphs[0]
+    ep1.text = "BRAND COMPLIANCE & QUALITY PRESENTATION"
+    ep1.font.size = Pt(28)
+    ep1.font.bold = True
+    ep1.font.color.rgb = C_WALNUT
+    ep1.alignment = PP_ALIGN.CENTER
+
+    ep2 = e_tf.add_paragraph()
+    ep2.text = f"Verified for {buyer_name or 'Valued Buyer'}" + (f" | PO #{buyer_po_numbers}" if buyer_po_numbers else "")
+    ep2.font.size = Pt(16)
+    ep2.font.color.rgb = C_SLATE
+    ep2.alignment = PP_ALIGN.CENTER
+
+    ep_space = e_tf.add_paragraph()
+    ep_space.text = "──────────────────────────────────────────────"
+    ep_space.font.size = Pt(12)
+    ep_space.font.color.rgb = C_BORDER
+    ep_space.alignment = PP_ALIGN.CENTER
+
+    ep3 = e_tf.add_paragraph()
+    ep3.text = (company_name or "PINKCITY ENTERPRISES").upper()
+    ep3.font.size = Pt(20)
+    ep3.font.bold = True
+    ep3.font.color.rgb = C_DARK
+    ep3.alignment = PP_ALIGN.CENTER
+
+    ep4 = e_tf.add_paragraph()
+    ep4.text = "📍 Office & Works: G-78, EPIP, Sitapura Industrial Area, Tonk Road, Jaipur-302022 Rajasthan, India."
+    ep4.font.size = Pt(12)
+    ep4.font.color.rgb = C_SLATE
+    ep4.alignment = PP_ALIGN.CENTER
+
+    ep5 = e_tf.add_paragraph()
+    ep5.text = "📞 Tele #: +91-141-2771144 / 2770033   |   📋 GSTIN/UIN: 08ABXPS4077R1Z8   |   IEC: 1397002620"
+    ep5.font.size = Pt(12)
+    ep5.font.bold = True
+    ep5.font.color.rgb = C_WALNUT
+    ep5.alignment = PP_ALIGN.CENTER
+
+    buf = BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+

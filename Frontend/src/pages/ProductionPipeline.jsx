@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/axios';
+import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import CustomSelect from '../components/CustomSelect';
 import { useAuth } from '../context/AuthContext';
 import {
   Boxes,
@@ -861,17 +863,18 @@ export default function ProductionPipeline() {
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
                     <Layers size={15} color="#8b5a2b" /> Production Stage *
                   </label>
-                  <select
-                    className="form-input"
-                    style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.92rem', background: '#f8fafc', color: '#0f172a', fontWeight: 600 }}
+                  <CustomSelect
                     value={assignForm.stage}
-                    onChange={e => setAssignForm({ ...assignForm, stage: e.target.value })}
-                    required
-                  >
-                    <option value="sanding">🔨 Sanding Stage (From Raw Stock)</option>
-                    <option value="polishing">✨ Polishing Stage (From Sanded Stock)</option>
-                    <option value="packaging">📦 Packaging Stage (From Polished Stock)</option>
-                  </select>
+                    onChange={e => {
+                      const val = e.target ? e.target.value : e;
+                      setAssignForm({ ...assignForm, stage: val });
+                    }}
+                    options={[
+                      { value: 'sanding', label: '🔨 Sanding Stage (From Raw Stock)' },
+                      { value: 'polishing', label: '✨ Polishing Stage (From Sanded Stock)' },
+                      { value: 'packaging', label: '📦 Packaging Stage (From Polished Stock)' }
+                    ]}
+                  />
                 </div>
 
                 {/* Stock Item */}
@@ -879,34 +882,33 @@ export default function ProductionPipeline() {
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
                     <Boxes size={15} color="#8b5a2b" /> Select Source Stock Item *
                   </label>
-                  <select
-                    className="form-input"
-                    style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: '10px', border: '1.5px solid #cbd5e1', fontSize: '0.92rem', background: '#fff', color: '#0f172a' }}
+                  <CustomSelect
                     value={assignForm.stock_item}
                     onChange={e => {
-                      const sel = stockItems.find(s => s.id === e.target.value);
+                      const val = e.target ? e.target.value : e;
+                      const sel = stockItems.find(s => String(s.id) === String(val));
                       setAssignForm({
                         ...assignForm,
-                        stock_item: e.target.value,
+                        stock_item: val,
                         assigned_qty: sel ? sel.quantity : ''
                       });
                     }}
-                    required
-                  >
-                    <option value="">-- Choose Stock Item --</option>
-                    {stockItems
-                      .filter(s => {
-                        if (assignForm.stage === 'sanding') return s.stock_type === 'raw';
-                        if (assignForm.stage === 'polishing') return s.stock_type === 'sanded';
-                        if (assignForm.stage === 'packaging') return s.stock_type === 'polished';
-                        return true;
-                      })
-                      .map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.style_no} - {s.item_name} ({s.quantity} {s.unit} available)
-                        </option>
-                      ))}
-                  </select>
+                    options={[
+                      { value: '', label: '-- Choose Stock Item --' },
+                      ...stockItems
+                        .filter(s => {
+                          if (assignForm.stage === 'sanding') return s.stock_type === 'raw';
+                          if (assignForm.stage === 'polishing') return s.stock_type === 'sanded';
+                          if (assignForm.stage === 'packaging') return s.stock_type === 'polished';
+                          return true;
+                        })
+                        .map(s => ({
+                          value: s.id,
+                          label: `${s.style_no} - ${s.item_name} (${s.quantity} ${s.unit} available)`
+                        }))
+                    ]}
+                    placeholder="-- Choose Stock Item --"
+                  />
                 </div>
 
                 {/* Contractor */}
@@ -914,20 +916,21 @@ export default function ProductionPipeline() {
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
                     <User size={15} color="#8b5a2b" /> Assign to Contractor *
                   </label>
-                  <select
-                    className="form-input"
-                    style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: '10px', border: contractors.length > 0 ? '1.5px solid #cbd5e1' : '1.5px solid #fca5a5', fontSize: '0.92rem', background: '#fff', color: '#0f172a' }}
+                  <CustomSelect
                     value={assignForm.contractor}
-                    onChange={e => setAssignForm({ ...assignForm, contractor: e.target.value })}
-                    required
-                  >
-                    <option value="">-- Choose Contractor --</option>
-                    {contractors.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.first_name ? `${c.first_name} ${c.last_name || ''}` : c.username} ({c.username})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={e => {
+                      const val = e.target ? e.target.value : e;
+                      setAssignForm({ ...assignForm, contractor: val });
+                    }}
+                    options={[
+                      { value: '', label: '-- Choose Contractor --' },
+                      ...contractors.map(c => ({
+                        value: c.id,
+                        label: `${c.first_name ? `${c.first_name} ${c.last_name || ''}` : c.username} (${c.username})`
+                      }))
+                    ]}
+                    placeholder="-- Choose Contractor --"
+                  />
                   {contractors.length === 0 && (
                     <div style={{ fontSize: '0.8rem', color: '#dc2626', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#fef2f2', padding: '0.4rem 0.6rem', borderRadius: '6px' }}>
                       ⚠️ No contractors found. Create contractor users in User Management.

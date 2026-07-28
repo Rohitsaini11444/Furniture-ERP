@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
+import CustomSelect from '../components/CustomSelect';
 
 const ALL_TILES = [
   { name: 'Sample',                  icon: <Box size={28} />,           color: '#22c55e', link: '/samples',           roles: ['admin'] },
@@ -467,15 +468,19 @@ function Dashboard() {
               <BarChart3 size={20} color="#8b5a2b" /> Order Revenue & Growth Analytics
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <select
+              <CustomSelect
                 value={timeframe}
-                onChange={e => setTimeframe(e.target.value)}
-                style={{ border: 'none', background: 'transparent', fontSize: '0.8rem', color: '#64748b', fontWeight: 700, cursor: 'pointer' }}
-              >
-                <option value="2026">2026 Monthly Trend</option>
-                <option value="last6">Last 6 Months</option>
-                <option value="ytd">Year To Date</option>
-              </select>
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setTimeframe(val);
+                }}
+                options={[
+                  { value: '2026', label: '2026 Monthly Trend' },
+                  { value: 'last6', label: 'Last 6 Months' },
+                  { value: 'ytd', label: 'Year To Date' }
+                ]}
+                style={{ width: '170px' }}
+              />
             </div>
           </div>
           <InteractiveRevenueChart monthlyData={monthlyRevenueData} startAnimation={startChartAnimation} />

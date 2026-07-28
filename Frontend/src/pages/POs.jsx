@@ -4,7 +4,7 @@ import api from '../api/axios';
 import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
-  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag
+  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
@@ -12,6 +12,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
 import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
 import { CustomDatePicker } from '../components/CustomDatePicker';
+import CustomSelect from '../components/CustomSelect';
 import GateEntry from './GateEntry';
 
 
@@ -106,12 +107,56 @@ function SupplierModal({ onClose, onSaved }) {
   );
 }
 
+// ─── API Error Parser ──────────────────────────────────────────────────────────
+function formatApiError(err) {
+  if (!err || !err.response) return err?.message || 'Network or connection error occurred.';
+  const data = err.response.data;
+  if (!data) return 'Failed to save Purchase Order. Please try again.';
+  if (typeof data === 'string') return data;
+  if (typeof data === 'object') {
+    const errorList = [];
+    for (const [key, val] of Object.entries(data)) {
+      if (key === 'items' && Array.isArray(val)) {
+        val.forEach((itemErr, idx) => {
+          if (typeof itemErr === 'object' && itemErr !== null) {
+            for (const [fName, fVal] of Object.entries(itemErr)) {
+              const msg = Array.isArray(fVal) ? fVal.join(' ') : String(fVal);
+              const label = fName === 'quantity' ? 'Quantity' : fName === 'rate' ? 'Rate' : fName === 'description' ? 'Description' : fName;
+              errorList.push(`Line Item #${idx + 1} (${label}): ${msg}`);
+            }
+          } else if (itemErr) {
+            errorList.push(`Line Item #${idx + 1}: ${Array.isArray(itemErr) ? itemErr.join(' ') : String(itemErr)}`);
+          }
+        });
+      } else {
+        const msg = Array.isArray(val) ? val.join(' ') : String(val);
+        const label = key === 'po_number' ? 'PO Number' : key === 'po_date' ? 'PO Date' : key === 'due_date' ? 'Due Date' : key === 'supplier' ? 'Supplier' : key;
+        errorList.push(`${label}: ${msg}`);
+      }
+    }
+    return errorList.join('\n') || 'Validation failed. Please review your input.';
+  }
+  return 'Failed to save Purchase Order.';
+}
+
 // ─── PO Form (Create / Edit) ───────────────────────────────────────────────────
 function POForm({ poId, onBack, onSaved }) {
   const isNew = !poId;
+  const formTopRef = React.useRef(null);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+
+  // Auto-scroll to top when formError is updated
+  useEffect(() => {
+    if (formError) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (formTopRef.current) {
+        formTopRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [formError]);
 
   const [suppliers, setSuppliers] = useState([]);
   const [buyers, setBuyers] = useState([]);
@@ -186,6 +231,38 @@ function POForm({ poId, onBack, onSaved }) {
     setItems(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
+
+      // When buyer_pi changes, auto-fill description & suggested quantity if empty
+      if (key === 'buyer_pi' && val) {
+        const selectedPi = buyerPIs.find(p => p.id === val);
+        if (selectedPi) {
+          if (!next[idx].buyer && selectedPi.buyer) {
+            next[idx].buyer = selectedPi.buyer;
+          }
+          api.get(`/buyer-pis/${val}/`).then(res => {
+            const piData = res.data;
+            if (piData && piData.items && piData.items.length > 0) {
+              const piItemsSummary = piData.items.map(piItem => `${piItem.style_no} (${piItem.units} pcs)`).join(', ');
+              const totalPiUnits = piData.items.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
+              
+              setItems(curr => {
+                const updated = [...curr];
+                if (!updated[idx].description || updated[idx].description === '') {
+                  updated[idx].description = piItemsSummary;
+                }
+                if (!updated[idx].quantity || parseFloat(updated[idx].quantity) <= 0) {
+                  updated[idx].quantity = totalPiUnits > 0 ? String(totalPiUnits) : '1';
+                }
+                const q = parseFloat(updated[idx].quantity) || 0;
+                const r = parseFloat(updated[idx].rate) || 0;
+                updated[idx].amount = q && r ? (q * r).toFixed(2) : '';
+                return updated;
+              });
+            }
+          }).catch(err => console.error(err));
+        }
+      }
+
       // Auto-calculate amount
       if (key === 'quantity' || key === 'rate') {
         const q = parseFloat(key === 'quantity' ? val : next[idx].quantity) || 0;
@@ -201,8 +278,52 @@ function POForm({ poId, onBack, onSaved }) {
 
   const totalAmount = items.reduce((acc, it) => acc + (parseFloat(it.amount) || 0), 0);
 
+  // Financial Comparison: Calculate linked Buyer PI Selling Value in USD & INR
+  const EXCHANGE_RATE_INR = 85.0; // Default USD to INR exchange rate
+  let totalPiSalesUsd = 0;
+  const processedPiIds = new Set();
+
+  items.forEach(it => {
+    if (it.buyer_pi && !processedPiIds.has(it.buyer_pi)) {
+      processedPiIds.add(it.buyer_pi);
+      const pObj = buyerPIs.find(p => p.id === it.buyer_pi);
+      if (pObj && pObj.items && Array.isArray(pObj.items)) {
+        totalPiSalesUsd += pObj.items.reduce((acc, piItem) => acc + (parseFloat(piItem.total_amount) || 0), 0);
+      }
+    }
+  });
+
+  const totalPiSalesInr = totalPiSalesUsd * EXCHANGE_RATE_INR;
+  const isLoss = totalPiSalesInr > 0 && totalAmount > totalPiSalesInr;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+
+    // Pre-validate rate and quantity digits on client side before API call
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const q = parseFloat(it.quantity);
+      const r = parseFloat(it.rate);
+
+      if (isNaN(q) || q <= 0) {
+        setFormError(`Line Item #${i + 1}: Quantity must be greater than 0.`);
+        return;
+      }
+      if (q > 999999) {
+        setFormError(`Line Item #${i + 1}: Quantity cannot exceed 999,999 units.`);
+        return;
+      }
+      if (isNaN(r) || r < 0) {
+        setFormError(`Line Item #${i + 1}: Rate cannot be negative.`);
+        return;
+      }
+      if (r > 99999999.99) {
+        setFormError(`Line Item #${i + 1}: Rate cannot exceed ₹99,999,999.99 (max 10 integer digits + 2 decimals).`);
+        return;
+      }
+    }
+
     setSaving(true);
     const payload = {
       ...header,
@@ -225,8 +346,9 @@ function POForm({ poId, onBack, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      console.error(err);
-      alert('Failed to save PO. Check console for details.');
+      console.error('PO Save Error:', err);
+      const formatted = formatApiError(err);
+      setFormError(formatted);
     } finally {
       setSaving(false);
     }
@@ -258,6 +380,21 @@ function POForm({ poId, onBack, onSaved }) {
       </button>
 
       <form onSubmit={handleSubmit}>
+        {formError && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', color: '#991b1b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+              <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong style={{ display: 'block', fontSize: '0.95rem', marginBottom: '4px' }}>Form Validation Error:</strong>
+                <span>{formError}</span>
+              </div>
+            </div>
+            <button type="button" onClick={() => setFormError('')} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: '2px' }}>
+              <X size={18} />
+            </button>
+          </div>
+        )}
+
         <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
           <div className="modal-header" style={{ padding: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
             <h2 className="pi-form-title" style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
@@ -407,21 +544,35 @@ function POForm({ poId, onBack, onSaved }) {
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{idx + 1}</td>
                     <td style={{ padding: '6px 8px' }}>
-                      <select className="form-input" style={{ minWidth: '140px', fontSize: '0.82rem', padding: '6px 8px' }}
-                        value={item.buyer} onChange={e => updateItem(idx, 'buyer', e.target.value)}>
-                        <option value="">No buyer ref</option>
-                        {buyers.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
-                      </select>
+                      <CustomSelect
+                        value={item.buyer}
+                        onChange={e => {
+                          const val = e.target ? e.target.value : e;
+                          updateItem(idx, 'buyer', val);
+                        }}
+                        options={[
+                          { value: '', label: 'No buyer ref' },
+                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                        ]}
+                        placeholder="No buyer ref"
+                        style={{ minWidth: '140px' }}
+                      />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <select className="form-input" style={{ minWidth: '130px', fontSize: '0.82rem', padding: '6px 8px' }}
-                        value={item.buyer_pi} onChange={e => updateItem(idx, 'buyer_pi', e.target.value)}
-                        disabled={!item.buyer}>
-                        <option value="">None</option>
-                        {buyerPIs.filter(p => !item.buyer || p.buyer === item.buyer).map(p => (
-                          <option key={p.id} value={p.id}>{p.pi_no}</option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        value={item.buyer_pi}
+                        onChange={e => {
+                          const val = e.target ? e.target.value : e;
+                          updateItem(idx, 'buyer_pi', val);
+                        }}
+                        disabled={!item.buyer}
+                        options={[
+                          { value: '', label: 'None' },
+                          ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
+                        ]}
+                        placeholder="None"
+                        style={{ minWidth: '130px' }}
+                      />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <textarea rows={2} required className="form-input"
@@ -431,20 +582,25 @@ function POForm({ poId, onBack, onSaved }) {
                         onChange={e => updateItem(idx, 'description', e.target.value)} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <input required type="number" step="0.01" min="0" className="form-input"
-                        style={{ width: '90px', fontSize: '0.82rem', padding: '6px 8px' }}
+                      <input required type="number" step="0.01" min="0.01" max="999999" className="form-input"
+                        style={{ width: '95px', fontSize: '0.82rem', padding: '6px 8px' }}
                         placeholder="0.00" value={item.quantity}
                         onChange={e => updateItem(idx, 'quantity', e.target.value)} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <select className="form-input" style={{ minWidth: '70px', fontSize: '0.82rem', padding: '6px 8px' }}
-                        value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}>
-                        {['pcs','mtr','Ft²','kg','nos','set'].map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
+                      <CustomSelect
+                        value={item.unit}
+                        onChange={e => {
+                          const val = e.target ? e.target.value : e;
+                          updateItem(idx, 'unit', val);
+                        }}
+                        options={['pcs','mtr','Ft²','kg','nos','set']}
+                        style={{ minWidth: '85px' }}
+                      />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <input required type="number" step="0.01" min="0" className="form-input"
-                        style={{ width: '100px', fontSize: '0.82rem', padding: '6px 8px' }}
+                      <input required type="number" step="0.01" min="0" max="99999999.99" className="form-input"
+                        style={{ width: '105px', fontSize: '0.82rem', padding: '6px 8px' }}
                         placeholder="0.00" value={item.rate}
                         onChange={e => updateItem(idx, 'rate', e.target.value)} />
                     </td>
@@ -466,11 +622,64 @@ function POForm({ poId, onBack, onSaved }) {
           {/* Total */}
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
             <div style={{ background: '#fcfaf6', borderRadius: '12px', padding: '1.25rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.85rem', color: '#9a3412', marginBottom: '0.25rem', fontWeight: 600 }}>Total Amount</div>
+              <div style={{ fontSize: '0.85rem', color: '#9a3412', marginBottom: '0.25rem', fontWeight: 600 }}>Supplier PO Total Amount</div>
               <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5a2b' }}>
                 ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
             </div>
+
+            {/* Profitability & Financial Comparison Indicator */}
+            {totalPiSalesUsd > 0 && (
+              <div style={{
+                marginTop: '1rem',
+                borderRadius: '14px',
+                padding: '1.15rem 1.25rem',
+                border: isLoss ? '1.5px solid #fca5a5' : '1.5px solid #bbf7d0',
+                backgroundColor: isLoss ? '#fef2f2' : '#f0fdf4',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: isLoss ? '#991b1b' : '#166534', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <AlertCircle size={20} color={isLoss ? '#dc2626' : '#16a34a'} style={{ flexShrink: 0 }} />
+                    <span>{isLoss ? '⚠️ Trade Loss Alert: Supplier Cost Exceeds Buyer Revenue!' : '🟢 Profitable Purchase Order'}</span>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isLoss ? '#b91c1c' : '#15803d', background: isLoss ? '#fee2e2' : '#dcfce7', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                    Reference Exchange Rate: 1 USD = ₹{EXCHANGE_RATE_INR} INR
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginTop: '0.25rem' }}>
+                  <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Buyer PI Selling Revenue</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>
+                      ${totalPiSalesUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>
+                        (~₹{totalPiSalesInr.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Supplier Purchase Cost</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: isLoss ? '#dc2626' : '#16a34a', marginTop: '2px' }}>
+                      ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })} INR
+                    </div>
+                  </div>
+                </div>
+
+                {isLoss ? (
+                  <div style={{ fontSize: '0.84rem', color: '#7f1d1d', marginTop: '2px', fontWeight: 600, lineHeight: 1.5 }}>
+                    ⚠️ Your Purchase Cost (₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}) is higher than your Buyer PI Sales Revenue (~₹{totalPiSalesInr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}). You will incur an estimated loss of <strong style={{ textDecoration: 'underline' }}>₹{(totalAmount - totalPiSalesInr).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> on this order. Please lower unit purchase rates or check quantities!
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.84rem', color: '#14532d', marginTop: '2px', fontWeight: 600 }}>
+                    ✨ Estimated Profit Margin: <strong>₹{(totalPiSalesInr - totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> ({(((totalPiSalesInr - totalAmount) / totalPiSalesInr) * 100).toFixed(1)}% margin).
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -528,12 +737,31 @@ function POs() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, ordering]);
 
-  const handleDelete = (poItem, e) => {
-    e.stopPropagation();
-    if (window.confirm(`Delete PO "${poItem.po_number}"? This cannot be undone.`)) {
-      api.delete(`/supplier-pos/${poItem.id}/`)
-        .then(fetchPOs)
-        .catch(err => console.error(err));
+  const handleCancelPO = async (poItem, e) => {
+    if (e) e.stopPropagation();
+    if (poItem.status === 'Cancelled') {
+      alert('This Purchase Order is already cancelled.');
+      return;
+    }
+    if (window.confirm(`Are you sure you want to cancel Purchase Order "${poItem.po_number}"? This will mark its status as Cancelled.`)) {
+      try {
+        await api.put(`/supplier-pos/${poItem.id}/`, {
+          po_number: poItem.po_number,
+          po_date: poItem.po_date,
+          due_date: poItem.due_date || null,
+          supplier: poItem.supplier || poItem.supplier_detail?.id,
+          mode_of_payment: poItem.mode_of_payment || '',
+          terms_of_delivery: poItem.terms_of_delivery || '',
+          supervisor: poItem.supervisor || '',
+          nku_refs: poItem.nku_refs || '',
+          remarks: poItem.remarks || '',
+          status: 'Cancelled'
+        });
+        fetchPOs();
+      } catch (err) {
+        console.error('Failed to cancel PO', err);
+        alert('Failed to cancel Purchase Order.');
+      }
     }
   };
 
@@ -862,10 +1090,19 @@ function POs() {
                         </button>
                         <button
                           className="btn-secondary"
-                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
-                          onClick={e => handleDelete(p, e)}
+                          style={{
+                            padding: '0.3rem 0.7rem',
+                            fontSize: '0.78rem',
+                            color: p.status === 'Cancelled' ? '#94a3b8' : '#d97706',
+                            borderColor: p.status === 'Cancelled' ? '#e2e8f0' : '#fde68a',
+                            backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fffbeb',
+                            cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
+                          }}
+                          onClick={e => handleCancelPO(p, e)}
+                          disabled={p.status === 'Cancelled'}
+                          title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
                         >
-                          Delete
+                          {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
                         </button>
                       </div>
                     </td>

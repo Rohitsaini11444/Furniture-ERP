@@ -6,6 +6,7 @@ import {
   X, Check, XCircle, Clock, AlertCircle, RefreshCw,
   ChevronRight, User,
 } from 'lucide-react';
+import CustomSelect from '../components/CustomSelect';
 
 // ─── Status badge helpers ─────────────────────────────────────────────────────
 const STATUS_COLORS = {
@@ -560,19 +561,22 @@ function Sanding() {
               <form onSubmit={handleAddToBatch}>
                 <div className="form-group">
                   <label className="form-label">Select Sample *</label>
-                  <select
+                  <CustomSelect
                     className="form-input"
                     value={selectedSample}
-                    onChange={(e) => setSelectedSample(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Choose a sample --</option>
-                    {availableSamples.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.sample_id} — {s.product_name} ({s.buyer_code})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => {
+                      const val = e.target ? e.target.value : e;
+                      setSelectedSample(val);
+                    }}
+                    options={[
+                      { value: '', label: '-- Choose a sample --' },
+                      ...availableSamples.map((s) => ({
+                        value: s.id,
+                        label: `${s.sample_id} — ${s.product_name} (${s.buyer_code})`
+                      }))
+                    ]}
+                    placeholder="-- Choose a sample --"
+                  />
                   {availableSamples.length === 0 && (
                     <p className="sanding-no-samples">All samples are already in your batch.</p>
                   )}
@@ -615,17 +619,19 @@ function Sanding() {
               <form onSubmit={handleAssign}>
                 <div className="form-group">
                   <label className="form-label">Select Contractor *</label>
-                  <select
+                  <CustomSelect
                     className="form-input"
                     value={assignForm.contractor}
-                    onChange={(e) => setAssignForm((p) => ({ ...p, contractor: e.target.value }))}
-                    required
-                  >
-                    <option value="">-- Choose a contractor --</option>
-                    {contractors.map((c) => (
-                      <option key={c.id} value={c.id}>{c.full_name}</option>
-                    ))}
-                  </select>
+                    onChange={(e) => {
+                      const val = e.target ? e.target.value : e;
+                      setAssignForm((p) => ({ ...p, contractor: val }));
+                    }}
+                    options={[
+                      { value: '', label: '-- Choose a contractor --' },
+                      ...contractors.map((c) => ({ value: c.id, label: c.full_name }))
+                    ]}
+                    placeholder="-- Choose a contractor --"
+                  />
                   {contractors.length === 0 && (
                     <p className="sanding-no-samples">No contractors found under your supervision.</p>
                   )}

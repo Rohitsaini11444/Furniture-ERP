@@ -6,6 +6,7 @@ import {
   Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor, UserCheck,
 } from 'lucide-react';
 import { TableSkeleton } from '../components/TableSkeleton';
+import CustomSelect from '../components/CustomSelect';
 
 const ROLE_CONFIG = {
   admin:      { label: 'Admin',      color: '#8b5a2b', badge: 'admin-badge' },
@@ -425,35 +426,35 @@ function UserManagement() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Role *</label>
-                  <select name="role" value={form.role} onChange={handleChange} className="form-input" required>
+                  <CustomSelect name="role" value={form.role} onChange={handleChange} className="form-input">
                     <option value="admin">Admin</option>
                     <option value="supervisor">Supervisor</option>
                     <option value="contractor">Contractor</option>
-                  </select>
+                  </CustomSelect>
                 </div>
                 {form.role === 'supervisor' && (
                   <div className="form-group">
                     <label className="form-label">Batch Category *</label>
-                    <select name="batch_category" value={form.batch_category} onChange={handleChange} className="form-input" required>
+                    <CustomSelect name="batch_category" value={form.batch_category} onChange={handleChange} className="form-input">
                       <option value="">Select batch category</option>
                       <option value="sanding">Sanding</option>
                       <option value="polish">Polish</option>
                       <option value="fitting">Fitting</option>
                       <option value="packaging">Packaging</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                 )}
                 {form.role === 'contractor' && (
                   <div className="form-group">
                     <label className="form-label">Supervisor *</label>
-                    <select name="supervisor" value={form.supervisor} onChange={handleChange} className="form-input" required>
+                    <CustomSelect name="supervisor" value={form.supervisor} onChange={handleChange} className="form-input">
                       <option value="">Select supervisor</option>
                       {supervisors.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.full_name} ({BATCH_LABELS[s.batch_category] || s.batch_category})
                         </option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </div>
                 )}
                 <div className="form-group">

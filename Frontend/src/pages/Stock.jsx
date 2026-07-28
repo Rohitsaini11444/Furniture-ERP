@@ -6,6 +6,7 @@ import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_QTY } from '../components/OrderBySelect';
 import { StatusSelect, STOCK_STATUS_FILTER_OPTIONS, STOCK_STATUS_FORM_OPTIONS } from '../components/StatusSelect';
+import CustomSelect from '../components/CustomSelect';
 
 function Stock() {
   const navigate = useNavigate();
@@ -280,12 +281,16 @@ function Stock() {
 
                     <div className="form-group">
                       <label className="form-label">Associated Buyer (Optional)</label>
-                      <select name="buyer" className="form-input" value={formData.buyer} onChange={handleChange}>
-                        <option value="">Select Buyer...</option>
-                        {buyers.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        name="buyer"
+                        value={formData.buyer}
+                        onChange={handleChange}
+                        options={[
+                          { value: '', label: 'Select Buyer...' },
+                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                        ]}
+                        placeholder="Select Buyer..."
+                      />
                     </div>
 
                     <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -385,17 +390,19 @@ function Stock() {
 
               <div className="bm-export">
                 <span className="filter-label">Filter Buyer:</span>
-                <select
-                  className="filter-input"
+                <CustomSelect
                   value={buyerFilter}
-                  onChange={e => setBuyerFilter(e.target.value)}
+                  onChange={e => {
+                    const val = e.target ? e.target.value : e;
+                    setBuyerFilter(val);
+                  }}
+                  options={[
+                    { value: '', label: 'All Buyers' },
+                    ...buyers.map(b => ({ value: b.id, label: b.name }))
+                  ]}
+                  placeholder="All Buyers"
                   style={{ minWidth: '150px' }}
-                >
-                  <option value="">All Buyers</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="bm-order">

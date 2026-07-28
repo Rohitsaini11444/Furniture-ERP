@@ -1348,6 +1348,8 @@ function AppLayout() {
             <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+            <Route path="/buyer-masters/buyer/:buyerId" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
+            <Route path="/buyer-masters/edit/:buyerId" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
             <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
             <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />

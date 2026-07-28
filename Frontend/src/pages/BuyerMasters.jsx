@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight, Download, Upload, ImageIcon, Package, Clock, History, ArrowDownAZ, ArrowUpZA, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import SearchableSelect from '../components/SearchableSelect';
+import MultiSearchableSelect from '../components/MultiSearchableSelect';
 import CustomFileUpload from '../components/CustomFileUpload';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
-
+import CustomSelect from '../components/CustomSelect';
 
 
 
@@ -36,16 +37,19 @@ function SizeGroup({ label, prefix, values, onChange }) {
 }
 
 function BuyerMasters() {
-  const { id } = useParams();
+  const { id, buyerId: paramBuyerId } = useParams();
   const navigate = useNavigate();
 
   const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
+  const [finishesOptions, setFinishesOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [exportBuyerId, setExportBuyerId] = useState('');
+  const [exportModalGroup, setExportModalGroup] = useState(null);
+  const [showSummaryPanel, setShowSummaryPanel] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
@@ -69,7 +73,7 @@ function BuyerMasters() {
         const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `${selectedBuyer.code}_Buyer_Master.xlsx`);
+        link.setAttribute('download', `${selectedBuyer.code || selectedBuyer.name}_Buyer_Master.xlsx`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -199,6 +203,10 @@ function BuyerMasters() {
     api.get('/samples/', { params: { nopage: true } })
       .then(res => setSamples(res.data))
       .catch(err => console.error(err));
+
+    api.get('/finishes/', { params: { nopage: true } })
+      .then(res => setFinishesOptions(res.data))
+      .catch(err => console.error(err));
   };
 
   useEffect(() => {
@@ -212,6 +220,241 @@ function BuyerMasters() {
 
   const [materialsList, setMaterialsList] = useState(['']);
   const [finishesList, setFinishesList] = useState(['']);
+  const [formError, setFormError] = useState('');
+
+  // ── Multi-Style Queue (new-form mode) ──
+  const [selectedStyleIds, setSelectedStyleIds] = useState([]); // selected sample ids in multi-picker
+  const [globalBuyerId, setGlobalBuyerId] = useState('');       // buyer selected in top control bar
+  const [styleQueue, setStyleQueue] = useState([]);              // [{ sampleId, formData, materialsList, finishesList, status: 'unsaved'|'editing'|'saved' }]
+  const [activeStyleIdx, setActiveStyleIdx] = useState(0);
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchError, setBatchError] = useState('');
+  const [batchSuccess, setBatchSuccess] = useState('');
+  const [mobilePanelView, setMobilePanelView] = useState('list'); // 'list' | 'editor'
+
+  // Build an empty style form data for a given sample
+  const buildStyleFromSample = (sampleId, buyerId) => {
+    const s = samples.find(x => x.id === sampleId);
+    const buyer = buyers.find(b => b.id === buyerId);
+    if (!s) return null;
+    const cbmVal = parseFloat(s.cbm) || 0;
+    const priceVal = parseFloat(s.usd) || 0;
+    const unitsVal = 1;
+    return {
+      sampleId,
+      formData: {
+        buyer: buyerId || '',
+        sample: sampleId,
+        style_no: s.style_no || '',
+        buyer_code: s.buyer_detail?.code || buyer?.code || '',
+        product_name: s.product_name || '',
+        wood_type: s.material || '',
+        finish_color: s.finish_color || '',
+        size_length: s.size_length || '',
+        size_breadth: s.size_breadth || '',
+        size_height: s.size_height || '',
+        cbm: s.cbm || '',
+        price_usd: s.usd || '',
+        units: unitsVal,
+        total_cbm: (cbmVal && unitsVal) ? (cbmVal * unitsVal).toFixed(4) : '',
+        total_amount: (priceVal && unitsVal) ? (priceVal * unitsVal).toFixed(2) : '',
+        remark: s.remark || '',
+        vendor_details: '',
+        vendor_price: '',
+        costing: '',
+        purchase_price: '',
+        net_weight: '',
+        gross_weight: '',
+        box_size: '',
+        box_length: '',
+        box_breadth: '',
+        box_height: '',
+        total_cbm: '',
+      },
+      materialsList: parseSlashList(s.material),
+      finishesList: parseSlashList(s.finish_color),
+      showMoreDetails: false,
+      status: 'unsaved', // 'unsaved' | 'saving' | 'saved' | 'error'
+      packagingFile: null,
+      finishingFiles: [],
+      error: '',
+    };
+  };
+
+  // When selected style IDs change, sync the queue
+  useEffect(() => {
+    if (!id || id === 'new') {
+      setStyleQueue(prev => {
+        const existingIds = prev.map(q => q.sampleId);
+        // Add new ones
+        const toAdd = selectedStyleIds.filter(sid => !existingIds.includes(sid));
+        // Remove deselected ones (only unsaved/error, keep saved)
+        const toKeep = prev.filter(q => selectedStyleIds.includes(q.sampleId) || q.status === 'saved');
+        const newEntries = toAdd.map(sid => buildStyleFromSample(sid, globalBuyerId)).filter(Boolean);
+        const merged = [...toKeep, ...newEntries];
+        // Clamp active idx
+        setActiveStyleIdx(idx => Math.min(idx, Math.max(0, merged.length - 1)));
+        return merged;
+      });
+    }
+  }, [selectedStyleIds]);
+
+  // Update buyer_code in all unsaved queue items when global buyer changes
+  const handleGlobalBuyerChange = (e) => {
+    const buyerId = e.target ? e.target.value : e;
+    setGlobalBuyerId(buyerId);
+    const buyer = buyers.find(b => b.id === buyerId);
+    setStyleQueue(prev => prev.map(q => q.status !== 'saved' ? {
+      ...q,
+      formData: { ...q.formData, buyer: buyerId, buyer_code: buyer?.code || q.formData.buyer_code }
+    } : q));
+    // Also update single-style edit mode formData
+    if (formError) setFormError('');
+    setFormData(prev => ({ ...prev, buyer: buyerId, buyer_code: buyer?.code || prev.buyer_code }));
+  };
+
+  // Get the active queue item's formData and helpers
+  const activeItem = styleQueue[activeStyleIdx];
+
+  const updateActiveFormData = (updater) => {
+    setStyleQueue(prev => {
+      const next = [...prev];
+      if (!next[activeStyleIdx]) return prev;
+      const item = { ...next[activeStyleIdx] };
+      item.formData = typeof updater === 'function' ? updater(item.formData) : { ...item.formData, ...updater };
+      if (item.status !== 'saved') item.status = 'editing';
+      next[activeStyleIdx] = item;
+      return next;
+    });
+  };
+
+  const updateActiveField = (name, value) => {
+    updateActiveFormData(prev => {
+      const next = { ...prev, [name]: value };
+      if (name === 'units' || name === 'cbm' || name === 'price_usd') {
+        const u = parseInt(next.units) || 0;
+        const c = parseFloat(next.cbm) || 0;
+        const p = parseFloat(next.price_usd) || 0;
+        if (u && c) next.total_cbm = (u * c).toFixed(4);
+        if (u && p) next.total_amount = (u * p).toFixed(2);
+      }
+      return next;
+    });
+  };
+
+  const updateActiveMaterials = (list) => {
+    setStyleQueue(prev => {
+      const next = [...prev];
+      if (!next[activeStyleIdx]) return prev;
+      next[activeStyleIdx] = { ...next[activeStyleIdx], materialsList: list };
+      return next;
+    });
+  };
+
+  const updateActiveFinishes = (list) => {
+    setStyleQueue(prev => {
+      const next = [...prev];
+      if (!next[activeStyleIdx]) return prev;
+      next[activeStyleIdx] = { ...next[activeStyleIdx], finishesList: list };
+      return next;
+    });
+  };
+
+  const updateActiveMoreDetails = (val) => {
+    setStyleQueue(prev => {
+      const next = [...prev];
+      if (!next[activeStyleIdx]) return prev;
+      next[activeStyleIdx] = { ...next[activeStyleIdx], showMoreDetails: val };
+      return next;
+    });
+  };
+
+  // Save a single queue item to the backend
+  const saveQueueItem = async (idx) => {
+    const item = styleQueue[idx];
+    if (!item) return false;
+
+    // Duplicate check
+    const styleNo = item.formData.style_no?.trim();
+    if (styleNo) {
+      const dup = buyerMasters.find(bm =>
+        bm.style_no && bm.style_no.trim().toLowerCase() === styleNo.toLowerCase()
+      );
+      if (dup) {
+        setStyleQueue(prev => {
+          const next = [...prev];
+          next[idx] = { ...next[idx], status: 'error', error: `Style No. '${styleNo}' already exists in Buyer Master.` };
+          return next;
+        });
+        return false;
+      }
+    }
+
+    const woodTypeJoined = item.materialsList.map(m => m.trim()).filter(Boolean).join('/');
+    const finishJoined = item.finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+
+    const fd = new FormData();
+    Object.keys(item.formData).forEach(key => {
+      let val = item.formData[key];
+      if (key === 'wood_type') val = woodTypeJoined;
+      if (key === 'finish_color') val = finishJoined;
+      if (val === null || val === undefined) val = '';
+      if (key === 'sample' && !val) return;
+      fd.append(key, val);
+    });
+
+    if (item.packagingFile) fd.append('packaging_image', item.packagingFile);
+    (item.finishingFiles || []).forEach(f => fd.append('finishing_images', f.file));
+
+    const isEdit = !!item.existingId;
+    const url = isEdit ? `/buyer-masters/${item.existingId}/` : '/buyer-masters/';
+    const method = isEdit ? 'put' : 'post';
+
+    try {
+      await api[method](url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setStyleQueue(prev => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], status: 'saved', error: '' };
+        return next;
+      });
+      return true;
+    } catch (err) {
+      const errData = err.response?.data;
+      const errMsg = errData?.style_no?.[0] || errData?.detail || 'Failed to save. Please check inputs.';
+      setStyleQueue(prev => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], status: 'error', error: errMsg };
+        return next;
+      });
+      return false;
+    }
+  };
+
+  const handleSaveCurrentStyle = async () => {
+    const ok = await saveQueueItem(activeStyleIdx);
+    if (ok) fetchData();
+  };
+
+  const handleSaveAllStyles = async () => {
+    setBatchSaving(true);
+    setBatchError('');
+    setBatchSuccess('');
+    let failed = 0;
+    for (let i = 0; i < styleQueue.length; i++) {
+      if (styleQueue[i].status !== 'saved') {
+        const ok = await saveQueueItem(i);
+        if (!ok) failed++;
+      }
+    }
+    setBatchSaving(false);
+    fetchData();
+    if (failed > 0) {
+      setBatchError(`${failed} style(s) failed to save. Please check highlighted errors.`);
+    } else {
+      setBatchSuccess(`All ${styleQueue.length} styles saved successfully!`);
+    }
+  };
 
   const parseSlashList = (str) => {
     if (!str || typeof str !== 'string') return [''];
@@ -237,6 +480,7 @@ function BuyerMasters() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (formError) setFormError('');
     setFormData(prev => {
       const next = { ...prev, [name]: value };
       if (name === 'units' || name === 'cbm' || name === 'price_usd') {
@@ -377,75 +621,222 @@ function BuyerMasters() {
     }
   };
 
-  // Load style on id change (routing edit)
+  // Load filled style queue when buyerId or id parameter is present in URL
   useEffect(() => {
-    if (id && id !== 'new') {
-      api.get(`/buyer-masters/${id}/`)
+    const targetBuyerId = paramBuyerId || (id && id !== 'new' ? id : null);
+    if (targetBuyerId) {
+      setLoading(true);
+      api.get('/buyer-masters/', { params: { buyer: targetBuyerId, nopage: true } })
         .then(res => {
-          const bm = res.data;
-          setFormData({
-            buyer: bm.buyer,
-            sample: bm.sample || '',
-            style_no: bm.style_no,
-            buyer_code: bm.buyer_code,
-            product_name: bm.product_name,
-            wood_type: bm.wood_type,
-            finish_color: bm.finish_color,
-            size_length: bm.size_length || '',
-            size_breadth: bm.size_breadth || '',
-            size_height: bm.size_height || '',
-            price_usd: bm.price_usd || '',
-            units: bm.units !== undefined && bm.units !== null ? bm.units : 1,
-            cbm: bm.cbm || '',
-            total_cbm: bm.total_cbm || '',
-            total_amount: bm.total_amount || '',
-            remark: bm.remark || '',
-            vendor_details: bm.vendor_details || '',
-            vendor_price: bm.vendor_price || '',
-            costing: bm.costing || '',
-            purchase_price: bm.purchase_price || '',
-            net_weight: bm.net_weight || '',
-            gross_weight: bm.gross_weight || '',
-            box_size: bm.box_size || '',
-            box_length: bm.box_length || '',
-            box_breadth: bm.box_breadth || '',
-            box_height: bm.box_height || '',
-          });
-          setMaterialsList(parseSlashList(bm.wood_type));
-          setFinishesList(parseSlashList(bm.finish_color));
-          setExistingPackagingUrl(bm.packaging_image_url || bm.packaging_image || null);
-          setPackagingFile(null);
-          setClearPackagingImage(false);
-          setExistingFinishingImages(bm.finishing_images || []);
-          setNewFinishingFiles([]);
-          setEditingId(bm.id);
-          setShowMoreDetails(
-            !!bm.vendor_details || !!bm.vendor_price || !!bm.costing || 
-            !!bm.purchase_price || !!bm.cbm || !!bm.net_weight || 
-            !!bm.gross_weight || !!bm.box_size || !!bm.box_length || !!bm.packaging_image || 
-            (bm.finishing_images && bm.finishing_images.length > 0)
-          );
+          const records = res.data.results || res.data;
+          if (Array.isArray(records) && records.length > 0) {
+            const bId = records[0].buyer || records[0].buyer_detail?.id || targetBuyerId;
+            setGlobalBuyerId(bId);
+
+            const sampleIds = records.map(s => s.sample).filter(Boolean);
+            setSelectedStyleIds(sampleIds);
+
+            const queue = records.map(s => ({
+              sampleId: s.sample || s.id,
+              existingId: s.id,
+              formData: {
+                buyer: bId,
+                sample: s.sample || '',
+                style_no: s.style_no || '',
+                buyer_code: s.buyer_code || s.buyer_detail?.code || '',
+                product_name: s.product_name || '',
+                wood_type: s.wood_type || '',
+                finish_color: s.finish_color || '',
+                size_length: s.size_length || '',
+                size_breadth: s.size_breadth || '',
+                size_height: s.size_height || '',
+                cbm: s.cbm || '',
+                price_usd: s.price_usd || '',
+                units: s.units !== undefined && s.units !== null ? s.units : 1,
+                total_cbm: s.total_cbm || '',
+                total_amount: s.total_amount || '',
+                remark: s.remark || '',
+                vendor_details: s.vendor_details || '',
+                vendor_price: s.vendor_price || '',
+                costing: s.costing || '',
+                purchase_price: s.purchase_price || '',
+                net_weight: s.net_weight || '',
+                gross_weight: s.gross_weight || '',
+                box_size: s.box_size || '',
+                box_length: s.box_length || '',
+                box_breadth: s.box_breadth || '',
+                box_height: s.box_height || '',
+              },
+              materialsList: parseSlashList(s.wood_type),
+              finishesList: parseSlashList(s.finish_color),
+              showMoreDetails: !!(s.vendor_details || s.vendor_price || s.costing || s.purchase_price || s.cbm || s.net_weight || s.gross_weight || s.box_size || s.packaging_image || (s.finishing_images && s.finishing_images.length > 0)),
+              status: 'saved',
+              packagingFile: null,
+              existingPackagingUrl: s.packaging_image_url || s.packaging_image || null,
+              finishingFiles: [],
+              existingFinishingImages: s.finishing_images || [],
+              error: '',
+            }));
+
+            setStyleQueue(queue);
+            setActiveStyleIdx(0);
+            setMobilePanelView('list');
+          } else {
+            // Fallback for single item route lookup
+            api.get(`/buyer-masters/${targetBuyerId}/`)
+              .then(singleRes => {
+                const bm = singleRes.data;
+                setGlobalBuyerId(bm.buyer);
+                setSelectedStyleIds(bm.sample ? [bm.sample] : []);
+                const singleQueueItem = {
+                  sampleId: bm.sample || bm.id,
+                  existingId: bm.id,
+                  formData: {
+                    buyer: bm.buyer,
+                    sample: bm.sample || '',
+                    style_no: bm.style_no || '',
+                    buyer_code: bm.buyer_code || '',
+                    product_name: bm.product_name || '',
+                    wood_type: bm.wood_type || '',
+                    finish_color: bm.finish_color || '',
+                    size_length: bm.size_length || '',
+                    size_breadth: bm.size_breadth || '',
+                    size_height: bm.size_height || '',
+                    cbm: bm.cbm || '',
+                    price_usd: bm.price_usd || '',
+                    units: bm.units !== undefined && bm.units !== null ? bm.units : 1,
+                    total_cbm: bm.total_cbm || '',
+                    total_amount: bm.total_amount || '',
+                    remark: bm.remark || '',
+                    vendor_details: bm.vendor_details || '',
+                    vendor_price: bm.vendor_price || '',
+                    costing: bm.costing || '',
+                    purchase_price: bm.purchase_price || '',
+                    net_weight: bm.net_weight || '',
+                    gross_weight: bm.gross_weight || '',
+                    box_size: bm.box_size || '',
+                    box_length: bm.box_length || '',
+                    box_breadth: bm.box_breadth || '',
+                    box_height: bm.box_height || '',
+                  },
+                  materialsList: parseSlashList(bm.wood_type),
+                  finishesList: parseSlashList(bm.finish_color),
+                  showMoreDetails: false,
+                  status: 'saved',
+                  packagingFile: null,
+                  existingPackagingUrl: bm.packaging_image_url || bm.packaging_image || null,
+                  finishingFiles: [],
+                  existingFinishingImages: bm.finishing_images || [],
+                  error: '',
+                };
+                setStyleQueue([singleQueueItem]);
+                setActiveStyleIdx(0);
+              })
+              .catch(err => console.error(err));
+          }
         })
-        .catch(err => console.error(err));
-    } else {
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    } else if (id === 'new') {
       setFormData(emptyForm);
-      setMaterialsList(['']);
-      setFinishesList(['']);
-      setExistingPackagingUrl(null);
-      setPackagingFile(null);
-      setClearPackagingImage(false);
-      setExistingFinishingImages([]);
-      setNewFinishingFiles([]);
-      setEditingId(null);
-      setShowMoreDetails(false);
+      setGlobalBuyerId('');
+      setSelectedStyleIds([]);
+      setStyleQueue([]);
+      setActiveStyleIdx(0);
     }
-  }, [id]);
+  }, [id, paramBuyerId]);
+
+  // Group Buyer Master records by Buyer for 1 Buyer = 1 Listing Row pattern
+  const groupedMasters = React.useMemo(() => {
+    const map = {};
+    (buyerMasters || []).forEach(bm => {
+      if (!bm) return;
+      const bId = bm.buyer || bm.buyer_detail?.id || 'unknown';
+      if (!map[bId]) {
+        const bObj = (buyers || []).find(b => b.id === bId);
+        map[bId] = {
+          buyerId: bId,
+          buyerName: bm.buyer_detail?.name || bObj?.name || 'Unknown Buyer',
+          buyerCode: bm.buyer_detail?.code || bObj?.code || '',
+          styles: [],
+          totalStyles: 0,
+          totalUnits: 0,
+          totalAmount: 0,
+          lastUpdated: bm.created_at || new Date().toISOString(),
+        };
+      }
+      map[bId].styles.push(bm);
+      map[bId].totalStyles += 1;
+      map[bId].totalUnits += (parseInt(bm.units) || 0);
+      map[bId].totalAmount += (parseFloat(bm.total_amount) || 0);
+      if (bm.created_at && new Date(bm.created_at) > new Date(map[bId].lastUpdated)) {
+        map[bId].lastUpdated = bm.created_at;
+      }
+    });
+    return Object.values(map);
+  }, [buyerMasters, buyers]);
+
+  const filteredGroupedMasters = React.useMemo(() => {
+    if (!groupedMasters) return [];
+    if (!searchTerm) return groupedMasters;
+    const term = searchTerm.toLowerCase();
+    return groupedMasters.filter(g =>
+      (g.buyerName || '').toLowerCase().includes(term) ||
+      (g.buyerCode || '').toLowerCase().includes(term) ||
+      (g.styles && g.styles.some(s =>
+        (s.style_no || '').toLowerCase().includes(term) ||
+        (s.product_name || '').toLowerCase().includes(term)
+      ))
+    );
+  }, [groupedMasters, searchTerm]);
+
+  const openGroupedEdit = (group) => {
+    setFormError('');
+    if (group && group.buyerId) {
+      navigate(`/buyer-masters/buyer/${group.buyerId}`);
+    }
+  };
+
+  const handleRowDownloadExcel = (buyerId, buyerName, withDetails = false) => {
+    api.get(`/buyer-masters/export-excel/?buyer=${buyerId}&with_details=${withDetails}`, { responseType: 'blob' })
+      .then(res => {
+        const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        const link = document.createElement('a');
+        link.href = url;
+        const safeName = (buyerName || 'Buyer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        link.setAttribute('download', `${safeName}_Buyer_Master_${withDetails ? 'Detailed' : 'Standard'}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(err => {
+        console.error('Failed to export excel', err);
+        alert('Failed to download Excel. Please try again.');
+      });
+  };
+
+  const handleDeleteGroup = async (group, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm(`Are you sure you want to delete all ${group.totalStyles} registered style(s) for buyer "${group.buyerName}"?`)) {
+      return;
+    }
+    try {
+      await Promise.all(group.styles.map(s => api.delete(`/buyer-masters/${s.id}/`)));
+      fetchData();
+    } catch (err) {
+      console.error('Failed to delete buyer master group', err);
+      alert('Failed to delete some items. Please try again.');
+    }
+  };
 
   const openCreateModal = () => {
+    setFormError('');
     navigate('/buyer-masters/new');
   };
 
   const openEditModal = (bm) => {
+    setFormError('');
     navigate(`/buyer-masters/${bm.id}`);
   };
 
@@ -453,6 +844,7 @@ function BuyerMasters() {
   const fromBuyer = location.state?.fromBuyer;
 
   const closeModal = () => {
+    setFormError('');
     if (fromBuyer) {
       navigate(`/buyers/${fromBuyer}`);
     } else {
@@ -462,6 +854,21 @@ function BuyerMasters() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setFormError('');
+
+    // Pre-check for duplicate style_no
+    const styleNo = formData.style_no?.trim();
+    if (styleNo) {
+      const duplicate = buyerMasters.find(bm =>
+        bm.style_no &&
+        bm.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
+        String(bm.id) !== String(editingId || '')
+      );
+      if (duplicate) {
+        setFormError(`Style No. '${styleNo}' already exists in Buyer Master.`);
+        return;
+      }
+    }
 
     const woodTypeJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
     const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
@@ -497,7 +904,19 @@ function BuyerMasters() {
         closeModal();
         fetchData();
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error('Submit error:', err);
+        if (err.response?.data?.style_no) {
+          const msg = Array.isArray(err.response.data.style_no)
+            ? err.response.data.style_no[0]
+            : err.response.data.style_no;
+          setFormError(msg || `Style No. '${formData.style_no}' already exists in Buyer Master.`);
+        } else if (err.response?.data?.detail) {
+          setFormError(err.response.data.detail);
+        } else {
+          setFormError('Failed to save Buyer Master style. Please check your inputs.');
+        }
+      });
   };
 
   const handleDelete = (id, style) => {
@@ -526,322 +945,606 @@ function BuyerMasters() {
     }
   };
 
-  const filteredMasters = buyerMasters.filter(bm => 
-    bm.style_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bm.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bm.buyer_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (bm.buyer_detail && bm.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredMasters = (buyerMasters || []).filter(bm => {
+    if (!bm) return false;
+    const term = (searchTerm || '').toLowerCase();
+    return (
+      (bm.style_no || '').toLowerCase().includes(term) ||
+      (bm.product_name || '').toLowerCase().includes(term) ||
+      (bm.buyer_code || '').toLowerCase().includes(term) ||
+      (bm.buyer_detail?.name || '').toLowerCase().includes(term)
+    );
+  });
+
+  const isFormMode = !!(id || paramBuyerId);
 
   return (
     <div>
-      {id ? (
-        <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <button 
-            onClick={closeModal} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              background: 'none', 
-              border: 'none', 
-              color: '#8b5a2b', 
-              fontWeight: 600, 
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '1rem'
+      {isFormMode ? (
+        <div className="new-page-form">
+          {/* Back button */}
+          <button
+            onClick={closeModal}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'none', border: 'none', color: '#8b5a2b',
+              fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem',
+              padding: 0, fontSize: '1rem'
             }}
           >
             <ArrowLeft size={18} /> Back to Buyer Master
           </button>
 
-          <div className="form-card-container">
-            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Buyer Master Style' : '+ Create Buyer Master Style'}</h2>
+          {/* Page Title */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <Layers size={24} color="#8b5a2b" /> {editingId ? '✏️ Edit Buyer Master Style' : '+ Register New Buyer Master Styles'}
+            </h2>
+          </div>
+
+          {/* ── EDIT MODE: Single style ── */}
+          {editingId ? (
+            <div className="form-card-container">
+              <div className="modal-body" style={{ padding: 0 }}>
+                <form onSubmit={handleSubmit}>
+                  {formError && (
+                    <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#991b1b', fontSize: '0.9rem', fontWeight: 600 }}>
+                      <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                      <span>{formError}</span>
+                    </div>
+                  )}
+                  <div className="form-section">
+                    <h3 className="form-section-title">🔗 Linkings</h3>
+                    <div className="form-grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Buyer *</label>
+                        <CustomSelect name="buyer" value={formData.buyer} onChange={handleBuyerChange}
+                          options={[{ value: '', label: 'Select Buyer...' }, ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))]}
+                          placeholder="Select Buyer..." />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Style No (Autofill Source)</label>
+                        <SearchableSelect options={samples} value={formData.sample} onChange={handleSampleChange}
+                          placeholder="Choose Style to Autofill..." searchPlaceholder="Search style no or name..."
+                          codeKey="style_no" titleKey="product_name" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-section">
+                    <h3 className="form-section-title">📋 Style Information</h3>
+                    <div className="form-grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Style No *</label>
+                        <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-1002" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Buyer Code *</label>
+                        <input required type="text" name="buyer_code" className="form-input" value={formData.buyer_code} onChange={handleChange} placeholder="e.g. BYR-001" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Product Name *</label>
+                        <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Mango Wood Dining Table" />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) / Wood Type *</label>
+                          <button type="button" onClick={addMaterialField} className="btn-secondary" style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}>+ Add Material</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          {materialsList.map((mat, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                              <input required={idx === 0} type="text" className="form-input" value={mat} onChange={e => handleMaterialItemChange(idx, e.target.value)} placeholder={`Material ${idx + 1}`} />
+                              {materialsList.length > 1 && (
+                                <button type="button" onClick={() => removeMaterialField(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }} title="Remove"><X size={16} /></button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label">Finish (Catalog Reference)</label>
+                        <CustomSelect name="finish_color" value={formData.finish_color || ''} onChange={handleChange}
+                          options={[{ value: '', label: 'Select Registered Finish...' }, ...finishesOptions.map(f => ({ value: f.name, label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})` }))]}
+                          placeholder="Select Registered Finish..." />
+                      </div>
+                      <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                        <div className="form-group">
+                          <label className="form-label">Price (USD)</label>
+                          <input type="number" step="0.01" name="price_usd" className="form-input" value={formData.price_usd} onChange={handleChange} placeholder="e.g. 150.00" />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Units</label>
+                          <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 1" />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Total Amount ($)</label>
+                        <input type="number" step="0.01" name="total_amount" className="form-input" value={formData.total_amount} onChange={handleChange} placeholder="Auto calculated" />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label">Remark</label>
+                        <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-section">
+                    <h3 className="form-section-title">📐 Product Size</h3>
+                    <SizeGroup label="Dimensions (cm)" prefix="size" values={formData} onChange={handleDimChange} />
+                  </div>
+
+                  <div className="form-section">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <h3 className="form-section-title" style={{ margin: 0 }}>➕ More Details (Optional)</h3>
+                      <button type="button" onClick={() => setShowMoreDetails(!showMoreDetails)} style={{ background: 'none', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        {showMoreDetails ? 'Hide details' : 'Show details'}
+                      </button>
+                    </div>
+                    {showMoreDetails && (
+                      <div className="form-grid-2">
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label className="form-label">Vendor Details</label>
+                          <textarea name="vendor_details" className="form-input" rows="2" value={formData.vendor_details} onChange={handleChange} placeholder="Vendor name, contact, etc..."></textarea>
+                        </div>
+                        <div className="form-group"><label className="form-label">Vendor Price</label><input type="number" step="0.01" name="vendor_price" className="form-input" value={formData.vendor_price} onChange={handleChange} /></div>
+                        <div className="form-group"><label className="form-label">Costing</label><input type="number" step="0.01" name="costing" className="form-input" value={formData.costing} onChange={handleChange} /></div>
+                        <div className="form-group"><label className="form-label">Purchase Price</label><input type="number" step="0.01" name="purchase_price" className="form-input" value={formData.purchase_price} onChange={handleChange} /></div>
+                        <div className="form-group"><label className="form-label">CBM</label><input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" /></div>
+                        <div className="form-group"><label className="form-label">Total CBM</label><input type="number" step="0.0001" name="total_cbm" className="form-input" value={formData.total_cbm} onChange={handleChange} placeholder="Auto calculated" /></div>
+                        <div className="form-group"><label className="form-label">Net Weight (kg)</label><input type="number" step="0.01" name="net_weight" className="form-input" value={formData.net_weight} onChange={handleChange} /></div>
+                        <div className="form-group"><label className="form-label">Gross Weight (kg)</label><input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} /></div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={formData} onChange={handleDimChange} />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <label className="form-label">Box Size Summary</label>
+                          <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100 x 50 x 50 cm" />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                            <label className="form-label" style={{ margin: 0, fontWeight: 650 }}>Packaging Image</label>
+                            {editingId && existingPackagingUrl && (
+                              <button type="button" onClick={handleDownloadPackagingImage} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', backgroundColor: '#fdf8f5', border: '1.5px solid #d6c7b2', color: '#8b5a2b', fontWeight: 650, fontSize: '0.82rem', padding: '0.4rem 0.85rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f5e6d3'} onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fdf8f5'}>
+                                <Download size={14} color="#8b5a2b" strokeWidth={2.2} /> Download Packaging Image
+                              </button>
+                            )}
+                          </div>
+                          <CustomFileUpload icon={Package} singleFile={packagingFile || existingPackagingUrl} onChange={file => { setPackagingFile(file); setClearPackagingImage(false); }} onRemoveNew={handleRemovePackagingImage} />
+                        </div>
+                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                            <label className="form-label" style={{ margin: 0, fontWeight: 650 }}>Finishing Images</label>
+                            {editingId && existingFinishingImages.length > 0 && (
+                              <button type="button" onClick={handleDownloadFinishingImages} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', backgroundColor: '#fdf8f5', border: '1.5px solid #d6c7b2', color: '#8b5a2b', fontWeight: 650, fontSize: '0.82rem', padding: '0.4rem 0.85rem', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f5e6d3'} onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fdf8f5'}>
+                                <Download size={14} color="#8b5a2b" strokeWidth={2.2} /> Download Finishing Images (ZIP)
+                              </button>
+                            )}
+                          </div>
+                          <CustomFileUpload multiple icon={ImageIcon} existingFiles={existingFinishingImages} newFiles={newFinishingFiles}
+                            onChange={files => { const mapped = files.map(file => ({ file, preview: URL.createObjectURL(file) })); setNewFinishingFiles(prev => [...prev, ...mapped]); }}
+                            onRemoveNew={idx => handleRemoveNewFinishingFile(idx)} onRemoveExisting={id => handleRemoveExistingFinishingImage(id)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bm-edit-form-footer" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
+                    <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Style'}</button>
+                  </div>
+                </form>
+              </div>
             </div>
-            <div className="modal-body" style={{ padding: 0 }}>
-              <form onSubmit={handleSubmit}>
-                <div className="form-section">
-                  <h3 className="form-section-title">🔗 Linkings</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Buyer *</label>
-                      <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleBuyerChange}>
-                        <option value="">Select Buyer...</option>
-                        {buyers.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                        ))}
-                      </select>
-                    </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Style No (Autofill Source)</label>
-                      <SearchableSelect
-                        options={samples}
-                        value={formData.sample}
-                        onChange={handleSampleChange}
-                        placeholder="Choose Style to Autofill..."
-                        searchPlaceholder="Search style no or name..."
-                        codeKey="style_no"
-                        titleKey="product_name"
-                      />
-                    </div>
-
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">📋 Style Information</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Style No *</label>
-                      <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-1002" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Buyer Code *</label>
-                      <input required type="text" name="buyer_code" className="form-input" value={formData.buyer_code} onChange={handleChange} placeholder="e.g. BYR-001" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Product Name *</label>
-                      <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Mango Wood Dining Table" />
-                    </div>
-
-                    {/* ── Material(s) (Wood Type) ── */}
-                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) / Wood Type *</label>
-                        <button
-                          type="button"
-                          onClick={addMaterialField}
-                          className="btn-secondary"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
-                        >
-                          + Add Material
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        {materialsList.map((mat, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <input
-                              required={idx === 0}
-                              type="text"
-                              className="form-input"
-                              value={mat}
-                              onChange={e => handleMaterialItemChange(idx, e.target.value)}
-                              placeholder={`Material ${idx + 1} (e.g. ${idx === 0 ? 'Mango' : 'Silk'})`}
-                            />
-                            {materialsList.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeMaterialField(idx)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                                title="Remove Material"
-                              >
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* ── Finish / Color(s) ── */}
-                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Finish / Color(s) *</label>
-                        <button
-                          type="button"
-                          onClick={addFinishField}
-                          className="btn-secondary"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
-                        >
-                          + Add Finish
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        {finishesList.map((fin, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <input
-                              required={idx === 0}
-                              type="text"
-                              className="form-input"
-                              value={fin}
-                              onChange={e => handleFinishItemChange(idx, e.target.value)}
-                              placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric 1557 Linen'})`}
-                            />
-                            {finishesList.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeFinishField(idx)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                                title="Remove Finish"
-                              >
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {/* ── Pricing & Quantity Details ── */}
-                    <div className="form-group">
-                      <label className="form-label">Price (USD)</label>
-                      <input type="number" step="0.01" name="price_usd" className="form-input" value={formData.price_usd} onChange={handleChange} placeholder="e.g. 150.00" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Units</label>
-                      <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 1" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Total Amount ($)</label>
-                      <input type="number" step="0.01" name="total_amount" className="form-input" value={formData.total_amount} onChange={handleChange} placeholder="Auto calculated (Units × Price)" />
-                    </div>
-
-                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                      <label className="form-label">Remark</label>
-                      <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any specific requirements..."></textarea>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-section">
-                  <h3 className="form-section-title">📐 Product Size</h3>
-                  <SizeGroup
-                    label="Dimensions (cm)"
-                    prefix="size"
-                    values={formData}
-                    onChange={handleDimChange}
+          ) : (
+            /* ── MULTI-STYLE CREATE MODE ── */
+            <>
+              {/* ── Top Control Bar ── */}
+              <div className="bm-top-control-bar">
+                {/* Buyer */}
+                <div className="bm-top-buyer-field form-group">
+                  <label className="form-label">Buyer *</label>
+                  <CustomSelect
+                    name="buyer"
+                    value={globalBuyerId}
+                    onChange={handleGlobalBuyerChange}
+                    options={[{ value: '', label: 'Select Buyer...' }, ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))]}
+                    placeholder="Select Buyer..."
                   />
                 </div>
 
-                <div className="form-section">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 className="form-section-title" style={{ margin: 0 }}>➕ More Details (Optional)</h3>
-                    <button 
-                      type="button" 
-                      onClick={() => setShowMoreDetails(!showMoreDetails)}
-                      style={{ background: 'none', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
-                    >
-                      {showMoreDetails ? 'Hide details' : 'Show details'}
-                    </button>
+                {/* Style Numbers Multi-Select */}
+                <div className="bm-top-style-field form-group">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    Select Style No.
+                    {selectedStyleIds.length > 0 && (
+                      <span style={{ fontSize: '0.72rem', backgroundColor: '#8b5a2b', color: '#fff', borderRadius: '20px', padding: '1px 8px', fontWeight: 700 }}>
+                        {selectedStyleIds.length} selected
+                      </span>
+                    )}
+                  </label>
+                  <MultiSearchableSelect
+                    options={samples}
+                    values={selectedStyleIds}
+                    onChange={setSelectedStyleIds}
+                    placeholder="Search & select style numbers..."
+                    codeKey="style_no"
+                    titleKey="product_name"
+                  />
+                </div>
+
+                {/* View Summary Card — always visible in top bar */}
+                <div className={`bm-summary-card${styleQueue.length === 0 ? ' bm-summary-card--empty' : ''}`}>
+                  <div className="bm-summary-card-icon">
+                    <Layers size={22} color={styleQueue.length === 0 ? '#c9a87a' : '#8b5a2b'} />
+                  </div>
+                  <div className="bm-summary-card-info">
+                    <div className="bm-summary-card-label">Selected Styles</div>
+                    <div className="bm-summary-card-count">{styleQueue.length}</div>
+                    <div className="bm-summary-card-sub">styles selected</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="bm-summary-card-btn"
+                    onClick={() => setShowSummaryPanel(v => !v)}
+                    disabled={styleQueue.length === 0}
+                  >
+                    View Summary <ChevronRight size={15} />
+                  </button>
+                </div>
+              </div>
+
+
+              {/* Batch error/success */}
+              {batchError && (
+                <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#991b1b', fontSize: '0.88rem', fontWeight: 600 }}>
+                  <AlertCircle size={16} color="#dc2626" style={{ flexShrink: 0 }} /><span>{batchError}</span>
+                </div>
+              )}
+              {batchSuccess && (
+                <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#15803d', fontSize: '0.88rem', fontWeight: 600 }}>
+                  <CheckCircle size={16} color="#16a34a" style={{ flexShrink: 0 }} /><span>{batchSuccess}</span>
+                </div>
+              )}
+
+              {styleQueue.length === 0 ? (
+                /* Empty state */
+                <div style={{ backgroundColor: '#fff', border: '1.5px solid #e7e5e4', borderRadius: '16px', padding: '3.5rem 1.5rem', textAlign: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+                  <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'linear-gradient(135deg, #fdf8f5, #f5efe6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', border: '2px solid #e9d5b8' }}>
+                    <Layers size={32} color="#c9a87a" />
+                  </div>
+                  <h3 style={{ fontWeight: 700, color: '#334155', marginBottom: '0.5rem' }}>No styles selected yet</h3>
+                  <p style={{ color: '#64748b', fontSize: '0.9rem', maxWidth: '380px', margin: '0 auto' }}>
+                    Choose a <strong>Buyer</strong> above, then pick one or more <strong>Style Numbers</strong> from the multi-select dropdown to build your editing queue.
+                  </p>
+                </div>
+              ) : (
+                /* 2-Column Layout (desktop) / Stacked panels (mobile) */
+                <div className="bm-multi-form-container">
+
+                  {/* ── Left Sidebar ── */}
+                  <div className={`bm-sidebar-panel${mobilePanelView === 'editor' ? ' bm-mobile-hidden' : ''}`}>
+                    {/* Section header */}
+                    <div className="bm-sidebar-header">
+                      <h4>Selected Styles ({styleQueue.length})</h4>
+                      <div className="bm-sidebar-search">
+                        <Search size={14} color="#64748b" />
+                        <input
+                          type="text"
+                          placeholder="Search style..."
+                          value={sidebarSearch}
+                          onChange={e => setSidebarSearch(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Style list */}
+                    <div className="bm-style-list">
+                      {styleQueue
+                        .filter(q => !sidebarSearch || q.formData.style_no?.toLowerCase().includes(sidebarSearch.toLowerCase()) || q.formData.product_name?.toLowerCase().includes(sidebarSearch.toLowerCase()))
+                        .map((q, idx) => {
+                          const realIdx = styleQueue.indexOf(q);
+                          const isActive = realIdx === activeStyleIdx;
+                          const badgeClass = q.status === 'saved' ? 'bm-badge-saved' : q.status === 'error' ? 'bm-badge-unsaved' : isActive ? 'bm-badge-editing' : 'bm-badge-unsaved';
+                          const badgeLabel = q.status === 'saved' ? 'Saved' : q.status === 'error' ? 'Error' : isActive ? 'Editing' : 'Unsaved';
+                          return (
+                            <div
+                              key={q.sampleId}
+                              className={`bm-style-card ${isActive ? 'active' : ''}`}
+                              onClick={() => { setActiveStyleIdx(realIdx); setMobilePanelView('editor'); }}
+                            >
+                              <div className="bm-style-card-num">{realIdx + 1}</div>
+                              <div className="bm-style-card-info">
+                                <div className="bm-style-card-code">{q.formData.style_no || `Style ${realIdx + 1}`}</div>
+                                <div className="bm-style-card-name">{q.formData.product_name || '—'}</div>
+                              </div>
+                              <span className={`bm-badge ${badgeClass}`}>{badgeLabel}</span>
+                              <ChevronRight size={16} color="#94a3b8" className="bm-mobile-chevron" />
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* Footer: progress on desktop, label + Next button on mobile */}
+                    <div className="bm-sidebar-footer">
+                      <div className="bm-desktop-only" style={{ flexDirection: 'column', width: '100%' }}>
+                        <div className="bm-sidebar-progress-text">
+                          {styleQueue.filter(q => q.status === 'saved').length} of {styleQueue.length} saved
+                        </div>
+                        <div className="bm-sidebar-progress-bar">
+                          <div style={{ height: '100%', background: '#16a34a', borderRadius: '6px', width: `${(styleQueue.filter(q => q.status === 'saved').length / styleQueue.length) * 100}%`, transition: 'width 0.4s ease' }} />
+                        </div>
+                      </div>
+
+                      {/* Mobile Footer Row: Left Text + Right Next Button */}
+                      <div className="bm-mobile-footer-row">
+                        <span className="bm-mobile-footer-label">
+                          Editing Style {activeStyleIdx + 1} of {styleQueue.length}
+                        </span>
+                        <button
+                          type="button"
+                          className="bm-mobile-next-btn"
+                          onClick={() => setMobilePanelView('editor')}
+                        >
+                          Next <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  {showMoreDetails && (
-                    <div className="form-grid-2">
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label className="form-label">Vendor Details</label>
-                        <textarea name="vendor_details" className="form-input" rows="2" value={formData.vendor_details} onChange={handleChange} placeholder="Vendor name, contact, etc..."></textarea>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Vendor Price</label>
-                        <input type="number" step="0.01" name="vendor_price" className="form-input" value={formData.vendor_price} onChange={handleChange} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Costing</label>
-                        <input type="number" step="0.01" name="costing" className="form-input" value={formData.costing} onChange={handleChange} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Purchase Price</label>
-                        <input type="number" step="0.01" name="purchase_price" className="form-input" value={formData.purchase_price} onChange={handleChange} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">CBM</label>
-                        <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Total CBM</label>
-                        <input type="number" step="0.0001" name="total_cbm" className="form-input" value={formData.total_cbm} onChange={handleChange} placeholder="Auto calculated (Units × CBM)" />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Net Weight (kg)</label>
-                        <input type="number" step="0.01" name="net_weight" className="form-input" value={formData.net_weight} onChange={handleChange} />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Gross Weight (kg)</label>
-                        <input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} />
-                      </div>
 
-                      {/* ── Box Size (L, B, H) ── */}
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <SizeGroup
-                          label="Box Size Dimensions (cm)"
-                          prefix="box"
-                          values={formData}
-                          onChange={handleDimChange}
-                        />
+                  {/* ── Right Main Editor ── */}
+                  <div className={`bm-main-editor${mobilePanelView === 'list' ? ' bm-mobile-hidden' : ''}`}>
+                    {/* Editor Header */}
+                    <div className="bm-editor-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {/* Mobile back to list */}
+                        <button
+                          type="button"
+                          className="bm-mobile-back-btn"
+                          onClick={() => setMobilePanelView('list')}
+                          title="Back to style list"
+                        >
+                          <ArrowLeft size={16} />
+                        </button>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>
+                            Style Details
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                            {activeItem?.formData.style_no || '—'} · {activeItem?.formData.product_name || '—'}
+                          </div>
+                        </div>
                       </div>
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label className="form-label">Box Size Summary</label>
-                        <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100 x 50 x 50 cm" />
+                      <div className="bm-editor-nav">
+                        <button type="button" disabled={activeStyleIdx === 0} onClick={() => setActiveStyleIdx(i => i - 1)}>
+                          <ChevronLeft size={14} /> Prev
+                        </button>
+                        <span className="bm-editor-nav-counter">{activeStyleIdx + 1} / {styleQueue.length}</span>
+                        <button type="button" disabled={activeStyleIdx === styleQueue.length - 1} onClick={() => setActiveStyleIdx(i => i + 1)}>
+                          Next <ChevronRight size={14} />
+                        </button>
                       </div>
+                    </div>
 
-                      {/* ── Packaging Image ── */}
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <CustomFileUpload
-                          label="Packaging Image"
-                          icon={Package}
-                          singleFile={packagingFile || existingPackagingUrl}
-                          onChange={file => {
-                            setPackagingFile(file);
-                            setClearPackagingImage(false);
-                          }}
-                          onRemoveNew={handleRemovePackagingImage}
-                        />
-                        {editingId && existingPackagingUrl && (
-                          <button
-                            type="button"
-                            onClick={handleDownloadPackagingImage}
-                            className="btn-secondary"
-                            style={{ marginTop: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
-                          >
-                            <Download size={15} /> Download Packaging Image
-                          </button>
-                        )}
+                    {/* Error for this style */}
+                    {activeItem?.error && (
+                      <div style={{ margin: '1rem 1.5rem 0', backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '10px', padding: '0.65rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#991b1b', fontSize: '0.88rem', fontWeight: 600 }}>
+                        <AlertCircle size={16} color="#dc2626" style={{ flexShrink: 0 }} />
+                        <span>{activeItem.error}</span>
                       </div>
+                    )}
 
-                      {/* ── Finishing Images ── */}
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                          {editingId && existingFinishingImages.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleDownloadFinishingImages}
-                              className="btn-secondary"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.85rem', marginLeft: 'auto' }}
-                            >
-                              <Download size={15} /> Download Finishing Images (ZIP)
-                            </button>
-                          )}
+                    {/* Form body */}
+                    {activeItem && (
+                      <div className="bm-editor-body">
+                        {/* Style Information */}
+                        <div className="form-section">
+                          <h3 className="form-section-title">📋 Style Information</h3>
+                          <div className="form-grid-2">
+                            <div className="form-group">
+                              <label className="form-label">Style No *</label>
+                              <input required type="text" className="form-input" value={activeItem.formData.style_no} onChange={e => updateActiveField('style_no', e.target.value)} placeholder="e.g. STY-1002" />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Buyer Code</label>
+                              <input type="text" className="form-input" value={activeItem.formData.buyer_code} onChange={e => updateActiveField('buyer_code', e.target.value)} placeholder="e.g. BYR-001" />
+                            </div>
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                              <label className="form-label">Product Name *</label>
+                              <input required type="text" className="form-input" value={activeItem.formData.product_name} onChange={e => updateActiveField('product_name', e.target.value)} placeholder="e.g. Mango Wood Dining Table" />
+                            </div>
+
+                            {/* Materials */}
+                            <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) / Wood Type</label>
+                                <button type="button" className="btn-secondary" style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', background: '#fff' }}
+                                  onClick={() => updateActiveMaterials([...activeItem.materialsList, ''])}>+ Add</button>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {activeItem.materialsList.map((mat, idx) => (
+                                  <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                    <input type="text" className="form-input" value={mat}
+                                      onChange={e => { const l = [...activeItem.materialsList]; l[idx] = e.target.value; updateActiveMaterials(l); }}
+                                      placeholder={`Material ${idx + 1}`} />
+                                    {activeItem.materialsList.length > 1 && (
+                                      <button type="button" onClick={() => updateActiveMaterials(activeItem.materialsList.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}><X size={16} /></button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Finish */}
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                              <label className="form-label">Finish (Catalog Reference)</label>
+                              <CustomSelect name="finish_color" value={activeItem.formData.finish_color || ''} onChange={e => updateActiveField('finish_color', e.target.value)}
+                                options={[{ value: '', label: 'Select Registered Finish...' }, ...finishesOptions.map(f => ({ value: f.name, label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})` }))]}
+                                placeholder="Select Registered Finish..." />
+                            </div>
+
+                            <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                              <div className="form-group">
+                                <label className="form-label">Price (USD)</label>
+                                <input type="number" step="0.01" className="form-input" value={activeItem.formData.price_usd} onChange={e => updateActiveField('price_usd', e.target.value)} placeholder="e.g. 150.00" />
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Units</label>
+                                <input type="number" className="form-input" value={activeItem.formData.units} onChange={e => updateActiveField('units', e.target.value)} placeholder="e.g. 1" />
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Total Amount ($)</label>
+                              <input type="number" step="0.01" className="form-input" value={activeItem.formData.total_amount} onChange={e => updateActiveField('total_amount', e.target.value)} placeholder="Auto calculated" />
+                            </div>
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                              <label className="form-label">Remark</label>
+                              <textarea className="form-input" rows="2" value={activeItem.formData.remark} onChange={e => updateActiveField('remark', e.target.value)} placeholder="Any specific requirements..."></textarea>
+                            </div>
+                          </div>
                         </div>
 
-                        <CustomFileUpload
-                          label="Finishing Images"
-                          multiple
-                          icon={ImageIcon}
-                          existingFiles={existingFinishingImages}
-                          newFiles={newFinishingFiles}
-                          onChange={files => {
-                            const mapped = files.map(file => ({ file, preview: URL.createObjectURL(file) }));
-                            setNewFinishingFiles(prev => [...prev, ...mapped]);
-                          }}
-                          onRemoveNew={idx => handleRemoveNewFinishingFile(idx)}
-                          onRemoveExisting={id => handleRemoveExistingFinishingImage(id)}
-                        />
+                        {/* Product Size */}
+                        <div className="form-section">
+                          <h3 className="form-section-title">📐 Product Size</h3>
+                          <SizeGroup
+                            label="Dimensions (cm)"
+                            prefix="size"
+                            values={activeItem.formData}
+                            onChange={(key, val) => updateActiveField(key, val)}
+                          />
+                        </div>
+
+                        {/* More Details */}
+                        <div className="form-section">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 className="form-section-title" style={{ margin: 0 }}>➕ More Details (Optional)</h3>
+                            <button type="button" onClick={() => updateActiveMoreDetails(!activeItem.showMoreDetails)} style={{ background: 'none', border: '1px solid #e2e8f0', padding: '4px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                              {activeItem.showMoreDetails ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          {activeItem.showMoreDetails && (
+                            <div className="form-grid-2">
+                              <div className="form-group" style={{ gridColumn: '1 / -1' }}><label className="form-label">Vendor Details</label><textarea className="form-input" rows="2" value={activeItem.formData.vendor_details} onChange={e => updateActiveField('vendor_details', e.target.value)} placeholder="Vendor name, contact..."></textarea></div>
+                              <div className="form-group"><label className="form-label">Vendor Price</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.vendor_price} onChange={e => updateActiveField('vendor_price', e.target.value)} /></div>
+                              <div className="form-group"><label className="form-label">Costing</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.costing} onChange={e => updateActiveField('costing', e.target.value)} /></div>
+                              <div className="form-group"><label className="form-label">Purchase Price</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.purchase_price} onChange={e => updateActiveField('purchase_price', e.target.value)} /></div>
+                              <div className="form-group"><label className="form-label">CBM</label><input type="number" step="0.0001" className="form-input" value={activeItem.formData.cbm} onChange={e => updateActiveField('cbm', e.target.value)} placeholder="e.g. 0.1250" /></div>
+                              <div className="form-group"><label className="form-label">Total CBM</label><input type="number" step="0.0001" className="form-input" value={activeItem.formData.total_cbm} onChange={e => updateActiveField('total_cbm', e.target.value)} placeholder="Auto calculated" /></div>
+                              <div className="form-group"><label className="form-label">Net Weight (kg)</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.net_weight} onChange={e => updateActiveField('net_weight', e.target.value)} /></div>
+                              <div className="form-group"><label className="form-label">Gross Weight (kg)</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.gross_weight} onChange={e => updateActiveField('gross_weight', e.target.value)} /></div>
+                              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={activeItem.formData} onChange={(key, val) => updateActiveField(key, val)} />
+                              </div>
+                              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <label className="form-label">Box Size Summary</label>
+                                <input type="text" className="form-input" value={activeItem.formData.box_size} onChange={e => updateActiveField('box_size', e.target.value)} placeholder="e.g. 100 x 50 x 50 cm" />
+                              </div>
+
+                              {/* Packaging Image */}
+                              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <label className="form-label" style={{ fontWeight: 650 }}>Packaging Image</label>
+                                <CustomFileUpload icon={Package}
+                                  singleFile={activeItem.packagingFile || null}
+                                  onChange={file => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: file }; return n; })}
+                                  onRemoveNew={() => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: null }; return n; })}
+                                />
+                              </div>
+
+                              {/* Finishing Images */}
+                              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                                <label className="form-label" style={{ fontWeight: 650 }}>Finishing Images</label>
+                                <CustomFileUpload multiple icon={ImageIcon}
+                                  existingFiles={[]}
+                                  newFiles={activeItem.finishingFiles || []}
+                                  onChange={files => {
+                                    const mapped = files.map(f => ({ file: f, preview: URL.createObjectURL(f) }));
+                                    setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: [...(n[activeStyleIdx].finishingFiles || []), ...mapped] }; return n; });
+                                  }}
+                                  onRemoveNew={idx => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: n[activeStyleIdx].finishingFiles.filter((_, i) => i !== idx) }; return n; })}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer actions */}
+                    <div className="bm-form-footer">
+                      {/* Mobile: Prev/Next navigation row */}
+                      <div className="bm-mobile-footer-nav">
+                        <button
+                          type="button"
+                          className="bm-mobile-nav-btn"
+                          disabled={activeStyleIdx === 0}
+                          onClick={() => setActiveStyleIdx(i => i - 1)}
+                        >
+                          <ChevronLeft size={14} /> Previous
+                        </button>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#8b5a2b' }}>
+                          {activeStyleIdx + 1} / {styleQueue.length}
+                        </span>
+                        <button
+                          type="button"
+                          className="bm-mobile-nav-btn"
+                          disabled={activeStyleIdx === styleQueue.length - 1}
+                          onClick={() => setActiveStyleIdx(i => i + 1)}
+                        >
+                          Next <ChevronRight size={14} />
+                        </button>
                       </div>
 
+                      {/* Desktop: Cancel + Save Current */}
+                      <button type="button" className="btn-secondary bm-desktop-only" onClick={closeModal}>Cancel</button>
+                      <button
+                        type="button"
+                        className="btn-secondary bm-desktop-only"
+                        onClick={handleSaveCurrentStyle}
+                        disabled={!activeItem || activeItem.status === 'saved'}
+                        style={{ borderColor: '#8b5a2b', color: '#8b5a2b', opacity: (!activeItem || activeItem.status === 'saved') ? 0.5 : 1 }}
+                      >
+                        {activeItem?.status === 'saved' ? '✓ Saved' : 'Save Current Style'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary bm-desktop-only"
+                        onClick={handleSaveAllStyles}
+                        disabled={batchSaving || styleQueue.every(q => q.status === 'saved')}
+                        style={{ minWidth: '180px' }}
+                      >
+                        {batchSaving ? 'Saving...' : `Save All Styles (${styleQueue.filter(q => q.status !== 'saved').length})`}
+                      </button>
 
+                      {/* Mobile: Full-width Save buttons */}
+                      <button
+                        type="button"
+                        className="bm-mobile-save-btn bm-mobile-save-current"
+                        onClick={handleSaveCurrentStyle}
+                        disabled={!activeItem || activeItem.status === 'saved'}
+                      >
+                        <FileText size={16} />
+                        {activeItem?.status === 'saved' ? '✓ Saved' : 'Save Current Style'}
+                      </button>
+                      <button
+                        type="button"
+                        className="bm-mobile-save-btn bm-mobile-save-all"
+                        onClick={handleSaveAllStyles}
+                        disabled={batchSaving || styleQueue.every(q => q.status === 'saved')}
+                      >
+                        <Layers size={16} />
+                        {batchSaving ? 'Saving...' : `Save All Styles (${styleQueue.filter(q => q.status !== 'saved').length})`}
+                      </button>
                     </div>
-                  )}
+                  </div>
                 </div>
-
-                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                  <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Style'}</button>
-                </div>
-              </form>
-            </div>
-          </div>
+              )}
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -915,58 +1618,17 @@ function BuyerMasters() {
           </div>
 
           <div className="filter-bar">
-            <div className="bm-filter-container">
-              <div className="bm-search">
+            <div className="bm-filter-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <div className="bm-search" style={{ flex: 1, maxWidth: '400px' }}>
                 <Search size={18} color="#64748b" />
                 <input
                   type="text"
-                  placeholder="Search styles, products, buyers..."
+                  placeholder="Search by buyer name, code, or style no..."
                   className="filter-input"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   style={{ width: '100%' }}
                 />
-              </div>
-
-              <div className="bm-export">
-                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>EXPORT BUYER MASTER:</span>
-                <select
-                  className="filter-input"
-                  value={exportBuyerId}
-                  onChange={e => setExportBuyerId(e.target.value)}
-                  style={{ minWidth: '180px' }}
-                >
-                  <option value="">Select Buyer...</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                  ))}
-                </select>
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => exportBuyerId && setShowExportOptions(!showExportOptions)}
-                    className="btn-primary"
-                    disabled={!exportBuyerId}
-                    style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', opacity: exportBuyerId ? 1 : 0.6 }}
-                  >
-                    Download Excel
-                  </button>
-                  {showExportOptions && (
-                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', zIndex: 10, minWidth: '200px' }}>
-                      <button 
-                        onClick={() => handleDownloadExcel(false)}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#334155', borderBottom: '1px solid #f1f5f9' }}
-                      >
-                        Standard Download
-                      </button>
-                      <button 
-                        onClick={() => handleDownloadExcel(true)}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.85rem', color: '#334155' }}
-                      >
-                        Download With More Details
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
 
               <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -981,78 +1643,95 @@ function BuyerMasters() {
             </div>
           </div>
 
-          <div className="table-container desktop-only">
-            <table className="data-table">
+          <div className="table-container desktop-only" style={{ overflow: 'visible' }}>
+            <table className="data-table table-fade-slide-up">
               <thead>
                 <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={filteredMasters.length > 0 && selectedRowIds.size === filteredMasters.length}
-                      onChange={toggleSelectAll}
-                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                    />
-                  </th>
-                  <th>Buyer</th>
-                  <th>Style No</th>
-                  <th>Product Name</th>
-                  <th>Wood Type</th>
-                  <th>Finish/Color</th>
-                  <th>Dimensions</th>
-                  <th>Actions</th>
+                  <th>Buyer Master</th>
+                  <th>Styles Registered</th>
+                  <th>Total Units</th>
+                  <th>Total Value ($)</th>
+                  <th>Last Updated</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={8} hasImage={false} />
-                ) : filteredMasters.length === 0 ? (
+                  <TableSkeleton rows={6} cols={6} hasImage={false} />
+                ) : filteredGroupedMasters.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                      No styles found in Buyer Master.
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                      No Buyer Master records found.
                     </td>
                   </tr>
                 ) : (
-                  filteredMasters.map(bm => (
+                  filteredGroupedMasters.map(group => (
                     <tr
-                      key={bm.id}
-                      onClick={() => openEditModal(bm)}
-                      style={{
-                        cursor: 'pointer',
-                        backgroundColor: selectedRowIds.has(bm.id) ? '#dcfce7' : undefined,
-                        transition: 'background-color 0.2s ease',
-                      }}
-                      className="smooth-fade-in"
-                      title="Click to view/edit detail"
+                      key={group.buyerId}
+                      onClick={() => openGroupedEdit(group)}
+                      style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
+                      className="table-fade-slide-up"
+                      title="Click to view/edit multi-style buyer master"
                     >
-                      <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedRowIds.has(bm.id)}
-                          onChange={e => toggleSelectRow(bm.id, e)}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                        />
-                      </td>
                       <td>
-                        <strong>{bm.buyer_detail?.name}</strong>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Code: {bm.buyer_detail?.code}</div>
-                      </td>
-                      <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
-                      <td>{bm.product_name}</td>
-                      <td>{bm.wood_type}</td>
-                      <td>{bm.finish_color}</td>
-                      <td>
-                        {bm.size_length && bm.size_breadth && bm.size_height ? (
-                          <span style={{ fontSize: '0.85rem' }}>
-                            {bm.size_length} × {bm.size_breadth} × {bm.size_height} cm
+                        <strong style={{ fontSize: '0.95rem' }}>{group.buyerName}</strong>
+                        {group.buyerCode && (
+                          <span className="navbar-role-badge admin-badge" style={{ marginLeft: '0.5rem', fontSize: '0.72rem' }}>
+                            {group.buyerCode}
                           </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={(e) => { e.stopPropagation(); openEditModal(bm); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDelete(bm.id, bm.style_no); }} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                      <td>
+                        <span style={{ fontWeight: 700, color: '#8b5a2b' }}>
+                          {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
+                        </span>
+                      </td>
+                      <td>{group.totalUnits} Units</td>
+                      <td>
+                        <strong style={{ color: '#16a34a' }}>
+                          ${group.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                          {new Date(group.lastUpdated).toLocaleDateString()}
+                        </span>
+                      </td>
+                      <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center' }}>
+                          {/* Excel Export Icon button */}
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExportModalGroup(group);
+                            }}
+                            title="Export Excel for this Buyer"
+                            style={{ padding: '0.35rem 0.65rem', color: '#16a34a', borderColor: '#86efac', backgroundColor: '#f0fdf4', cursor: 'pointer' }}
+                          >
+                            <FileSpreadsheet size={16} color="#16a34a" />
+                          </button>
+
+                          {/* Edit Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openGroupedEdit(group); }}
+                            className="btn-secondary"
+                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+                          >
+                            Edit ({group.totalStyles})
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteGroup(group, e)}
+                            className="btn-secondary"
+                            style={{ padding: '0.35rem 0.6rem', fontSize: '0.82rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1065,47 +1744,64 @@ function BuyerMasters() {
           {/* Mobile Card List */}
           <div className="mobile-only mobile-card-list">
             {loading ? (
-              <CardSkeleton count={5} />
-            ) : filteredMasters.length === 0 ? (
+              <CardSkeleton count={4} />
+            ) : filteredGroupedMasters.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                No styles found in Buyer Master.
+                No Buyer Master records found.
               </div>
             ) : (
-              filteredMasters.map(bm => {
-                const buyerName = bm.buyer_detail?.name || 'Unknown Buyer';
-                const initials = buyerName.substring(0, 2).toUpperCase();
+              filteredGroupedMasters.map(group => {
+                const initials = group.buyerName.substring(0, 2).toUpperCase();
                 return (
                   <div 
                     className="mobile-card smooth-fade-in" 
-                    key={bm.id} 
-                    onClick={() => openEditModal(bm)}
-                    style={{ backgroundColor: selectedRowIds.has(bm.id) ? '#f0fdf4' : '#fff' }}
+                    key={group.buyerId} 
+                    onClick={() => openGroupedEdit(group)}
+                    style={{ backgroundColor: '#fff', cursor: 'pointer', flexDirection: 'column', gap: '0.75rem', padding: '1rem', border: '1px solid #e7e5e4', borderRadius: '16px', marginBottom: '0.75rem' }}
                   >
-                    <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedRowIds.has(bm.id)}
-                        onChange={e => toggleSelectRow(bm.id, e)}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                      />
-                    </div>
-                    
-                    <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
-                      {initials}
-                    </div>
-                    
-                    <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                      <div className="mobile-card-title">{buyerName}</div>
-                      <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
-                        <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{bm.style_no}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.1rem', borderRadius: '12px', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {initials}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>{group.buyerName}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                            Code: <strong>{group.buyerCode || '—'}</strong> · {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-main)' }}>
-                        {bm.product_name}
-                      </div>
+                      <ChevronRight size={20} color="#94a3b8" />
                     </div>
 
-                    <div className="mobile-card-arrow">
-                      <ChevronRight size={20} color="#94a3b8" />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '0.65rem', width: '100%', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ color: '#64748b' }}>Total Value: </span>
+                        <strong style={{ color: '#16a34a' }}>
+                          ${group.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExportModalGroup(group);
+                          }}
+                          style={{ padding: '0.25rem 0.5rem', color: '#16a34a', borderColor: '#86efac' }}
+                        >
+                          <FileSpreadsheet size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={(e) => { e.stopPropagation(); openGroupedEdit(group); }}
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1345,6 +2041,154 @@ function BuyerMasters() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── View Summary Modal Overlay ── */}
+      {showSummaryPanel && (
+        <div className="bm-summary-modal-overlay" onClick={() => setShowSummaryPanel(false)}>
+          <div className="bm-summary-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="bm-summary-modal-header">
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1.15rem' }}>Buyer Master Summary</h3>
+                <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.82rem' }}>Detailed summary of selected styles, quantities, and totals</p>
+              </div>
+              <button type="button" onClick={() => setShowSummaryPanel(false)} className="bm-summary-modal-close">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Metric Cards */}
+            <div className="bm-summary-modal-metrics">
+              <div className="bm-summary-metric">
+                <span className="bm-metric-label">Buyer</span>
+                <span className="bm-metric-val">{buyers.find(b => b.id === globalBuyerId)?.name || 'Selected Buyer'}</span>
+              </div>
+              <div className="bm-summary-metric">
+                <span className="bm-metric-label">Total Styles</span>
+                <span className="bm-metric-val" style={{ color: '#8b5a2b' }}>{styleQueue.length}</span>
+              </div>
+              <div className="bm-summary-metric">
+                <span className="bm-metric-label">Total Units</span>
+                <span className="bm-metric-val">{styleQueue.reduce((acc, q) => acc + (parseInt(q.formData.units) || 0), 0)}</span>
+              </div>
+              <div className="bm-summary-metric">
+                <span className="bm-metric-label">Total Value ($)</span>
+                <span className="bm-metric-val" style={{ color: '#16a34a' }}>
+                  ${styleQueue.reduce((acc, q) => acc + (parseFloat(q.formData.total_amount) || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Summary Table */}
+            <div className="bm-summary-modal-body">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Style No</th>
+                    <th>Product Name</th>
+                    <th>Finish / Wood</th>
+                    <th>Price ($)</th>
+                    <th>Units</th>
+                    <th>Total ($)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {styleQueue.map((q, i) => (
+                    <tr key={i}>
+                      <td><strong>{i + 1}</strong></td>
+                      <td><span className="navbar-role-badge admin-badge">{q.formData.style_no || '—'}</span></td>
+                      <td>{q.formData.product_name || '—'}</td>
+                      <td>{q.formData.finish_color || q.formData.wood_type || '—'}</td>
+                      <td>${parseFloat(q.formData.price_usd || 0).toFixed(2)}</td>
+                      <td>{q.formData.units || 1}</td>
+                      <td><strong>${parseFloat(q.formData.total_amount || 0).toFixed(2)}</strong></td>
+                      <td>
+                        <span className={`bm-badge ${q.status === 'saved' ? 'bm-badge-saved' : q.status === 'error' ? 'bm-badge-unsaved' : 'bm-badge-editing'}`}>
+                          {q.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bm-summary-modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setShowSummaryPanel(false)}>
+                Close Summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Export Buyer Master Modal Dialog ── */}
+      {exportModalGroup && (
+        <div className="bm-export-modal-overlay" onClick={() => setExportModalGroup(null)}>
+          <div className="bm-export-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="bm-export-modal-header">
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 700, color: '#1e293b', fontSize: '1.15rem' }}>
+                  Export Buyer Master — {exportModalGroup.buyerName}
+                </h3>
+                <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                  {exportModalGroup.totalStyles} style(s) registered · Select export option
+                </p>
+              </div>
+              <button type="button" onClick={() => setExportModalGroup(null)} className="bm-summary-modal-close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="bm-export-modal-options">
+              <div
+                className="bm-export-option-card"
+                onClick={() => {
+                  handleRowDownloadExcel(exportModalGroup.buyerId, exportModalGroup.buyerName, false);
+                  setExportModalGroup(null);
+                }}
+              >
+                <div className="bm-export-icon-box" style={{ background: '#f0fdf4', color: '#16a34a', border: '1.5px solid #bbf7d0' }}>
+                  <FileSpreadsheet size={24} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>Standard Excel Download</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
+                    Includes Buyer details, Style numbers, Products, Sizes, Prices, Units, CBM, and Remarks.
+                  </p>
+                </div>
+                <ChevronRight size={20} color="#94a3b8" />
+              </div>
+
+              <div
+                className="bm-export-option-card"
+                onClick={() => {
+                  handleRowDownloadExcel(exportModalGroup.buyerId, exportModalGroup.buyerName, true);
+                  setExportModalGroup(null);
+                }}
+              >
+                <div className="bm-export-icon-box" style={{ background: '#f5f3ff', color: '#7c3aed', border: '1.5px solid #ddd6fe' }}>
+                  <FileSpreadsheet size={24} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>Detailed Excel Download (With Images)</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
+                    Includes standard columns + Vendor details, Costing, Weights, Box sizes & embedded Finishing Photos.
+                  </p>
+                </div>
+                <ChevronRight size={20} color="#94a3b8" />
+              </div>
+            </div>
+
+            <div className="bm-summary-modal-footer">
+              <button type="button" className="btn-secondary" onClick={() => setExportModalGroup(null)}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

@@ -96,40 +96,30 @@ class UserMinimalSerializer(serializers.ModelSerializer):
 # ─── ERP Core Serializers ─────────────────────────────────────────────────────
 
 class FinishSerializer(serializers.ModelSerializer):
-    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Finish
         fields = [
-            'id', 'name', 'finish_code', 'color', 'finish_type',
-            'texture', 'description', 'image', 'image_url',
-            'created_at', 'updated_at',
+            'id', 'name', 'finish_code', 'color', 'wood_type', 'image',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id']
 
-    def get_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.image:
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+    def validate_finish_code(self, value):
+        if not value or not value.strip():
+            return value
+        code = value.strip()
+        qs = Finish.objects.filter(finish_code__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Finish Code of this finish is already present.")
+        return code
 
 
 class FinishDropdownSerializer(serializers.ModelSerializer):
-    image_url = serializers.SerializerMethodField()
-
     class Meta:
         model = Finish
-        fields = ['id', 'name', 'finish_code', 'color', 'finish_type', 'image_url']
-
-    def get_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.image:
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+        fields = ['id', 'name', 'finish_code', 'color', 'wood_type', 'image']
 
 
 class SampleImageSerializer(serializers.ModelSerializer):
@@ -157,7 +147,7 @@ class BuyerSerializer(serializers.ModelSerializer):
 class BuyerDropdownSerializer(serializers.ModelSerializer):
     class Meta:
         model = Buyer
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'code']
 
 
 class SampleSerializer(serializers.ModelSerializer):
@@ -176,6 +166,17 @@ class SampleSerializer(serializers.ModelSerializer):
             'images',
         ]
         read_only_fields = ['id', 'images', 'buyer_detail', 'finish_detail', 'size_length_inch', 'size_breadth_inch', 'size_height_inch']
+
+    def validate_style_no(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Style No. is required.")
+        code = value.strip()
+        qs = Sample.objects.filter(style_no__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Style No. '{code}' already exists in Samples.")
+        return code
 
 
 class BuyerCodeSerializer(serializers.ModelSerializer):
@@ -249,6 +250,17 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
     class Meta:
         model = BuyerMaster
         fields = '__all__'
+
+    def validate_style_no(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Style No is required.")
+        code = value.strip()
+        qs = BuyerMaster.objects.filter(style_no__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Style No '{code}' already exists in Buyer Master.")
+        return code
 
     def get_packaging_image_url(self, obj):
         request = self.context.get('request')
@@ -326,6 +338,22 @@ class SupplierPOItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'supplier_po', 'amount']
 
+    def validate_quantity(self, value):
+        from decimal import Decimal
+        if value is None or value <= 0:
+            raise serializers.ValidationError("Quantity must be greater than 0.")
+        if value > Decimal('999999.00'):
+            raise serializers.ValidationError("Quantity cannot exceed 999,999 units.")
+        return value
+
+    def validate_rate(self, value):
+        from decimal import Decimal
+        if value is None or value < 0:
+            raise serializers.ValidationError("Rate cannot be negative.")
+        if value > Decimal('99999999.99'):
+            raise serializers.ValidationError("Rate cannot exceed 99,999,999.99 (max 10 integer digits + 2 decimals).")
+        return value
+
 
 class SupplierDropdownSerializer(serializers.ModelSerializer):
     class Meta:
@@ -366,6 +394,59 @@ class SupplierPOSerializer(serializers.ModelSerializer):
     def get_total_amount(self, obj):
         from decimal import Decimal
         return sum(item.amount or Decimal('0') for item in obj.items.all())
+
+    def validate(self, attrs):
+        items_data = attrs.get('items', [])
+        if not items_data and not self.instance:
+            raise serializers.ValidationError({"items": ["At least one line item is required for a Purchase Order."]})
+
+        # Validate PO item quantities against Buyer PI limits
+        from decimal import Decimal
+        from django.db.models import Sum
+        from .models import BuyerPI, SupplierPOItem
+
+        pi_qty_map = {}
+        for idx, item in enumerate(items_data):
+            buyer_pi = item.get('buyer_pi')
+            qty = item.get('quantity') or Decimal('0')
+
+            if buyer_pi:
+                pi_id = buyer_pi.id if hasattr(buyer_pi, 'id') else buyer_pi
+                if pi_id not in pi_qty_map:
+                    pi_qty_map[pi_id] = {'total_requested': Decimal('0'), 'items': []}
+                pi_qty_map[pi_id]['total_requested'] += Decimal(str(qty))
+                pi_qty_map[pi_id]['items'].append(idx)
+
+        # Check total remaining unfulfilled units on each Buyer PI
+        for pi_id, data in pi_qty_map.items():
+            try:
+                buyer_pi_obj = BuyerPI.objects.prefetch_related('items').get(pk=pi_id)
+            except BuyerPI.DoesNotExist:
+                continue
+
+            total_pi_units = sum((it.units or 0) for it in buyer_pi_obj.items.all())
+
+            existing_qs = SupplierPOItem.objects.filter(buyer_pi=buyer_pi_obj)
+            if self.instance:
+                existing_qs = existing_qs.exclude(supplier_po=self.instance)
+            already_ordered_qty = existing_qs.aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+
+            available_qty = Decimal(str(total_pi_units)) - already_ordered_qty
+            if available_qty < Decimal('0'):
+                available_qty = Decimal('0')
+
+            if data['total_requested'] > available_qty:
+                err_msg = (
+                    f"⚠️ Quantity Limit Exceeded: You requested {data['total_requested']} units, "
+                    f"but only {available_qty} units remain available on Buyer PI '{buyer_pi_obj.pi_no}' "
+                    f"(Total PI Order: {total_pi_units} units, Already Ordered in past POs: {already_ordered_qty} units)."
+                )
+                item_errors = [{} for _ in items_data]
+                for idx in data['items']:
+                    item_errors[idx] = {"quantity": [err_msg]}
+                raise serializers.ValidationError({"items": item_errors})
+
+        return attrs
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])

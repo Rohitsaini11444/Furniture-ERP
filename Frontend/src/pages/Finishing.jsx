@@ -8,24 +8,27 @@ import {
 import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
 import { useAuth } from '../context/AuthContext';
+import CustomSelect from '../components/CustomSelect';
 
 const emptyFinishForm = {
   name: '',
   finish_code: '',
   color: '',
-  finish_type: '',
-  texture: '',
-  description: '',
+  wood_type: '',
 };
 
-const FINISH_TYPES = [
-  'Stain', 'PU (Polyurethane)', 'NC (Nitrocellulose)', 
-  'Wax Finish', 'Oil Finish', 'Melamine', 'Lacquer', 'Raw / Natural'
-];
-
-const TEXTURE_TYPES = [
-  'Smooth', 'Grainy', 'Rustic', 'Distressed', 
-  'Hand-Scraped', 'Matte', 'Semi-Gloss', 'High Gloss'
+const WOOD_TYPES = [
+  'Acacia Wood',
+  'Mango Wood',
+  'Sheesham Wood',
+  'Teak Wood',
+  'Oak Wood',
+  'Pine Wood',
+  'Rubber Wood',
+  'Reclaimed Wood',
+  'MDF / Engineered Wood',
+  'Plywood',
+  'Other'
 ];
 
 const ORDER_OPTIONS_FINISH = [
@@ -108,8 +111,7 @@ function Finishing() {
 
   // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterTexture, setFilterTexture] = useState('');
+  const [filterWoodType, setFilterWoodType] = useState('');
   const [ordering, setOrdering] = useState('-created_at');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -117,6 +119,7 @@ function Finishing() {
   // Modal / Prompt confirmation states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const isDetailPage = Boolean(id);
 
@@ -126,8 +129,7 @@ function Finishing() {
     setLoading(true);
     const params = { page: currentPage, ordering };
     if (searchTerm) params.search = searchTerm;
-    if (filterType) params.finish_type = filterType;
-    if (filterTexture) params.texture = filterTexture;
+    if (filterWoodType) params.wood_type = filterWoodType;
 
     api.get('/finishes/', { params })
       .then(res => {
@@ -141,7 +143,7 @@ function Finishing() {
       })
       .catch(err => console.error('Error fetching finishes:', err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, searchTerm, filterType, filterTexture]);
+  }, [currentPage, ordering, searchTerm, filterWoodType]);
 
   useEffect(() => {
     fetchFinishes();
@@ -158,9 +160,7 @@ function Finishing() {
             name: f.name || '',
             finish_code: f.finish_code || '',
             color: f.color || '',
-            finish_type: f.finish_type || '',
-            texture: f.texture || '',
-            description: f.description || '',
+            wood_type: f.wood_type || '',
           });
           setImagePreview(f.image_url || f.image);
         })
@@ -181,6 +181,7 @@ function Finishing() {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (formError) setFormError('');
   };
 
   const handleImageSelect = (e) => {
@@ -193,6 +194,22 @@ function Finishing() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+
+    // Pre-check for duplicate finish code
+    const code = formData.finish_code?.trim();
+    if (code) {
+      const duplicate = finishes.find(f =>
+        f.finish_code &&
+        f.finish_code.trim().toLowerCase() === code.toLowerCase() &&
+        String(f.id) !== String(editingId || '')
+      );
+      if (duplicate) {
+        setFormError('Finish Code of this finish is already present.');
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -221,6 +238,16 @@ function Finishing() {
       fetchFinishes();
     } catch (err) {
       console.error('Failed to save finish:', err);
+      if (err.response?.data?.finish_code) {
+        const msg = Array.isArray(err.response.data.finish_code)
+          ? err.response.data.finish_code[0]
+          : err.response.data.finish_code;
+        setFormError(msg || 'Finish Code of this finish is already present.');
+      } else if (err.response?.data?.detail) {
+        setFormError(err.response.data.detail);
+      } else {
+        setFormError('Failed to save finish. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -323,6 +350,26 @@ function Finishing() {
             </div>
 
             <form onSubmit={handleSubmit}>
+              {/* Error Alert Banner */}
+              {formError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  borderRadius: '12px',
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  color: '#991b1b',
+                  fontSize: '0.9rem',
+                  fontWeight: 600
+                }}>
+                  <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               {/* Image Upload Box */}
               <div className="form-group" style={{ marginBottom: '1.35rem' }}>
                 <label className="form-label" style={{ fontWeight: 700, color: '#1c1917' }}>Finish Image / Swatch</label>
@@ -398,47 +445,18 @@ function Finishing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 650 }}>Finish Type</label>
-                  <select
-                    name="finish_type"
-                    className="form-input"
-                    value={formData.finish_type}
+                  <label className="form-label" style={{ fontWeight: 650 }}>Wood Type</label>
+                  <CustomSelect
+                    name="wood_type"
+                    value={formData.wood_type}
                     onChange={handleInputChange}
-                  >
-                    <option value="">Select Finish Type...</option>
-                    {FINISH_TYPES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'Select Wood Type...' },
+                      ...WOOD_TYPES.map(w => ({ value: w, label: w }))
+                    ]}
+                    placeholder="Select Wood Type..."
+                  />
                 </div>
-
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label" style={{ fontWeight: 650 }}>Texture</label>
-                  <select
-                    name="texture"
-                    className="form-input"
-                    value={formData.texture}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">Select Texture...</option>
-                    {TEXTURE_TYPES.map(txt => (
-                      <option key={txt} value={txt}>{txt}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: '1.75rem' }}>
-                <label className="form-label" style={{ fontWeight: 650 }}>Description / Notes</label>
-                <textarea
-                  name="description"
-                  className="form-input"
-                  rows="3"
-                  placeholder="Additional specifications about polish coats, base timber suitability..."
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  style={{ resize: 'vertical' }}
-                />
               </div>
 
               {/* Action Bar: Delete (Left) | Cancel & Save (Right) */}
@@ -737,34 +755,25 @@ function Finishing() {
           {/* Filter Dropdowns */}
           <div className="filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <Filter size={15} className="filter-icon" style={{ color: '#78716c' }} />
-            <select
-              className="filter-input"
-              value={filterType}
-              onChange={e => { setFilterType(e.target.value); setCurrentPage(1); }}
-              style={{ minWidth: '125px', borderRadius: '10px' }}
-            >
-              <option value="">All Types</option>
-              {FINISH_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+            <CustomSelect
+              value={filterWoodType}
+              onChange={e => {
+                const val = e.target ? e.target.value : e;
+                setFilterWoodType(val);
+                setCurrentPage(1);
+              }}
+              options={[
+                { value: '', label: 'All Wood Types' },
+                ...WOOD_TYPES.map(w => ({ value: w, label: w }))
+              ]}
+              placeholder="All Wood Types"
+              style={{ minWidth: '160px' }}
+            />
 
-            <select
-              className="filter-input"
-              value={filterTexture}
-              onChange={e => { setFilterTexture(e.target.value); setCurrentPage(1); }}
-              style={{ minWidth: '125px', borderRadius: '10px' }}
-            >
-              <option value="">All Textures</option>
-              {TEXTURE_TYPES.map(txt => (
-                <option key={txt} value={txt}>{txt}</option>
-              ))}
-            </select>
-
-            {(searchTerm || filterType || filterTexture) && (
+            {(searchTerm || filterWoodType) && (
               <button
                 className="filter-clear-btn"
-                onClick={() => { setSearchTerm(''); setFilterType(''); setFilterTexture(''); setCurrentPage(1); }}
+                onClick={() => { setSearchTerm(''); setFilterWoodType(''); setCurrentPage(1); }}
               >
                 <X size={14} /> Clear
               </button>
@@ -923,7 +932,7 @@ function Finishing() {
                   {/* Thin Horizontal Divider Line */}
                   <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.25rem 0' }} />
 
-                  {/* Texture Row */}
+                  {/* Wood Type Row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div className="finish-icon-circle" style={{
                       width: '36px',
@@ -938,9 +947,9 @@ function Finishing() {
                       <DotGridIcon size={16} color="#9a5323" />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <span className="finish-row-lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#737373', fontWeight: 400, lineHeight: 1.15 }}>Texture</span>
+                      <span className="finish-row-lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#737373', fontWeight: 400, lineHeight: 1.15 }}>Wood Type</span>
                       <strong className="finish-row-val" style={{ display: 'block', fontSize: '0.92rem', color: '#1a1a1a', fontWeight: 700, lineHeight: 1.2 }}>
-                        {finish.texture || '—'}
+                        {finish.wood_type || '—'}
                       </strong>
                     </div>
                   </div>

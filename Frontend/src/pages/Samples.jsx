@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
+import CustomSelect from '../components/CustomSelect';
+import { useAuth } from '../context/AuthContext';
 
 
 
@@ -135,6 +137,7 @@ function Lightbox({ images, startIndex, onClose }) {
 function Samples() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
 
   const [samples, setSamples] = useState([]);
   const [buyers, setBuyers] = useState([]);
@@ -142,6 +145,10 @@ function Samples() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+
+  const [formError, setFormError] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Multi-item materials and finishes
   const [materialsList, setMaterialsList] = useState(['']);
@@ -347,6 +354,7 @@ function Samples() {
 
   const handleChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    if (formError) setFormError('');
   };
 
   const handleMaterialItemChange = (idx, value) => {
@@ -393,18 +401,37 @@ function Samples() {
     setImages(prev => prev.filter(i => i !== img));
   };
 
+  const confirmDelete = async () => {
+    if (!editingId) return;
+    setSubmitting(true);
+    try {
+      await api.delete(`/samples/${editingId}/`);
+      setShowDeleteConfirm(false);
+      closeModal();
+      fetchSamples();
+    } catch (err) {
+      console.error('Failed to delete sample:', err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // ── Modal open/close ───────────────────────────────────────────────────────
   // (Now mapping to routing paths)
 
   const openCreateModal = () => {
+    setFormError('');
     navigate('/samples/new');
   };
 
   const openEditModal = (sample) => {
+    setFormError('');
     navigate(`/samples/${sample.id}`);
   };
 
   const closeModal = () => {
+    setFormError('');
+    setShowDeleteConfirm(false);
     navigate('/samples');
   };
 
@@ -412,6 +439,23 @@ function Samples() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+
+    // Pre-check for duplicate style_no
+    const styleNo = formData.style_no?.trim();
+    if (styleNo) {
+      const duplicate = samples.find(s =>
+        s.style_no &&
+        s.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
+        String(s.id) !== String(editingId || '')
+      );
+      if (duplicate) {
+        setFormError(`Style No. '${styleNo}' already exists in Samples Catalog.`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
     try {
       const materialJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
       const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
@@ -459,6 +503,18 @@ function Samples() {
       fetchSamples();
     } catch (err) {
       console.error('Submit error', err);
+      if (err.response?.data?.style_no) {
+        const msg = Array.isArray(err.response.data.style_no)
+          ? err.response.data.style_no[0]
+          : err.response.data.style_no;
+        setFormError(msg || `Style No. '${formData.style_no}' already exists in Samples Catalog.`);
+      } else if (err.response?.data?.detail) {
+        setFormError(err.response.data.detail);
+      } else {
+        setFormError('Failed to save sample. Please check your inputs.');
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -494,6 +550,24 @@ function Samples() {
             
             <div className="modal-body" style={{ padding: 0 }}>
               <form onSubmit={handleSubmit}>
+                {formError && (
+                  <div style={{
+                    backgroundColor: '#fef2f2',
+                    border: '1.5px solid #fca5a5',
+                    borderRadius: '12px',
+                    padding: '0.75rem 1rem',
+                    marginBottom: '1.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    color: '#991b1b',
+                    fontSize: '0.9rem',
+                    fontWeight: 600
+                  }}>
+                    <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                    <span>{formError}</span>
+                  </div>
+                )}
                 {/* ── Images ──────────────────────────────────────────── */}
                 <div className="form-section">
                   <h3 className="form-section-title">📷 Images</h3>
@@ -525,12 +599,16 @@ function Samples() {
                     </div>
                     <div className="form-group">
                       <label className="form-label">Buyer</label>
-                      <select name="buyer" className="form-input" value={formData.buyer} onChange={handleChange}>
-                        <option value="">Select Buyer...</option>
-                        {buyers.map(b => (
-                          <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        name="buyer"
+                        value={formData.buyer}
+                        onChange={handleChange}
+                        options={[
+                          { value: '', label: 'Select Buyer...' },
+                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                        ]}
+                        placeholder="Select Buyer..."
+                      />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Product Name *</label>
@@ -539,14 +617,19 @@ function Samples() {
 
                     <div className="form-group">
                       <label className="form-label">Finish (Catalog Reference)</label>
-                      <select name="finish" className="form-input" value={formData.finish || ''} onChange={handleChange}>
-                        <option value="">Select Registered Finish...</option>
-                        {finishesOptions.map(f => (
-                          <option key={f.id} value={f.id}>
-                            {f.finish_code ? `[${f.finish_code}] ` : ''}{f.name} ({f.color || f.finish_type || 'Catalog'})
-                          </option>
-                        ))}
-                      </select>
+                      <CustomSelect
+                        name="finish"
+                        value={formData.finish || ''}
+                        onChange={handleChange}
+                        options={[
+                          { value: '', label: 'Select Registered Finish...' },
+                          ...finishesOptions.map(f => ({
+                            value: f.id,
+                            label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})`
+                          }))
+                        ]}
+                        placeholder="Select Registered Finish..."
+                      />
                     </div>
 
                     {/* ── Material(s) ── */}
@@ -681,13 +764,107 @@ function Samples() {
                 </div>
 
                 {/* ── Actions ──────────────────────────────────────────── */}
-                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                  <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Sample'}</button>
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1.15rem', borderTop: '1px solid #f1f5f9', gap: '1rem' }}>
+                  <div>
+                    {editingId && isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          backgroundColor: '#fef2f2',
+                          color: '#ef4444',
+                          border: '1px solid #fca5a5',
+                          padding: '0.55rem 1.1rem',
+                          borderRadius: '10px',
+                          fontWeight: 600,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                      >
+                        <Trash2 size={16} /> Delete Sample
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
+                    <button type="submit" className="btn-primary" disabled={submitting}>
+                      {submitting ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Sample')}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
           </div>
+
+          {/* Delete Confirmation Modal */}
+          {showDeleteConfirm && (
+            <div style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem'
+            }}>
+              <div style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '20px',
+                padding: '1.75rem',
+                maxWidth: '420px',
+                width: '100%',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  width: '56px', height: '56px', borderRadius: '50%',
+                  backgroundColor: '#fee2e2', color: '#dc2626',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 1.25rem auto'
+                }}>
+                  <Trash2 size={26} />
+                </div>
+                <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: 700, color: '#1c1917' }}>Delete Sample?</h3>
+                <p style={{ margin: '0 0 1.5rem 0', fontSize: '0.9rem', color: '#78716c', lineHeight: 1.5 }}>
+                  Are you sure you want to delete <strong>{formData.style_no || formData.product_name}</strong>? This action cannot be undone.
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="btn-secondary"
+                    style={{ flex: 1, padding: '0.65rem 1rem' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDelete}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '0.65rem 1rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {submitting ? 'Deleting...' : 'Yes, Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -779,17 +956,20 @@ function Samples() {
               <div className="samples-filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <Filter size={16} className="filter-icon" />
                 <span className="filter-label">Filter</span>
-                <select
-                  className="filter-input"
+                <CustomSelect
                   value={filterBuyer}
-                  onChange={e => { setFilterBuyer(e.target.value); setCurrentPage(1); }}
-                  style={{ minWidth: '130px', borderRadius: '10px' }}
-                >
-                  <option value="">All Buyers...</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                  onChange={e => {
+                    const val = e.target ? e.target.value : e;
+                    setFilterBuyer(val);
+                    setCurrentPage(1);
+                  }}
+                  options={[
+                    { value: '', label: 'All Buyers...' },
+                    ...buyers.map(b => ({ value: b.id, label: b.name }))
+                  ]}
+                  placeholder="All Buyers..."
+                  style={{ minWidth: '160px' }}
+                />
                 <input
                   type="text"
                   className="filter-input"
@@ -821,17 +1001,9 @@ function Samples() {
 
           {/* Table (Desktop) */}
           <div className="table-container desktop-only">
-            <table className="data-table">
+            <table className="data-table table-fade-slide-up">
               <thead>
                 <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={filtered.length > 0 && selectedRowIds.size === filtered.length}
-                      onChange={toggleSelectAll}
-                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                    />
-                  </th>
                   <th>Images</th>
                   <th>Style No.</th>
                   <th>Product Name</th>
@@ -847,10 +1019,10 @@ function Samples() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={13} hasImage={true} />
+                  <TableSkeleton rows={8} cols={11} hasImage={true} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan="13" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="11" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
                       No samples found.
                     </td>
                   </tr>
@@ -859,17 +1031,9 @@ function Samples() {
                     <tr 
                       key={s.id} 
                       onClick={() => openEditModal(s)} 
-                      style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : 'transparent' }}
-                      className="smooth-fade-in"
+                      style={{ cursor: 'pointer' }}
+                      className="table-fade-slide-up"
                     >
-                      <td onClick={e => e.stopPropagation()} style={{ width: '40px' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedRowIds.has(s.id)}
-                          onChange={e => toggleSelectRow(s.id, e)}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
-                        />
-                      </td>
                       <td>
                         <div className="table-image-stack">
                           {(s.images || []).slice(0, 3).map((img, idx) => (

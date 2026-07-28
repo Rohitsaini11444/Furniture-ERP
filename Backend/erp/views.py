@@ -85,7 +85,7 @@ from .models import SupplierPOItem
 from .serializers import SupplierPOItemSerializer
 from .models import StockItem, SupplierPOItemDefect
 from .serializers import NotificationSerializer
-from .presentation_generator import generate_pptx_presentation
+from .presentation_generator import generate_pptx_presentation, generate_brand_pptx_presentation, find_image_path
 
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
@@ -246,7 +246,7 @@ class FinishViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Finish.objects.all().order_by('-created_at')
         q = self.request.query_params.get('search')
-        finish_type = self.request.query_params.get('finish_type')
+        wood_type = self.request.query_params.get('wood_type')
         color = self.request.query_params.get('color')
 
         if q:
@@ -255,11 +255,10 @@ class FinishViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=q) |
                 Q(finish_code__icontains=q) |
                 Q(color__icontains=q) |
-                Q(finish_type__icontains=q) |
-                Q(texture__icontains=q)
+                Q(wood_type__icontains=q)
             )
-        if finish_type:
-            qs = qs.filter(finish_type__icontains=finish_type)
+        if wood_type:
+            qs = qs.filter(wood_type__icontains=wood_type)
         if color:
             qs = qs.filter(color__icontains=color)
 
@@ -2898,6 +2897,96 @@ class GeneratePresentationView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        presentation_type = request.data.get('presentation_type', 'buyer_sample')
+
+        if presentation_type == 'brand':
+            buyer_name = request.data.get('buyer_name', '')
+            buyer_id = request.data.get('buyer_id')
+            if not buyer_name and buyer_id:
+                try:
+                    b = Buyer.objects.get(id=buyer_id)
+                    buyer_name = b.name
+                except Exception:
+                    pass
+
+            buyer_po_numbers = request.data.get('buyer_po_numbers', '')
+            title = request.data.get('title', 'BRAND PRESENTATION')
+
+            slides = []
+            slides_meta_raw = request.data.get('slides_meta', '[]')
+            import json
+            if isinstance(slides_meta_raw, str):
+                try:
+                    slides_meta = json.loads(slides_meta_raw)
+                except Exception:
+                    slides_meta = []
+            elif isinstance(slides_meta_raw, list):
+                slides_meta = slides_meta_raw
+            else:
+                slides_meta = []
+
+            for idx, s_meta in enumerate(slides_meta):
+                s_title = s_meta.get('title', f'Product #{idx+1}')
+                s_images = []
+
+                # 1. Gather files from request.FILES
+                image_keys = s_meta.get('image_keys', [])
+                for key in image_keys:
+                    if key in request.FILES:
+                        s_images.append(request.FILES[key])
+
+                # 2. Check ERP item if associated
+                sample_id = s_meta.get('sample_id')
+                buyer_master_id = s_meta.get('buyer_master_id')
+
+                item_obj = None
+                if sample_id:
+                    item_obj = Sample.objects.filter(id=sample_id).first()
+                elif buyer_master_id:
+                    item_obj = BuyerMaster.objects.filter(id=buyer_master_id).first()
+
+                if item_obj:
+                    # Gather existing images
+                    main_img_path = find_image_path(item_obj)
+                    if main_img_path and main_img_path not in s_images:
+                        s_images.insert(0, main_img_path)
+
+                    target_sample = item_obj if isinstance(item_obj, Sample) else getattr(item_obj, 'sample', None)
+                    if target_sample and hasattr(target_sample, 'images'):
+                        for simg in target_sample.images.all():
+                            if simg.image and hasattr(simg.image, 'path') and os.path.exists(simg.image.path):
+                                if simg.image.path not in s_images:
+                                    s_images.append(simg.image.path)
+
+                    if hasattr(item_obj, 'finishing_images'):
+                        for fimg in item_obj.finishing_images.all():
+                            if fimg.image and hasattr(fimg.image, 'path') and os.path.exists(fimg.image.path):
+                                if fimg.image.path not in s_images:
+                                    s_images.append(fimg.image.path)
+
+                if s_images:
+                    slides.append({
+                        'title': s_title,
+                        'images': s_images
+                    })
+
+            if not slides:
+                return Response({'error': 'Please add at least one product slide with images for Brand PPT.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            pptx_bytes = generate_brand_pptx_presentation(
+                buyer_name=buyer_name,
+                buyer_po_numbers=buyer_po_numbers,
+                title=title,
+                company_name="PINKCITY ENTERPRISES",
+                slides_data=slides
+            )
+
+            safe_name = (buyer_name or 'Brand').replace(' ', '_')
+            response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+            response['Content-Disposition'] = f'attachment; filename="Brand_Presentation_{safe_name}.pptx"'
+            return response
+
+        # Default / Buyer Sample Presentation
         buyer_id = request.data.get('buyer_id')
         sample_ids = request.data.get('sample_ids', [])
         buyer_master_ids = request.data.get('buyer_master_ids', [])
@@ -2934,5 +3023,6 @@ class GeneratePresentationView(APIView):
         response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
         response['Content-Disposition'] = f'attachment; filename="Presentation_{buyer_code_str}.pptx"'
         return response
+
 
 

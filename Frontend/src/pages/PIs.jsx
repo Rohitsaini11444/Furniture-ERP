@@ -5,6 +5,7 @@ import { Search, ArrowLeft, Trash2, Download, Layers } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
 import { CustomDatePicker } from '../components/CustomDatePicker';
+import CustomSelect from '../components/CustomSelect';
 
 
 function num2words(num) {
@@ -423,12 +424,16 @@ function PIs() {
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label className="form-label">Buyer / Consignee *</label>
-                    <select required name="buyer" className="form-input" value={formData.buyer} onChange={handleBuyerChange}>
-                      <option value="">Select Buyer...</option>
-                      {buyers.map(b => (
-                        <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                      ))}
-                    </select>
+                    <CustomSelect
+                      name="buyer"
+                      value={formData.buyer}
+                      onChange={handleBuyerChange}
+                      options={[
+                        { value: '', label: 'Select Buyer...' },
+                        ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                      ]}
+                      placeholder="Select Buyer..."
+                    />
                   </div>
 
                   <div className="form-group">
@@ -717,17 +722,19 @@ function PIs() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span className="filter-label">Filter Buyer:</span>
-                <select
-                  className="filter-input"
+                <CustomSelect
                   value={filterBuyerId}
-                  onChange={e => setFilterBuyerId(e.target.value)}
+                  onChange={e => {
+                    const val = e.target ? e.target.value : e;
+                    setFilterBuyerId(val);
+                  }}
+                  options={[
+                    { value: '', label: 'All Buyers' },
+                    ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                  ]}
+                  placeholder="All Buyers"
                   style={{ minWidth: '180px' }}
-                >
-                  <option value="">All Buyers</option>
-                  {buyers.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto' }}>
