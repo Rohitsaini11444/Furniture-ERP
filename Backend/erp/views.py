@@ -85,7 +85,7 @@ from .models import SupplierPOItem
 from .serializers import SupplierPOItemSerializer
 from .models import StockItem, SupplierPOItemDefect
 from .serializers import NotificationSerializer
-from .presentation_generator import generate_pptx_presentation, generate_brand_pptx_presentation, find_image_path
+from .presentation_generator import generate_pptx_presentation, generate_brand_pptx_presentation, generate_vendor_inspection_pptx, find_image_path
 
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
@@ -2899,7 +2899,62 @@ class GeneratePresentationView(APIView):
     def post(self, request):
         presentation_type = request.data.get('presentation_type', 'buyer_sample')
 
-        if presentation_type == 'brand':
+        if presentation_type == 'vendor_inspection':
+            import json
+            cover_info_raw = request.data.get('cover_info', '{}')
+            if isinstance(cover_info_raw, str):
+                try:
+                    cover_info = json.loads(cover_info_raw)
+                except Exception:
+                    cover_info = {}
+            elif isinstance(cover_info_raw, dict):
+                cover_info = cover_info_raw
+            else:
+                cover_info = {}
+
+            slides_meta_raw = request.data.get('slides_meta', '[]')
+            if isinstance(slides_meta_raw, str):
+                try:
+                    slides_meta = json.loads(slides_meta_raw)
+                except Exception:
+                    slides_meta = []
+            elif isinstance(slides_meta_raw, list):
+                slides_meta = slides_meta_raw
+            else:
+                slides_meta = []
+
+            slides = []
+            for idx, s_meta in enumerate(slides_meta):
+                s_title = s_meta.get('title', f'Section #{idx+1}')
+                s_images = []
+
+                image_keys = s_meta.get('image_keys', [])
+                for key in image_keys:
+                    if key in request.FILES:
+                        s_images.append(request.FILES[key])
+
+                slides.append({
+                    'title': s_title,
+                    'images': s_images
+                })
+
+            if 'dqa_report_image' in request.FILES:
+                cover_info['dqa_report_image'] = request.FILES['dqa_report_image']
+
+
+            pptx_bytes = generate_vendor_inspection_pptx(
+                cover_info=cover_info,
+                slides_data=slides
+            )
+
+
+            po_str = str(cover_info.get('po_number', 'Report')).replace('/', '_').replace(' ', '_')
+            response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
+            response['Content-Disposition'] = f'attachment; filename="Vendor_Internal_Inspection_Report_{po_str}.pptx"'
+            return response
+
+        elif presentation_type == 'brand':
+
             buyer_name = request.data.get('buyer_name', '')
             buyer_id = request.data.get('buyer_id')
             if not buyer_name and buyer_id:

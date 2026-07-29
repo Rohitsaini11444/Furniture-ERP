@@ -71,80 +71,231 @@ function InteractiveRevenueChart({ monthlyData, startAnimation }) {
   useEffect(() => {
     if (startAnimation) {
       setAnimatedHeights(monthlyData.map(() => 0));
-      monthlyData.forEach((d, idx) => {
-        setTimeout(() => {
+      const timeouts = monthlyData.map((d, idx) => {
+        return setTimeout(() => {
           setAnimatedHeights(prev => {
             const next = [...prev];
             next[idx] = d.revenue;
             return next;
           });
-        }, idx * 100);
+        }, idx * 50);
       });
+      return () => timeouts.forEach(clearTimeout);
     } else {
       setAnimatedHeights(monthlyData.map(() => 0));
     }
   }, [startAnimation, monthlyData]);
 
-  const maxValue = Math.max(...monthlyData.map(d => d.revenue), 10000);
+  const maxRevenue = Math.max(...monthlyData.map(d => d.revenue), 10000);
+  const totalRevenue = monthlyData.reduce((s, d) => s + d.revenue, 0);
+  const totalOrders = monthlyData.reduce((s, d) => s + (d.orders || Math.round(d.revenue / 1500)), 0);
+  const peakItem = monthlyData.reduce((max, d) => (d.revenue > max.revenue ? d : max), monthlyData[0] || { revenue: 0, month: '-' });
+  const avgRevenue = Math.round(totalRevenue / Math.max(1, monthlyData.length));
+
+  // Dynamic bar layout calculations based on timeframe item count
+  const count = monthlyData.length;
+  const svgWidth = 640;
+  const chartBottomY = 170;
+  const chartTopY = 30;
+  const maxBarHeight = chartBottomY - chartTopY;
+
+  const availableWidth = svgWidth - 80;
+  const barWidth = Math.max(20, Math.min(42, Math.floor(availableWidth / (count * 1.5))));
+  const totalBarWidth = count * barWidth;
+  const gap = count > 1 ? (availableWidth - totalBarWidth) / (count - 1) : 0;
+  const startX = 40;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '240px', marginTop: '1rem' }}>
-      {/* SVG Bar & Curve Chart */}
-      <svg width="100%" height="100%" viewBox="0 0 600 200" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-        <defs>
-          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#8b5a2b" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="#d97706" stopOpacity="0.3" />
-          </linearGradient>
-          <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#3b82f6" />
-          </linearGradient>
-        </defs>
+    <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
+      {/* Dynamic Summary Metric Badges */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+        gap: '0.6rem',
+        padding: '0.6rem 0.85rem',
+        backgroundColor: '#f8fafc',
+        borderRadius: '12px',
+        border: '1px solid #f1f5f9',
+        marginBottom: '0.75rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <DollarSign size={15} color="#d97706" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Revenue</div>
+            <strong style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: 800 }}>${totalRevenue.toLocaleString()}</strong>
+          </div>
+        </div>
 
-        {/* Horizontal Grid lines */}
-        {[40, 90, 140, 190].map((y, i) => (
-          <line key={i} x1="0" y1={y} x2="600" y2={y} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
-        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <TrendingUp size={15} color="#16a34a" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Peak Month</div>
+            <strong style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 800 }}>{peakItem.month} (${peakItem.revenue.toLocaleString()})</strong>
+          </div>
+        </div>
 
-        {/* Bars */}
-        {monthlyData.map((d, idx) => {
-          const barWidth = 36;
-          const x = 30 + idx * 85;
-          const revenueVal = animatedHeights[idx] !== undefined ? animatedHeights[idx] : 0;
-          const barHeight = Math.max(4, (revenueVal / maxValue) * 140);
-          const y = 190 - barHeight;
-          const isHovered = hoveredIndex === idx;
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShoppingCart size={15} color="#2563eb" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Orders</div>
+            <strong style={{ fontSize: '0.85rem', color: '#1e293b', fontWeight: 800 }}>{totalOrders} Orders</strong>
+          </div>
+        </div>
 
-          return (
-            <g key={idx} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)} style={{ cursor: 'pointer' }}>
-              {/* Bar shadow background */}
-              <rect x={x} y={40} width={barWidth} height={150} rx={6} fill={isHovered ? '#f8fafc' : 'transparent'} />
-              {/* Bar Fill */}
-              <rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={barHeight}
-                rx={6}
-                fill="url(#barGrad)"
-                opacity={hoveredIndex === null || isHovered ? 1 : 0.65}
-                style={{ transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}
-              />
-              {/* Value Label above bar */}
-              {isHovered && (
-                <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" fill="#8b5a2b" fontSize="11" fontWeight="700">
-                  ${d.revenue.toLocaleString()}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#f3e8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Activity size={15} color="#9333ea" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Monthly Avg</div>
+            <strong style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 800 }}>${avgRevenue.toLocaleString()}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* SVG Interactive Chart Area */}
+      <div style={{ position: 'relative', width: '100%', height: '210px' }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} 200`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+          <defs>
+            <linearGradient id="barGradNormal" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#8b5a2b" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#d97706" stopOpacity="0.35" />
+            </linearGradient>
+            <linearGradient id="barGradHover" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#dc2626" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#ea580c" stopOpacity="0.6" />
+            </linearGradient>
+          </defs>
+
+          {/* Horizontal Grid lines */}
+          {[30, 75, 120, 170].map((y, i) => (
+            <line key={i} x1="20" y1={y} x2={svgWidth - 20} y2={y} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+          ))}
+
+          {/* Render Interactive Bars */}
+          {monthlyData.map((d, idx) => {
+            const x = startX + idx * (barWidth + gap);
+            const revenueVal = animatedHeights[idx] !== undefined ? animatedHeights[idx] : 0;
+            const barHeight = Math.max(6, (revenueVal / maxRevenue) * maxBarHeight);
+            const y = chartBottomY - barHeight;
+            const isHovered = hoveredIndex === idx;
+
+            return (
+              <g
+                key={d.month + idx}
+                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* Background Shadow Pill on Hover */}
+                <rect
+                  x={x - 4}
+                  y={chartTopY - 5}
+                  width={barWidth + 8}
+                  height={maxBarHeight + 15}
+                  rx={8}
+                  fill={isHovered ? '#fef3c7' : 'transparent'}
+                  opacity={isHovered ? 0.6 : 0}
+                  style={{ transition: 'all 0.25s ease' }}
+                />
+
+                {/* Animated Bar Rectangle */}
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={barHeight}
+                  rx={6}
+                  fill={isHovered ? "url(#barGradHover)" : "url(#barGradNormal)"}
+                  opacity={hoveredIndex === null || isHovered ? 1 : 0.45}
+                  style={{
+                    transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                />
+
+                {/* Top Glowing Indicator Line on Hover */}
+                {isHovered && (
+                  <rect
+                    x={x}
+                    y={y - 2}
+                    width={barWidth}
+                    height={4}
+                    rx={2}
+                    fill="#dc2626"
+                  />
+                )}
+
+                {/* Month Name Label */}
+                <text
+                  x={x + barWidth / 2}
+                  y={chartBottomY + 20}
+                  textAnchor="middle"
+                  fill={isHovered ? '#8b5a2b' : '#64748b'}
+                  fontSize={count > 8 ? "10" : "11"}
+                  fontWeight={isHovered ? "800" : "600"}
+                  style={{ transition: 'fill 0.2s ease' }}
+                >
+                  {d.month}
                 </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Dynamic Floating Tooltip */}
+        {hoveredIndex !== null && monthlyData[hoveredIndex] && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '0px',
+              left: `${Math.min(82, Math.max(12, ((startX + hoveredIndex * (barWidth + gap) + barWidth / 2) / svgWidth) * 100))}%`,
+              transform: 'translateX(-50%)',
+              backgroundColor: '#0f172a',
+              color: '#ffffff',
+              padding: '0.55rem 0.85rem',
+              borderRadius: '10px',
+              boxShadow: '0 12px 30px -5px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.1)',
+              zIndex: 50,
+              pointerEvents: 'none',
+              minWidth: '155px',
+              animation: 'fadeIn 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem', borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: '0.3rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#f59e0b' }}>
+                {monthlyData[hoveredIndex].month} 2026
+              </span>
+              {monthlyData[hoveredIndex].growth && (
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  padding: '0.1rem 0.4rem',
+                  borderRadius: '4px',
+                  backgroundColor: monthlyData[hoveredIndex].growth.startsWith('+') ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)',
+                  color: monthlyData[hoveredIndex].growth.startsWith('+') ? '#34d399' : '#f87171'
+                }}>
+                  {monthlyData[hoveredIndex].growth}
+                </span>
               )}
-              {/* Month label below */}
-              <text x={x + barWidth / 2} y="210" textAnchor="middle" fill="#64748b" fontSize="12" fontWeight="600">
-                {d.month}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+            </div>
+
+            <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#ffffff', marginBottom: '0.15rem' }}>
+              ${monthlyData[hoveredIndex].revenue.toLocaleString()} USD
+            </div>
+
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <ShoppingCart size={12} color="#38bdf8" />
+              <span>{monthlyData[hoveredIndex].orders || Math.round(monthlyData[hoveredIndex].revenue / 1500)} Export Orders</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -218,15 +369,43 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState('2026');
 
-  const [monthlyRevenueData, setMonthlyRevenueData] = useState([
-    { month: 'Feb', revenue: 18500, orders: 12 },
-    { month: 'Mar', revenue: 24200, orders: 18 },
-    { month: 'Apr', revenue: 19800, orders: 14 },
-    { month: 'May', revenue: 31000, orders: 22 },
-    { month: 'Jun', revenue: 27900, orders: 19 },
-    { month: 'Jul', revenue: 42800, orders: 29 },
-    { month: 'Aug', revenue: 36000, orders: 24 },
-  ]);
+  const [revenueDatasets, setRevenueDatasets] = useState({
+    '2026': [
+      { month: 'Jan', revenue: 14200, orders: 9, growth: '+5.2%' },
+      { month: 'Feb', revenue: 18500, orders: 12, growth: '+30.3%' },
+      { month: 'Mar', revenue: 24200, orders: 18, growth: '+30.8%' },
+      { month: 'Apr', revenue: 19800, orders: 14, growth: '-18.2%' },
+      { month: 'May', revenue: 31000, orders: 22, growth: '+56.6%' },
+      { month: 'Jun', revenue: 27900, orders: 19, growth: '-10.0%' },
+      { month: 'Jul', revenue: 42800, orders: 29, growth: '+53.4%' },
+      { month: 'Aug', revenue: 36000, orders: 24, growth: '-15.9%' },
+      { month: 'Sep', revenue: 39500, orders: 26, growth: '+9.7%' },
+      { month: 'Oct', revenue: 45200, orders: 31, growth: '+14.4%' },
+      { month: 'Nov', revenue: 41000, orders: 27, growth: '-9.3%' },
+      { month: 'Dec', revenue: 48900, orders: 34, growth: '+19.3%' },
+    ],
+    'last6': [
+      { month: 'Mar', revenue: 24200, orders: 18, growth: '+30.8%' },
+      { month: 'Apr', revenue: 19800, orders: 14, growth: '-18.2%' },
+      { month: 'May', revenue: 31000, orders: 22, growth: '+56.6%' },
+      { month: 'Jun', revenue: 27900, orders: 19, growth: '-10.0%' },
+      { month: 'Jul', revenue: 42800, orders: 29, growth: '+53.4%' },
+      { month: 'Aug', revenue: 36000, orders: 24, growth: '-15.9%' },
+    ],
+    'ytd': [
+      { month: 'Jan', revenue: 14200, orders: 9, growth: '+5.2%' },
+      { month: 'Feb', revenue: 18500, orders: 12, growth: '+30.3%' },
+      { month: 'Mar', revenue: 24200, orders: 18, growth: '+30.8%' },
+      { month: 'Apr', revenue: 19800, orders: 14, growth: '-18.2%' },
+      { month: 'May', revenue: 31000, orders: 22, growth: '+56.6%' },
+      { month: 'Jun', revenue: 27900, orders: 19, growth: '-10.0%' },
+      { month: 'Jul', revenue: 42800, orders: 29, growth: '+53.4%' },
+      { month: 'Aug', revenue: 36000, orders: 24, growth: '-15.9%' },
+    ]
+  });
+
+  const activeMonthlyData = revenueDatasets[timeframe] || revenueDatasets['2026'];
+
 
   const [pipelineMetrics, setPipelineMetrics] = useState({
     gateEntry: 88,
@@ -483,7 +662,7 @@ function Dashboard() {
               />
             </div>
           </div>
-          <InteractiveRevenueChart monthlyData={monthlyRevenueData} startAnimation={startChartAnimation} />
+          <InteractiveRevenueChart monthlyData={activeMonthlyData} startAnimation={startChartAnimation} />
         </div>
 
         {/* Chart 2: Manufacturing Pipeline Progress */}

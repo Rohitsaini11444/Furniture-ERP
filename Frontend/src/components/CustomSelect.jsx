@@ -93,6 +93,7 @@ export function CustomSelect({
         position: 'relative',
         display: 'inline-block',
         width: containerWidth,
+        maxWidth: '100%',
         boxSizing: 'border-box',
         userSelect: 'none',
         ...style

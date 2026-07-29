@@ -198,11 +198,6 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
     chunk_size = max(1, min(2, items_per_slide))
     item_chunks = [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
-    col_width = Inches(12.533) if chunk_size == 1 else Inches(6.0)
-    gap = Inches(0.533)
-    start_left = Inches(0.4)
-
-
     for page_idx, chunk in enumerate(item_chunks, start=1):
         slide = prs.slides.add_slide(blank_layout)
         
@@ -227,15 +222,18 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
         h_p.font.color.rgb = C_WHITE
         h_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
 
-        for col_idx, item in enumerate(chunk):
-            global_idx = (page_idx - 1) * 2 + col_idx + 1
-            item_left = start_left + col_idx * (col_width + gap)
+        if chunk_size == 1:
+            # ── 1 ITEM PER SLIDE: FULL PAGE LAYOUT (Spans 100% Slide Width) ──
+            item = chunk[0]
+            global_idx = page_idx
+            item_left = Inches(0.4)
+            full_width = Inches(12.533)
 
             style_val = getattr(item, 'style_no', '') or getattr(item, 'sample_id', '') or f"Item #{global_idx}"
             prod_val = getattr(item, 'product_name', 'Furniture Style')
 
-            # Item Section Title Bar
-            item_title_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, item_left, Inches(1.15), Inches(6.0), Inches(0.5))
+            # Full Width Item Section Title Bar
+            item_title_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, item_left, Inches(1.15), full_width, Inches(0.5))
             item_title_box.fill.solid()
             item_title_box.fill.fore_color.rgb = C_WALNUT
             item_title_box.line.fill.background()
@@ -243,17 +241,16 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
             t_tf = item_title_box.text_frame
             t_tf.word_wrap = True
             t_p = t_tf.paragraphs[0]
-            display_title = prod_val if len(prod_val) <= 32 else prod_val[:30] + "..."
-            t_p.text = f" {global_idx}. {display_title} | {style_val}"
-            t_p.font.size = Pt(11)
+            t_p.text = f"  {global_idx}. {prod_val}   |   Style No: {style_val}"
+            t_p.font.size = Pt(13)
             t_p.font.bold = True
             t_p.font.color.rgb = C_WHITE
             item_title_box.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
 
-            # Left Box: Image Container
+            # Left Box: Product Image Container (Width 5.0")
             box_x = item_left
             box_y = Inches(1.75)
-            box_w = Inches(2.5)
+            box_w = Inches(5.0)
             box_h = Inches(5.35)
 
             img_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, box_x, box_y, box_w, box_h)
@@ -261,7 +258,6 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
             img_box.fill.fore_color.rgb = RGBColor(241, 245, 249)
             img_box.line.color.rgb = C_BORDER
 
-            # Try inserting product image
             has_image = False
             img_path = find_image_path(item)
 
@@ -272,8 +268,8 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
                     if im_w > 0 and im_h > 0:
                         aspect = im_w / im_h
 
-                        max_w = 2.3
-                        max_h = 5.15
+                        max_w = 4.7
+                        max_h = 5.1
 
                         if aspect > (max_w / max_h):
                             w = max_w
@@ -282,12 +278,12 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
                             h = max_h
                             w = max_h * aspect
 
-                        img_left_in = (2.5 - w) / 2
+                        img_left_in = (5.0 - w) / 2
                         img_top_in = 1.75 + (5.35 - h) / 2
 
                         slide.shapes.add_picture(
                             img_path,
-                            item_left + Inches(img_left_in),
+                            box_x + Inches(img_left_in),
                             Inches(img_top_in),
                             width=Inches(w),
                             height=Inches(h)
@@ -301,11 +297,11 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
                 img_tf.word_wrap = True
                 img_p = img_tf.paragraphs[0]
                 img_p.text = f"🛋️\n\n{prod_val}\nStyle #: {style_val}"
-                img_p.font.size = Pt(12)
+                img_p.font.size = Pt(14)
                 img_p.font.color.rgb = RGBColor(148, 163, 184)
                 img_p.alignment = PP_ALIGN.CENTER
 
-            # Right Box: Structured Specs Table
+            # Right Box: Large Specs Table (Width 7.233", Spans to right border)
             wood_val = getattr(item, 'wood_type', None) or getattr(item, 'material', '—')
             finish_val = getattr(item, 'finish_color', '—')
             length_val = getattr(item, 'size_length', 0) or 0
@@ -317,28 +313,30 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
 
             specs_rows = [
                 ("Style No", str(style_val)),
-                ("Product", str(prod_val)),
+                ("Product Name", str(prod_val)),
             ]
             if include_specs:
                 specs_rows.extend([
-                    ("Material", str(wood_val)),
-                    ("Finish", str(finish_val)),
-                    ("Size (L×B×H)", f"{length_val}×{breadth_val}×{height_val} cm"),
-                    ("Volume", f"{cbm_val} CBM" if cbm_val != '—' else '—'),
+                    ("Material / Wood", str(wood_val)),
+                    ("Finish / Color", str(finish_val)),
+                    ("Dimensions (L×B×H)", f"{length_val} × {breadth_val} × {height_val} cm"),
+                    ("CBM Volume", f"{cbm_val} CBM" if cbm_val != '—' else '—'),
                 ])
             if include_price:
                 specs_rows.append(("Price (USD)", f"${float(price_val):.2f}" if price_val else 'Contact Quote'))
 
-            specs_rows.append(("Remarks", str(remark_val)))
-
+            specs_rows.append(("Remarks / Spec", str(remark_val)))
 
             total_rows = len(specs_rows) + 1
+            table_x = box_x + box_w + Inches(0.3)
+            table_w = Inches(7.233)
+
             table_shape = slide.shapes.add_table(
-                total_rows, 2, item_left + Inches(2.6), box_y, Inches(3.4), box_h
+                total_rows, 2, table_x, box_y, table_w, box_h
             )
             table = table_shape.table
-            table.columns[0].width = Inches(1.1)
-            table.columns[1].width = Inches(2.3)
+            table.columns[0].width = Inches(2.2)
+            table.columns[1].width = Inches(5.033)
 
             # Header Row
             hdr_cell = table.cell(0, 0)
@@ -347,8 +345,8 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
             hdr_cell.fill.fore_color.rgb = C_WALNUT
             hdr_tf = hdr_cell.text_frame
             hdr_p = hdr_tf.paragraphs[0]
-            hdr_p.text = "PRODUCT DETAILS"
-            hdr_p.font.size = Pt(10)
+            hdr_p.text = "PRODUCT SPECIFICATIONS & DETAILS"
+            hdr_p.font.size = Pt(12)
             hdr_p.font.bold = True
             hdr_p.font.color.rgb = C_WHITE
             hdr_cell.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -357,7 +355,6 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
             hdr_cell2.fill.solid()
             hdr_cell2.fill.fore_color.rgb = C_WALNUT
 
-            # Populate Rows
             for r_idx, (label, val) in enumerate(specs_rows, start=1):
                 cell_lbl = table.cell(r_idx, 0)
                 cell_val = table.cell(r_idx, 1)
@@ -371,22 +368,183 @@ def generate_pptx_presentation(buyer, items, items_per_slide=2, include_price=Tr
                 cell_lbl.vertical_anchor = MSO_ANCHOR.MIDDLE
                 cell_val.vertical_anchor = MSO_ANCHOR.MIDDLE
 
-                # Label text
                 p_l = cell_lbl.text_frame.paragraphs[0]
                 p_l.text = f"• {label}"
-                p_l.font.size = Pt(8.5)
+                p_l.font.size = Pt(11)
                 p_l.font.bold = True
                 p_l.font.color.rgb = C_DARK
 
-                # Value text
                 p_v = cell_val.text_frame.paragraphs[0]
                 p_v.text = str(val)
-                p_v.font.size = Pt(8.5)
+                p_v.font.size = Pt(11)
                 if "Price" in label:
                     p_v.font.bold = True
                     p_v.font.color.rgb = C_GOLD
                 else:
                     p_v.font.color.rgb = C_SLATE
+
+        else:
+            # ── 2 ITEMS PER SLIDE: SIDE-BY-SIDE LAYOUT ──
+            col_width = Inches(6.0)
+            gap = Inches(0.533)
+            start_left = Inches(0.4)
+
+            for col_idx, item in enumerate(chunk):
+                global_idx = (page_idx - 1) * 2 + col_idx + 1
+                item_left = start_left + col_idx * (col_width + gap)
+
+                style_val = getattr(item, 'style_no', '') or getattr(item, 'sample_id', '') or f"Item #{global_idx}"
+                prod_val = getattr(item, 'product_name', 'Furniture Style')
+
+                # Item Section Title Bar
+                item_title_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, item_left, Inches(1.15), Inches(6.0), Inches(0.5))
+                item_title_box.fill.solid()
+                item_title_box.fill.fore_color.rgb = C_WALNUT
+                item_title_box.line.fill.background()
+                
+                t_tf = item_title_box.text_frame
+                t_tf.word_wrap = True
+                t_p = t_tf.paragraphs[0]
+                display_title = prod_val if len(prod_val) <= 32 else prod_val[:30] + "..."
+                t_p.text = f" {global_idx}. {display_title} | {style_val}"
+                t_p.font.size = Pt(11)
+                t_p.font.bold = True
+                t_p.font.color.rgb = C_WHITE
+                item_title_box.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+                # Left Box: Image Container
+                box_x = item_left
+                box_y = Inches(1.75)
+                box_w = Inches(2.5)
+                box_h = Inches(5.35)
+
+                img_box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, box_x, box_y, box_w, box_h)
+                img_box.fill.solid()
+                img_box.fill.fore_color.rgb = RGBColor(241, 245, 249)
+                img_box.line.color.rgb = C_BORDER
+
+                has_image = False
+                img_path = find_image_path(item)
+
+                if img_path:
+                    try:
+                        im = PILImage.open(img_path)
+                        im_w, im_h = im.size
+                        if im_w > 0 and im_h > 0:
+                            aspect = im_w / im_h
+
+                            max_w = 2.3
+                            max_h = 5.15
+
+                            if aspect > (max_w / max_h):
+                                w = max_w
+                                h = max_w / aspect
+                            else:
+                                h = max_h
+                                w = max_h * aspect
+
+                            img_left_in = (2.5 - w) / 2
+                            img_top_in = 1.75 + (5.35 - h) / 2
+
+                            slide.shapes.add_picture(
+                                img_path,
+                                item_left + Inches(img_left_in),
+                                Inches(img_top_in),
+                                width=Inches(w),
+                                height=Inches(h)
+                            )
+                            has_image = True
+                    except Exception as e:
+                        print(f"Error rendering image {img_path} in PPT: {e}")
+
+                if not has_image:
+                    img_tf = img_box.text_frame
+                    img_tf.word_wrap = True
+                    img_p = img_tf.paragraphs[0]
+                    img_p.text = f"🛋️\n\n{prod_val}\nStyle #: {style_val}"
+                    img_p.font.size = Pt(12)
+                    img_p.font.color.rgb = RGBColor(148, 163, 184)
+                    img_p.alignment = PP_ALIGN.CENTER
+
+                # Right Box: Structured Specs Table
+                wood_val = getattr(item, 'wood_type', None) or getattr(item, 'material', '—')
+                finish_val = getattr(item, 'finish_color', '—')
+                length_val = getattr(item, 'size_length', 0) or 0
+                breadth_val = getattr(item, 'size_breadth', 0) or 0
+                height_val = getattr(item, 'size_height', 0) or 0
+                cbm_val = getattr(item, 'cbm', None) or getattr(item, 'total_cbm', '—')
+                price_val = getattr(item, 'price_usd', None) or getattr(item, 'usd', None) or 0
+                remark_val = getattr(item, 'remark', None) or getattr(item, 'remarks', None) or 'Export Quality Specification.'
+
+                specs_rows = [
+                    ("Style No", str(style_val)),
+                    ("Product", str(prod_val)),
+                ]
+                if include_specs:
+                    specs_rows.extend([
+                        ("Material", str(wood_val)),
+                        ("Finish", str(finish_val)),
+                        ("Size (L×B×H)", f"{length_val}×{breadth_val}×{height_val} cm"),
+                        ("Volume", f"{cbm_val} CBM" if cbm_val != '—' else '—'),
+                    ])
+                if include_price:
+                    specs_rows.append(("Price (USD)", f"${float(price_val):.2f}" if price_val else 'Contact Quote'))
+
+                specs_rows.append(("Remarks", str(remark_val)))
+
+                total_rows = len(specs_rows) + 1
+                table_shape = slide.shapes.add_table(
+                    total_rows, 2, item_left + Inches(2.6), box_y, Inches(3.4), box_h
+                )
+                table = table_shape.table
+                table.columns[0].width = Inches(1.1)
+                table.columns[1].width = Inches(2.3)
+
+                # Header Row
+                hdr_cell = table.cell(0, 0)
+                table.cell(0, 1)
+                hdr_cell.fill.solid()
+                hdr_cell.fill.fore_color.rgb = C_WALNUT
+                hdr_tf = hdr_cell.text_frame
+                hdr_p = hdr_tf.paragraphs[0]
+                hdr_p.text = "PRODUCT DETAILS"
+                hdr_p.font.size = Pt(10)
+                hdr_p.font.bold = True
+                hdr_p.font.color.rgb = C_WHITE
+                hdr_cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+                hdr_cell2 = table.cell(0, 1)
+                hdr_cell2.fill.solid()
+                hdr_cell2.fill.fore_color.rgb = C_WALNUT
+
+                for r_idx, (label, val) in enumerate(specs_rows, start=1):
+                    cell_lbl = table.cell(r_idx, 0)
+                    cell_val = table.cell(r_idx, 1)
+
+                    row_bg = C_ROW_ALT if r_idx % 2 == 1 else C_WHITE
+                    cell_lbl.fill.solid()
+                    cell_lbl.fill.fore_color.rgb = row_bg
+                    cell_val.fill.solid()
+                    cell_val.fill.fore_color.rgb = row_bg
+
+                    cell_lbl.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    cell_val.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+                    p_l = cell_lbl.text_frame.paragraphs[0]
+                    p_l.text = f"• {label}"
+                    p_l.font.size = Pt(8.5)
+                    p_l.font.bold = True
+                    p_l.font.color.rgb = C_DARK
+
+                    p_v = cell_val.text_frame.paragraphs[0]
+                    p_v.text = str(val)
+                    p_v.font.size = Pt(8.5)
+                    if "Price" in label:
+                        p_v.font.bold = True
+                        p_v.font.color.rgb = C_GOLD
+                    else:
+                        p_v.font.color.rgb = C_SLATE
+
 
     # ── SLIDE N+1: Ending / Thank You Page ──
     end_slide = prs.slides.add_slide(blank_layout)
@@ -749,5 +907,548 @@ def generate_brand_pptx_presentation(buyer_name="", buyer_po_numbers="", title="
     buf = BytesIO()
     prs.save(buf)
     return buf.getvalue()
+
+
+def generate_vendor_inspection_pptx(cover_info=None, slides_data=None):
+    """
+    Generates a 16:9 widescreen PowerPoint Presentation for Vendor Internal Inspection Report.
+    - Slide 1: Pink city internal inspection report (Metadata & Level 1 / Level 2 AQL Tables).
+    - Slide 2: Master Carton Taping & Color Coding based on Banner & DC.
+    - Slide 3..N: Product Inspection Collage Slides with dynamic section headers & photo grids.
+    - Slide N+1: Internal DQA Inspection Report summary slide.
+    - Slide N+2: Closing / Thank You Slide.
+    """
+    if not cover_info:
+        cover_info = {}
+    if not slides_data:
+        slides_data = []
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank_layout = prs.slide_layouts[6]
+
+    # Color Palette Tokens
+    C_RED_HEADER = RGBColor(235, 0, 0)     # #EB0000 Compliance Red Banner
+    C_YELLOW_BANNER = RGBColor(255, 255, 0) # #FFFF00 Disclaimer Yellow
+    C_DARK = RGBColor(20, 20, 20)          # Primary Text
+    C_WHITE = RGBColor(255, 255, 255)
+    C_GRAY_BG = RGBColor(250, 250, 250)
+    C_BORDER = RGBColor(180, 180, 180)
+    C_WALNUT = RGBColor(139, 90, 43)
+
+    # ── SLIDE 1: Pink City Internal Inspection Report ──
+    slide1 = prs.slides.add_slide(blank_layout)
+
+    # Background
+    bg1 = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    bg1.fill.solid()
+    bg1.fill.fore_color.rgb = C_WHITE
+    bg1.line.fill.background()
+
+    # Red Top Banner
+    h1_bar = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.4), Inches(12.333), Inches(0.7))
+    h1_bar.fill.solid()
+    h1_bar.fill.fore_color.rgb = C_RED_HEADER
+    h1_bar.line.fill.background()
+
+    h1_tf = h1_bar.text_frame
+    h1_tf.word_wrap = True
+    h1_p = h1_tf.paragraphs[0]
+    h1_p.text = "Pinkcity - Internal Inspection Report"
+    h1_p.font.size = Pt(22)
+    h1_p.font.bold = True
+    h1_p.font.color.rgb = C_DARK
+    h1_p.alignment = PP_ALIGN.CENTER
+    h1_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    # Left Column Metadata Fields
+    left_box = slide1.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(6.0), Inches(4.5))
+    tf_meta = left_box.text_frame
+    tf_meta.word_wrap = True
+
+    meta_items = [
+        ("DQA – ", cover_info.get('dqa_name', 'Mahendra Singh')),
+        ("Vendor – ", cover_info.get('vendor_name', 'Pinkcity Enterprises')),
+        ("Date – ", cover_info.get('date', timezone.now().strftime('%d-%m-%Y'))),
+        ("PO # ", f"{cover_info.get('po_number', '626890')} / QTY # {cover_info.get('qty', '300 / 300')}"),
+        ("Ship window – ", cover_info.get('ship_window', '31 March 2026 To 10 April 2026')),
+        ("Banner – ", cover_info.get('banner', 'Home Goods')),
+        ("Test Report Number ", f"{cover_info.get('test_report', '(6726)041-0355 & Date - 16 Feb. 2026')}"),
+        ("QEM Date - ", cover_info.get('qem_date', ''))
+    ]
+
+    for idx, (label, val) in enumerate(meta_items):
+        p = tf_meta.paragraphs[0] if idx == 0 else tf_meta.add_paragraph()
+        p.space_after = Pt(10)
+
+        run_label = p.add_run()
+        run_label.text = label
+        run_label.font.bold = True
+        run_label.font.size = Pt(14)
+        run_label.font.color.rgb = C_DARK
+
+        run_val = p.add_run()
+        run_val.text = str(val)
+        run_val.font.bold = True
+        run_val.font.size = Pt(14)
+        run_val.font.color.rgb = C_DARK
+
+    # Level 1 Table (Right side)
+    l1_title_box = slide1.shapes.add_textbox(Inches(6.8), Inches(1.3), Inches(2.8), Inches(0.3))
+    tf_l1t = l1_title_box.text_frame
+    p_l1t = tf_l1t.paragraphs[0]
+    p_l1t.text = "LEVEL-1"
+    p_l1t.font.bold = True
+    p_l1t.font.size = Pt(11)
+    p_l1t.font.color.rgb = C_DARK
+
+    l1_rows = [
+        ["Lot Size", "Sample Size", "Pass", "Fail"],
+        ["2-8", "2", "0", "1"],
+        ["9-15", "2", "0", "1"],
+        ["16-25", "3", "0", "1"],
+        ["51-90", "5", "0", "1"],
+        ["91-150", "8", "0", "1"],
+        ["151-280", "13", "0", "1"],
+        ["281-500", "20", "1", "2"],
+        ["501-1200", "32", "2", "3"],
+        ["1201-3200", "50", "3", "4"],
+        ["3201-10000", "80", "5", "6"],
+        ["10001-35000", "125", "7", "8"],
+        ["35000 - Above", "200", "10", "11"],
+    ]
+
+    t1_shape = slide1.shapes.add_table(len(l1_rows), 4, Inches(6.8), Inches(1.6), Inches(2.8), Inches(4.5))
+    t1 = t1_shape.table
+    t1.columns[0].width = Inches(1.0)
+    t1.columns[1].width = Inches(0.7)
+    t1.columns[2].width = Inches(0.5)
+    t1.columns[3].width = Inches(0.6)
+
+    for r_idx, row in enumerate(l1_rows):
+        for c_idx, cell_text in enumerate(row):
+            cell = t1.cell(r_idx, c_idx)
+            cell.text = cell_text
+            p = cell.text_frame.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            p.font.size = Pt(8.5)
+            if r_idx == 0:
+                p.font.bold = True
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(225, 235, 225)
+
+    # Level 2 Table (Right side)
+    l2_title_box = slide1.shapes.add_textbox(Inches(9.8), Inches(1.3), Inches(3.0), Inches(0.3))
+    tf_l2t = l2_title_box.text_frame
+    p_l2t = tf_l2t.paragraphs[0]
+    p_l2t.text = "LEVEL-2"
+    p_l2t.font.bold = True
+    p_l2t.font.size = Pt(11)
+    p_l2t.font.color.rgb = C_DARK
+
+    l2_rows = [
+        ["Lot Size", "Sample Size", "Pass", "Fail"],
+        ["2-8", "2", "0", "1"],
+        ["9-15", "3", "0", "1"],
+        ["16-25", "5", "0", "1"],
+        ["26-50", "8", "0", "1"],
+        ["51-90", "13", "0", "1"],
+        ["91-150", "20", "1", "2"],
+        ["151-280", "32", "2", "3"],
+        ["281-500", "50", "3", "4"],
+        ["501-1200", "80", "5", "6"],
+        ["1201-3200", "125", "7", "8"],
+        ["3201-10000", "200", "10", "11"],
+        ["10001-35000", "315", "14", "15"],
+        ["35001 - Above", "500", "21", "22"],
+    ]
+
+    t2_shape = slide1.shapes.add_table(len(l2_rows), 4, Inches(9.8), Inches(1.6), Inches(3.0), Inches(4.8))
+    t2 = t2_shape.table
+    t2.columns[0].width = Inches(1.1)
+    t2.columns[1].width = Inches(0.7)
+    t2.columns[2].width = Inches(0.6)
+    t2.columns[3].width = Inches(0.6)
+
+    for r_idx, row in enumerate(l2_rows):
+        for c_idx, cell_text in enumerate(row):
+            cell = t2.cell(r_idx, c_idx)
+            cell.text = cell_text
+            p = cell.text_frame.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            p.font.size = Pt(8.5)
+            if r_idx == 0:
+                p.font.bold = True
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(235, 235, 235)
+
+    # Bottom Yellow Banner
+    y_banner = slide1.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(3.5), Inches(6.5), Inches(6.3), Inches(0.5))
+    y_banner.fill.solid()
+    y_banner.fill.fore_color.rgb = C_YELLOW_BANNER
+    y_banner.line.fill.background()
+
+    y_tf = y_banner.text_frame
+    y_p = y_tf.paragraphs[0]
+    y_p.text = "Furniture - Level 2 // Non-Furniture – Level 1"
+    y_p.font.bold = True
+    y_p.font.size = Pt(16)
+    y_p.font.color.rgb = C_DARK
+    y_p.alignment = PP_ALIGN.CENTER
+    y_banner.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    # ── SLIDE 2: Master Carton Taping & Color Coding ──
+    slide2 = prs.slides.add_slide(blank_layout)
+
+    bg2 = slide2.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    bg2.fill.solid()
+    bg2.fill.fore_color.rgb = C_WHITE
+    bg2.line.fill.background()
+
+    # Red Top Banner
+    h2_bar = slide2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.9), Inches(0.3), Inches(11.533), Inches(0.65))
+    h2_bar.fill.solid()
+    h2_bar.fill.fore_color.rgb = C_RED_HEADER
+    h2_bar.line.fill.background()
+
+    h2_tf = h2_bar.text_frame
+    h2_p = h2_tf.paragraphs[0]
+    h2_p.text = "Master Carton Taping & Color Coding based on Banner & DC"
+    h2_p.font.size = Pt(20)
+    h2_p.font.bold = True
+    h2_p.font.color.rgb = C_DARK
+    h2_p.alignment = PP_ALIGN.CENTER
+    h2_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    # Left Side DC Dots Grid
+    dots_data = [
+        # (Number, Label, RGBColor)
+        ("10", "DC 10", RGBColor(255, 0, 0)),        # Red
+        ("50", "DC 50", RGBColor(0, 176, 240)),      # Cyan
+        ("80", "DC 80", RGBColor(220, 220, 220)),    # Light Grey
+        ("20", "DC 20", RGBColor(255, 192, 0)),      # Yellow
+        ("60", "DC 60", RGBColor(0, 32, 96)),        # Navy
+        ("30", "DC 30", RGBColor(0, 0, 0)),          # Black
+        ("70", "DC 70", RGBColor(112, 48, 160)),     # Purple
+        ("40", "DC 40", RGBColor(146, 208, 80)),     # Light Green
+        ("90", "DC 90", RGBColor(197, 90, 17)),      # Brown
+    ]
+
+    dot_start_x = Inches(0.5)
+    dot_start_y = Inches(1.3)
+    col_width = Inches(2.8)
+    row_height = Inches(1.1)
+
+    for i, (num, label, color) in enumerate(dots_data):
+        col = i % 3 if i < 3 else (0 if i in [3,6] else (1 if i in [4,7] else 2))
+        if i in [0, 1, 2]:
+            r_x = dot_start_x + (i * col_width)
+            r_y = dot_start_y
+        elif i in [3, 4]:
+            r_x = dot_start_x + ((i - 3) * col_width)
+            r_y = dot_start_y + row_height
+        elif i in [5, 6]:
+            r_x = dot_start_x + ((i - 5) * col_width)
+            r_y = dot_start_y + (2 * row_height)
+        else: # 7, 8
+            r_x = dot_start_x + ((i - 7) * col_width)
+            r_y = dot_start_y + (3 * row_height)
+
+        # Circle Shape
+        oval = slide2.shapes.add_shape(MSO_SHAPE.OVAL, r_x, r_y, Inches(0.85), Inches(0.85))
+        oval.fill.solid()
+        oval.fill.fore_color.rgb = color
+        oval.line.fill.background()
+
+        ov_tf = oval.text_frame
+        ov_p = ov_tf.paragraphs[0]
+        ov_p.text = num
+        ov_p.font.bold = True
+        ov_p.font.size = Pt(16)
+        ov_p.font.color.rgb = C_WHITE if color != RGBColor(220, 220, 220) and color != RGBColor(255, 192, 0) else C_DARK
+        ov_p.alignment = PP_ALIGN.CENTER
+        oval.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        # Label Text next to circle
+        lbl_box = slide2.shapes.add_textbox(r_x + Inches(0.95), r_y + Inches(0.2), Inches(1.6), Inches(0.5))
+        lbl_tf = lbl_box.text_frame
+        lbl_p = lbl_tf.paragraphs[0]
+        lbl_p.text = label
+        lbl_p.font.bold = True
+        lbl_p.font.size = Pt(16)
+        lbl_p.font.color.rgb = C_DARK
+
+    # Bottom Yellow Note for DC Stickers
+    dc_y_banner = slide2.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.3), Inches(6.5), Inches(7.8), Inches(0.45))
+    dc_y_banner.fill.solid()
+    dc_y_banner.fill.fore_color.rgb = C_YELLOW_BANNER
+    dc_y_banner.line.fill.background()
+
+    dc_y_tf = dc_y_banner.text_frame
+    dc_y_p = dc_y_tf.paragraphs[0]
+    dc_y_p.text = "DC Dot Sticker Size – 2” / Placement - all 4 sides, right hand side top corner"
+    dc_y_p.font.bold = True
+    dc_y_p.font.size = Pt(11)
+    dc_y_p.font.color.rgb = C_DARK
+    dc_y_p.alignment = PP_ALIGN.CENTER
+    dc_y_banner.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    # Right Side Carton Taping Guidelines Visual Cards
+    taping_bannners = [
+        ("HomeGoods White color Tape", RGBColor(255, 255, 255), RGBColor(139, 90, 43)),
+        ("Marshalls Black color Tape", RGBColor(0, 0, 0), RGBColor(139, 90, 43)),
+        ("TJ Maxx Blue color Tape", RGBColor(0, 112, 192), RGBColor(139, 90, 43)),
+    ]
+
+    right_start_x = Inches(8.6)
+    right_start_y = Inches(1.3)
+    card_h = Inches(1.6)
+
+    for idx, (t_title, tape_color, box_color) in enumerate(taping_bannners):
+        curr_y = right_start_y + (idx * (card_h + Inches(0.2)))
+
+        # Title
+        tb_box = slide2.shapes.add_textbox(right_start_x, curr_y, Inches(4.3), Inches(0.35))
+        tb_tf = tb_box.text_frame
+        tb_p = tb_tf.paragraphs[0]
+        tb_p.text = t_title
+        tb_p.font.bold = True
+        tb_p.font.size = Pt(13)
+        tb_p.font.color.rgb = C_DARK
+
+        # Visual Carton Diagrams (2 Boxes side by side)
+        for box_i in range(2):
+            bx_left = right_start_x + (box_i * Inches(2.0))
+            bx_top = curr_y + Inches(0.35)
+
+            # Carton Box Body
+            c_box = slide2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, bx_left, bx_top, Inches(1.6), Inches(1.2))
+            c_box.fill.solid()
+            c_box.fill.fore_color.rgb = box_color
+            c_box.line.color.rgb = RGBColor(100, 60, 20)
+
+            # Tape Line Overlay across center & edges
+            tape1 = slide2.shapes.add_shape(MSO_SHAPE.RECTANGLE, bx_left + Inches(0.1), bx_top + Inches(0.45), Inches(1.4), Inches(0.25))
+            tape1.fill.solid()
+            tape1.fill.fore_color.rgb = tape_color
+            tape1.line.color.rgb = C_DARK if tape_color == C_WHITE else tape_color
+
+            tape2 = slide2.shapes.add_shape(MSO_SHAPE.RECTANGLE, bx_left + Inches(0.65), bx_top + Inches(0.1), Inches(0.3), Inches(1.0))
+            tape2.fill.solid()
+            tape2.fill.fore_color.rgb = tape_color
+            tape2.line.color.rgb = C_DARK if tape_color == C_WHITE else tape_color
+
+    # ── SLIDES 3..N: Product Inspection Collage Slides ──
+    for slide_idx, s_data in enumerate(slides_data, start=1):
+        sec_title = s_data.get('title') or f"Inspection Section #{slide_idx}"
+        images = s_data.get('images', [])
+
+        slide = prs.slides.add_slide(blank_layout)
+
+        # White background
+        s_bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+        s_bg.fill.solid()
+        s_bg.fill.fore_color.rgb = C_WHITE
+        s_bg.line.fill.background()
+
+        # Top Red Header Banner
+        h_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.3), Inches(12.333), Inches(0.65))
+        h_bar.fill.solid()
+        h_bar.fill.fore_color.rgb = C_RED_HEADER
+        h_bar.line.fill.background()
+
+        h_tf = h_bar.text_frame
+        h_tf.word_wrap = True
+        h_p = h_tf.paragraphs[0]
+        h_p.text = sec_title
+        h_p.font.size = Pt(20)
+        h_p.font.bold = True
+        h_p.font.color.rgb = C_DARK
+        h_p.alignment = PP_ALIGN.CENTER
+        h_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+        if not images:
+            no_img_box = slide.shapes.add_textbox(Inches(1.0), Inches(3.0), Inches(11.333), Inches(1.5))
+            tf_no = no_img_box.text_frame
+            p_no = tf_no.paragraphs[0]
+            p_no.text = f"No photos uploaded for section: {sec_title}"
+            p_no.font.size = Pt(18)
+            p_no.font.color.rgb = RGBColor(120, 120, 120)
+            p_no.alignment = PP_ALIGN.CENTER
+            continue
+
+        num_imgs = len(images)
+        top_start = Inches(1.1)
+        avail_width = Inches(12.333)
+        avail_height = Inches(6.0)
+        margin_left = Inches(0.5)
+
+        # Dynamic Grid Layout Logic
+        if num_imgs == 1:
+            rows, cols_per_row = 1, [1]
+        elif num_imgs == 2:
+            rows, cols_per_row = 1, [2]
+        elif num_imgs == 3:
+            rows, cols_per_row = 1, [3]
+        elif num_imgs == 4:
+            rows, cols_per_row = 2, [2, 2]
+        elif num_imgs in [5, 6, 7]:
+            # Matching Image 3 layout: Row 1 has 3 images, Row 2 has remaining (e.g. 4)
+            top_cnt = 3
+            bot_cnt = num_imgs - top_cnt
+            rows, cols_per_row = 2, [top_cnt, bot_cnt]
+        else: # 8 or more
+            top_cnt = 4
+            bot_cnt = min(num_imgs - top_cnt, 4)
+            rows, cols_per_row = 2, [top_cnt, bot_cnt]
+
+        row_h = avail_height / rows - Inches(0.15)
+        img_counter = 0
+
+        for r_idx in range(rows):
+            c_count = cols_per_row[r_idx]
+            cell_w = avail_width / c_count - Inches(0.15)
+            r_top = top_start + (r_idx * (row_h + Inches(0.15)))
+
+            for c_idx in range(c_count):
+                if img_counter >= num_imgs:
+                    break
+                img_input = images[img_counter]
+                img_counter += 1
+
+                c_left = margin_left + (c_idx * (cell_w + Inches(0.15)))
+
+                # Subdued Card Container Frame
+                card_bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, c_left, r_top, cell_w, row_h)
+                card_bg.fill.solid()
+                card_bg.fill.fore_color.rgb = C_WHITE
+                card_bg.line.color.rgb = C_BORDER
+
+                try:
+                    pil_img = None
+                    img_stream = None
+
+                    if isinstance(img_input, (str, os.PathLike)) and os.path.exists(img_input):
+                        pil_img = PILImage.open(img_input)
+                        img_stream = img_input
+                    elif isinstance(img_input, bytes):
+                        pil_img = PILImage.open(BytesIO(img_input))
+                        img_stream = BytesIO(img_input)
+                    elif hasattr(img_input, 'read'):
+                        img_bytes = img_input.read()
+                        if hasattr(img_input, 'seek'):
+                            img_input.seek(0)
+                        pil_img = PILImage.open(BytesIO(img_bytes))
+                        img_stream = BytesIO(img_bytes)
+                    elif isinstance(img_input, PILImage.Image):
+                        pil_img = img_input
+                        buf = BytesIO()
+                        pil_img.save(buf, format='JPEG')
+                        img_stream = BytesIO(buf.getvalue())
+
+                    if pil_img and img_stream:
+                        w, h = pil_img.size
+                        if w > 0 and h > 0:
+                            aspect_ratio = w / h
+                            pad = Inches(0.04)
+                            max_w = cell_w - (2 * pad)
+                            max_h = row_h - (2 * pad)
+
+                            if aspect_ratio > (max_w / max_h):
+                                target_w = max_w
+                                target_h = target_w / aspect_ratio
+                            else:
+                                target_h = max_h
+                                target_w = target_h * aspect_ratio
+
+                            img_l = c_left + (cell_w - target_w) / 2
+                            img_t = r_top + (row_h - target_h) / 2
+
+                            slide.shapes.add_picture(img_stream, img_l, img_t, width=target_w, height=target_h)
+                except Exception as ex:
+                    print(f"Error adding image {img_counter} to vendor inspection slide: {ex}")
+
+    # ── SLIDE N+1: Internal DQA Inspection Report ──
+    sum_slide = prs.slides.add_slide(blank_layout)
+    s_bg2 = sum_slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    s_bg2.fill.solid()
+    s_bg2.fill.fore_color.rgb = C_WHITE
+    s_bg2.line.fill.background()
+
+    # Red Top Banner
+    sh_bar = sum_slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.3), Inches(12.333), Inches(0.65))
+    sh_bar.fill.solid()
+    sh_bar.fill.fore_color.rgb = C_RED_HEADER
+    sh_bar.line.fill.background()
+
+    sh_tf = sh_bar.text_frame
+    sh_p = sh_tf.paragraphs[0]
+    sh_p.text = "Internal DQA Inspection Report"
+    sh_p.font.size = Pt(20)
+    sh_p.font.bold = True
+    sh_p.font.color.rgb = C_DARK
+    sh_p.alignment = PP_ALIGN.CENTER
+    sh_bar.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    dqa_img_input = cover_info.get('dqa_report_image')
+    if dqa_img_input:
+        try:
+            pil_img = None
+            img_stream = None
+
+            if isinstance(dqa_img_input, (str, os.PathLike)) and os.path.exists(dqa_img_input):
+                pil_img = PILImage.open(dqa_img_input)
+                img_stream = dqa_img_input
+            elif isinstance(dqa_img_input, bytes):
+                pil_img = PILImage.open(BytesIO(dqa_img_input))
+                img_stream = BytesIO(dqa_img_input)
+            elif hasattr(dqa_img_input, 'read'):
+                img_bytes = dqa_img_input.read()
+                if hasattr(dqa_img_input, 'seek'):
+                    dqa_img_input.seek(0)
+                pil_img = PILImage.open(BytesIO(img_bytes))
+                img_stream = BytesIO(img_bytes)
+
+            if pil_img and img_stream:
+                w, h = pil_img.size
+                if w > 0 and h > 0:
+                    aspect_ratio = w / h
+                    max_w = Inches(10.5)
+                    max_h = Inches(6.0)
+
+                    if aspect_ratio > (max_w / max_h):
+                        target_w = max_w
+                        target_h = target_w / aspect_ratio
+                    else:
+                        target_h = max_h
+                        target_w = target_h * aspect_ratio
+
+                    img_l = Inches(0.5) + (Inches(12.333) - target_w) / 2
+                    img_t = Inches(1.1) + (Inches(6.0) - target_h) / 2
+
+                    # Outer frame box
+                    frame = sum_slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, img_l - Inches(0.04), img_t - Inches(0.04), target_w + Inches(0.08), target_h + Inches(0.08))
+                    frame.fill.solid()
+                    frame.fill.fore_color.rgb = C_WHITE
+                    frame.line.color.rgb = C_BORDER
+
+                    sum_slide.shapes.add_picture(img_stream, img_l, img_t, width=target_w, height=target_h)
+        except Exception as ex:
+            print(f"Error adding DQA report image to slide: {ex}")
+    else:
+        no_img_box = sum_slide.shapes.add_textbox(Inches(1.0), Inches(3.0), Inches(11.333), Inches(1.5))
+        tf_no = no_img_box.text_frame
+        p_no = tf_no.paragraphs[0]
+        p_no.text = "No Internal DQA Inspection Report Image Uploaded"
+        p_no.font.size = Pt(18)
+        p_no.font.color.rgb = RGBColor(120, 120, 120)
+        p_no.alignment = PP_ALIGN.CENTER
+
+    buf = BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
+
+
 
 
