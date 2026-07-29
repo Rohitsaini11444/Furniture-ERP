@@ -11,7 +11,7 @@ import Pagination from '../components/Pagination';
 import CustomSelect from '../components/CustomSelect';
 
 function Tools() {
-  const [activeTool, setActiveTool] = useState('presentation'); // 'presentation' | 'pricetag' | 'qcreport' | 'costing'
+  const [activeTool, setActiveTool] = useState(null); // null | 'presentation' | 'pricetag' | 'qcreport' | 'costing'
 
   // Presentation State
   const [presentationType, setPresentationType] = useState('buyer_sample'); // 'buyer_sample' | 'brand'
@@ -686,108 +686,171 @@ function Tools() {
         gap: '1.25rem',
         marginBottom: '2rem'
       }}>
-        {toolCards.map(tool => (
-          <div
-            key={tool.id}
-            onClick={() => {
-              if (tool.active) setActiveTool(tool.id);
-            }}
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: '16px',
-              padding: '1.5rem',
-              boxShadow: activeTool === tool.id
-                ? `0 0 0 2px ${tool.color}, 0 4px 12px ${tool.color}25`
-                : '0 1px 3px rgba(0,0,0,0.08)',
-              cursor: tool.active ? 'pointer' : 'not-allowed',
-              opacity: tool.active ? 1 : 0.65,
-              transition: 'all 0.2s ease',
-              position: 'relative'
-            }}
-          >
-            <div style={{
-              width: 52,
-              height: 52,
-              borderRadius: '14px',
-              backgroundColor: `${tool.color}15`,
-              color: tool.color,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '1rem'
-            }}>
-              {tool.icon}
-            </div>
-            
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#1e293b' }}>
-              {tool.title}
-            </h3>
-            
-            <p style={{ fontSize: '0.83rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
-              {tool.description}
-            </p>
-
-            {tool.active ? (
-              <span style={{
-                position: 'absolute',
-                top: '1rem',
-                right: '1rem',
-                backgroundColor: '#dcfce7',
-                color: '#15803d',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                padding: '3px 10px',
-                borderRadius: '999px'
-              }}>
-                ✓ Active
-              </span>
-            ) : (
-              <span style={{
-                position: 'absolute',
-                top: '1rem',
-                right: '1rem',
-                backgroundColor: '#f1f5f9',
-                color: '#64748b',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                padding: '2px 8px',
-                borderRadius: '999px'
-              }}>
-                Coming Soon
-              </span>
-            )}
-
-            {activeTool === tool.id && (
+        {toolCards.map(tool => {
+          const isSelected = activeTool === tool.id;
+          return (
+            <div
+              key={tool.id}
+              onClick={() => {
+                if (tool.active) {
+                  setActiveTool(tool.id);
+                  if (tool.id === 'presentation') {
+                    setTimeout(() => {
+                      const el = document.getElementById('ppt-type-section');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 60);
+                  }
+                }
+              }}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                boxShadow: isSelected
+                  ? `0 0 0 2px ${tool.color}, 0 6px 18px ${tool.color}30`
+                  : '0 1px 3px rgba(0,0,0,0.08)',
+                cursor: tool.active ? 'pointer' : 'not-allowed',
+                opacity: tool.active ? 1 : 0.65,
+                transition: 'all 0.2s ease',
+                position: 'relative'
+              }}
+            >
               <div style={{
-                position: 'absolute',
-                bottom: '-9px',
-                left: '50%',
-                transform: 'translateX(-50%) rotate(45deg)',
-                width: '16px',
-                height: '16px',
-                backgroundColor: '#ffffff',
-                borderRight: `2px solid ${tool.color}`,
-                borderBottom: `2px solid ${tool.color}`,
-                zIndex: 2
-              }} />
-            )}
-          </div>
-        ))}
+                width: 52,
+                height: 52,
+                borderRadius: '14px',
+                backgroundColor: `${tool.color}15`,
+                color: tool.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem'
+              }}>
+                {tool.icon}
+              </div>
+              
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#1e293b' }}>
+                {tool.title}
+              </h3>
+              
+              <p style={{ fontSize: '0.83rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+                {tool.description}
+              </p>
+
+              {tool.active ? (
+                isSelected ? (
+                  <span style={{
+                    position: 'absolute',
+                    top: '1rem',
+                    right: '1rem',
+                    backgroundColor: '#dcfce7',
+                    color: '#15803d',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: '999px'
+                  }}>
+                    ✓ Active
+                  </span>
+                ) : (
+                  <span style={{
+                    position: 'absolute',
+                    top: '1rem',
+                    right: '1rem',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: '999px'
+                  }}>
+                    Click to Start →
+                  </span>
+                )
+              ) : (
+                <span style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  backgroundColor: '#f1f5f9',
+                  color: '#64748b',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '999px'
+                }}>
+                  Coming Soon
+                </span>
+              )}
+
+              {isSelected && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '-9px',
+                  left: '50%',
+                  transform: 'translateX(-50%) rotate(45deg)',
+                  width: '16px',
+                  height: '16px',
+                  backgroundColor: '#ffffff',
+                  borderRight: `2px solid ${tool.color}`,
+                  borderBottom: `2px solid ${tool.color}`,
+                  zIndex: 2
+                }} />
+              )}
+            </div>
+          );
+        })}
       </div>
+
+      {/* ── Empty Unselected State ── */}
+      {activeTool === null && (
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          padding: '3.5rem 2rem',
+          textAlign: 'center',
+          border: '2px dashed #cbd5e1',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.02)'
+        }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            backgroundColor: '#f3e8ff',
+            color: '#8b5cf6',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.25rem'
+          }}>
+            <Sparkles size={32} />
+          </div>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.35rem', fontWeight: 800, color: '#1e293b' }}>
+            Choose a Tool Above to Get Started
+          </h3>
+          <p style={{ margin: 0, fontSize: '0.92rem', color: '#64748b', maxWidth: '520px', marginInline: 'auto' }}>
+            Click <strong>Generate PPT Presentation</strong> above to configure and generate Buyer Catalogs, Brand Presentations, or Vendor Inspection Reports.
+          </p>
+        </div>
+      )}
 
       {/* ── Active Tool View: Generate Presentation ── */}
       {activeTool === 'presentation' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
           {/* ── CHOOSE A PPT TYPE SECTION (Matches Mockup) ── */}
-          <div style={{
+          <div id="ppt-type-section" style={{
             backgroundColor: '#ffffff',
             borderRadius: '20px',
             padding: '2rem',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
-            border: '1px solid #e2e8f0'
+            border: '1px solid #e2e8f0',
+            scrollMarginTop: '2rem'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', marginBottom: '1.75rem' }}>
+
               <div style={{
                 width: 48,
                 height: 48,

@@ -15,7 +15,7 @@ from .views import (
     SupplierPOItemViewSet,
     NotificationViewSet,
     StockItemViewSet,
-    GeneratePresentationView,
+    GeneratePresentationView, ScanLookupView,
 )
 
 router = DefaultRouter()
@@ -54,9 +54,11 @@ urlpatterns = [
     path('auth/devices/', ActiveDevicesView.as_view(), name='auth-devices'),
     path('auth/me/', CurrentUserView.as_view(), name='auth-me'),
 
-    # Presentation Generator
+    # Presentation Generator & QR Scanner Lookup
     path('generate-presentation/', GeneratePresentationView.as_view(), name='generate-presentation'),
+    path('scan-lookup/', ScanLookupView.as_view(), name='scan-lookup'),
 
     # Router URLs
     path('', include(router.urls)),
 ]
+

@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
+import QRScannerModal from '../components/QRScannerModal';
+
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -632,6 +634,11 @@ export default function GateEntry() {
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
 
+  // Scanner state
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
+  const [scanningLookup, setScanningLookup] = useState(false);
+
   const fetchPOs = useCallback(() => {
     setLoading(true);
     api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering } })
@@ -650,9 +657,24 @@ export default function GateEntry() {
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
 
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, ordering]);
+
+  const handleScanSuccess = async (scannedCode) => {
+    setShowScanner(false);
+    setScanningLookup(true);
+    try {
+      const res = await api.post('/scan-lookup/', { code: scannedCode });
+      setScanResult(res.data);
+    } catch (err) {
+      console.error("Scan lookup error:", err);
+      alert(`Error verifying code '${scannedCode}'. Please check server connection.`);
+    } finally {
+      setScanningLookup(false);
+    }
+  };
 
   if (id) {
     return <QCForm poId={id} onBack={() => { navigate('/gate-entry'); fetchPOs(); }} />;
@@ -666,7 +688,133 @@ export default function GateEntry() {
 
   return (
     <div>
-      <div className="page-header">
+      {/* QR Scanner Camera Modal */}
+      <QRScannerModal
+        isOpen={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScanSuccess={handleScanSuccess}
+        title="Scan Gate-In Invoice / PO QR Code"
+      />
+
+      {/* Scanned PO Verification Result Modal */}
+      {scanResult && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.8)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1rem'
+        }} onClick={() => setScanResult(null)}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            maxWidth: '520px',
+            width: '100%',
+            padding: '1.75rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+            position: 'relative'
+          }} onClick={e => e.stopPropagation()}>
+
+            {scanResult.found ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+                      PO Verified & Matched!
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      Scanned Code: <code style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', color: '#0284c7' }}>{scanResult.scanned_code}</code>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>PO Number:</span>
+                    <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>{scanResult.po_details.po_number}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>Supplier:</span>
+                    <strong style={{ fontSize: '0.9rem', color: '#1e293b' }}>{scanResult.po_details.supplier_name}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>PO Status:</span>
+                    <span style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700 }}>
+                      {scanResult.po_details.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', fontWeight: 600 }}>Total Items:</span>
+                    <strong style={{ fontSize: '0.88rem', color: '#16a34a' }}>{scanResult.po_details.items_count} Line Items</strong>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setScanResult(null)}
+                    style={{ flex: 1, backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+
+                  {scanResult.po_details.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const poId = scanResult.po_details.id;
+                        setScanResult(null);
+                        navigate(`/gate-entry/${poId}`);
+                      }}
+                      style={{ flex: 2, backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '10px', padding: '0.75rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                    >
+                      Open Gate Inward Form →
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertTriangle size={24} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#991b1b' }}>
+                      PO Not Found in ERP
+                    </h3>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      Scanned Code: <code>{scanResult.scanned_code}</code>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.9rem', color: '#475569', marginBottom: '1.5rem' }}>
+                  {scanResult.message || "No active Purchase Order matching this QR code was found in your ERP database."}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => { setScanResult(null); setShowScanner(true); }}
+                  style={{ width: '100%', backgroundColor: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '10px', padding: '0.75rem', fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Try Scanning Again
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* Header Bar */}
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ClipboardCheck size={28} color="#14b8a6"/> Gate Entry / QC
@@ -675,7 +823,26 @@ export default function GateEntry() {
             Record material receipts and perform quality checks on POs
           </p>
         </div>
+
+        <button
+          onClick={() => setShowScanner(true)}
+          className="btn-primary"
+          style={{
+            backgroundColor: '#0284c7',
+            borderColor: '#0284c7',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.65rem 1.25rem',
+            fontSize: '0.9rem',
+            fontWeight: 800,
+            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+          }}
+        >
+          📷 Scan Invoice QR Code
+        </button>
       </div>
+
 
       <div className="filter-bar">
         <div className="filter-bar-inner">

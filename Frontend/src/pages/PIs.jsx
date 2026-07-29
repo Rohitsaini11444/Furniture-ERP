@@ -6,6 +6,9 @@ import Pagination from '../components/Pagination';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
 import { CustomDatePicker } from '../components/CustomDatePicker';
 import CustomSelect from '../components/CustomSelect';
+import InvoiceQRCode from '../components/InvoiceQRCode';
+import QRScannerModal from '../components/QRScannerModal';
+
 
 
 function num2words(num) {
@@ -68,6 +71,16 @@ function PIs() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  // Scanner test state
+  const [showTestScanner, setShowTestScanner] = useState(false);
+  const [scanTestResult, setScanTestResult] = useState(null);
+
+  const handleTestScanSuccess = (scannedCode) => {
+    setShowTestScanner(false);
+    setScanTestResult(scannedCode);
+  };
+
   
 
   const defaultDeclaration = (
@@ -699,9 +712,45 @@ function PIs() {
         </div>
       ) : (
         <>
-          <div className="page-header">
+          {/* QR Scanner Camera Modal */}
+          <QRScannerModal
+            isOpen={showTestScanner}
+            onClose={() => setShowTestScanner(false)}
+            onScanSuccess={handleTestScanSuccess}
+            title="Test Invoice QR Code Scanner"
+          />
+
+          {scanTestResult && (
+            <div style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.8)', zIndex: 99999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+            }} onClick={() => setScanTestResult(null)}>
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.5rem', maxWidth: '420px', width: '100%' }} onClick={e => e.stopPropagation()}>
+                <h4 style={{ margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 800, color: '#16a34a' }}>
+                  ✅ QR Code Scanned Successfully!
+                </h4>
+                <div style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.85rem', borderRadius: '8px', fontSize: '0.82rem', fontFamily: 'monospace', marginBottom: '1rem', wordBreak: 'break-all' }}>
+                  {scanTestResult}
+                </div>
+                <button type="button" onClick={() => setScanTestResult(null)} style={{ width: '100%', backgroundColor: '#0284c7', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem', fontWeight: 700 }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <h2>Invoices</h2>
-            <button onClick={() => navigate('/invoices/new')} className="btn-primary">+ Create New Invoice</button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setShowTestScanner(true)}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.88rem', fontWeight: 700, borderColor: '#0284c7', color: '#0284c7' }}
+              >
+                📷 Test QR Scanner
+              </button>
+              <button onClick={() => navigate('/invoices/new')} className="btn-primary">+ Create New Invoice</button>
+            </div>
           </div>
 
           {/* Search & Filter Bar */}
@@ -752,6 +801,7 @@ function PIs() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>QR Code</th>
                   <th>Invoice #</th>
                   <th>Invoice Date</th>
                   <th>Buyer / Consignee</th>
@@ -770,6 +820,9 @@ function PIs() {
 
                   return (
                     <tr key={p.id}>
+                      <td>
+                        <InvoiceQRCode invoiceData={p} size={48} showTestButton={false} />
+                      </td>
                       <td><strong>{p.pi_no}</strong></td>
                       <td>{p.pi_date || '—'}</td>
                       <td>
@@ -799,7 +852,7 @@ function PIs() {
                 })}
                 {filteredPIs.length === 0 && (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       {loading ? 'Loading Invoices...' : 'No Invoices found.'}
                     </td>
                   </tr>
@@ -807,6 +860,7 @@ function PIs() {
               </tbody>
             </table>
           </div>
+
           
           <Pagination 
             currentPage={currentPage} 

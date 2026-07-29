@@ -1905,7 +1905,7 @@ def num2words(num):
 # ─── Performa Invoice ViewSet ──────────────────────────────────────────────────
 
 class PerformaInvoiceViewSet(viewsets.ModelViewSet):
-    queryset = PerformaInvoice.objects.select_related('buyer').prefetch_related('items', 'items__po', 'items__po__buyer_master', 'items__po__buyer_master__sample').all()
+    queryset = PerformaInvoice.objects.select_related('buyer').prefetch_related('items').all()
     serializer_class = PerformaInvoiceSerializer
     permission_classes = [IsAuthenticated]
 
@@ -3078,6 +3078,89 @@ class GeneratePresentationView(APIView):
         response = HttpResponse(pptx_bytes, content_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
         response['Content-Disposition'] = f'attachment; filename="Presentation_{buyer_code_str}.pptx"'
         return response
+
+
+class ScanLookupView(APIView):
+    """
+    Scans a QR code payload or barcode string from an invoice/PO
+    and returns matched PO / PI records with item details and validation flags.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import json
+        code_raw = str(request.data.get('code', '')).strip()
+        if not code_raw:
+            return Response({'error': 'No QR code or barcode payload provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        po_no = None
+        pi_no = None
+        scanned_meta = {}
+
+        if code_raw.startswith('{') and code_raw.endswith('}'):
+            try:
+                parsed = json.loads(code_raw)
+                po_no = parsed.get('po_number') or parsed.get('po_no')
+                pi_no = parsed.get('pi_no') or parsed.get('invoice_no')
+                scanned_meta = parsed
+            except Exception:
+                pass
+
+        if not po_no and not pi_no:
+            po_no = code_raw
+            pi_no = code_raw
+
+        matched_po = None
+        matched_pi = None
+
+        if po_no:
+            matched_po = SupplierPO.objects.filter(Q(po_number__iexact=po_no) | Q(po_number__icontains=po_no)).first()
+
+        if not matched_po and pi_no:
+            matched_pi = PerformaInvoice.objects.filter(Q(pi_no__iexact=pi_no) | Q(pi_no__icontains=pi_no)).first()
+            if matched_pi:
+                matched_po = SupplierPO.objects.filter(items__buyer_pi__id=matched_pi.id).first()
+
+        if not matched_po and not matched_pi:
+            return Response({
+                'found': False,
+                'scanned_code': code_raw,
+                'message': f"No matching Supplier PO or Invoice found in ERP database for code '{code_raw}'."
+            }, status=status.HTTP_200_OK)
+
+        items_data = []
+        if matched_po:
+            for item in matched_po.items.all():
+                items_data.append({
+                    'id': str(item.id),
+                    'description': item.description,
+                    'quantity': float(item.quantity or 0),
+                    'passed_quantity': float(item.passed_quantity or 0),
+                    'remaining_qty': float((item.quantity or 0) - (item.passed_quantity or 0)),
+                    'unit': item.unit,
+                    'rate': float(item.rate or 0),
+                    'amount': float(item.amount or 0),
+                    'buyer_pi_no': item.buyer_pi.pi_no if item.buyer_pi else None,
+                })
+
+        return Response({
+            'found': True,
+            'match_type': 'SupplierPO' if matched_po else 'PerformaInvoice',
+            'scanned_code': code_raw,
+            'po_details': {
+                'id': str(matched_po.id) if matched_po else None,
+                'po_number': matched_po.po_number if matched_po else (matched_pi.buyer_order_no if matched_pi else 'INV-MATCH'),
+                'po_date': str(matched_po.po_date) if matched_po and matched_po.po_date else (str(matched_pi.pi_date) if matched_pi and matched_pi.pi_date else None),
+                'supplier_name': matched_po.supplier.name if matched_po and matched_po.supplier else (matched_pi.buyer.name if matched_pi else 'Pinkcity Supplier'),
+                'status': matched_po.status if matched_po else 'Valid Invoice',
+                'supervisor': matched_po.supervisor if matched_po else None,
+                'items_count': len(items_data),
+                'total_amount': float(matched_po.total_amount) if matched_po else 0.0,
+            },
+            'items': items_data,
+            'scanned_meta': scanned_meta
+        })
+
 
 
 
