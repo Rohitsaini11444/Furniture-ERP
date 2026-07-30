@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { 
@@ -125,8 +125,11 @@ function Finishing() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedFinishIds, setSelectedFinishIds] = useState(new Set());
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const finishFileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState('');
   const [importError, setImportError] = useState('');
@@ -135,6 +138,22 @@ function Finishing() {
   const exitSelectionMode = () => {
     setSelectionMode(false);
     setSelectedFinishIds(new Set());
+  };
+
+  const handleBulkDeleteFinishes = async () => {
+    if (selectedFinishIds.size === 0) return;
+    setDeletingSelected(true);
+    try {
+      await api.post('/finishes/bulk-delete/', { finish_ids: Array.from(selectedFinishIds) });
+      setShowBulkDeleteConfirm(false);
+      exitSelectionMode();
+      fetchFinishes();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      alert(err.response?.data?.error || 'Failed to delete selected finishes.');
+    } finally {
+      setDeletingSelected(false);
+    }
   };
 
   const toggleSelectFinish = (finishId, e) => {
@@ -920,6 +939,34 @@ function Finishing() {
                 <Download size={15} />
                 {exportingExcel ? 'Exporting...' : 'Export Excel'}
               </button>
+              {/* Delete — stagger 150ms */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  disabled={selectedFinishIds.size === 0}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    background: selectedFinishIds.size > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.05)',
+                    border: selectedFinishIds.size > 0 ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '10px',
+                    padding: '0.45rem 1.1rem',
+                    color: selectedFinishIds.size > 0 ? '#fca5a5' : 'rgba(255,255,255,0.3)',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: selectedFinishIds.size > 0 ? 'pointer' : 'not-allowed',
+                    opacity: selectionMode ? 1 : 0,
+                    transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                    transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease',
+                    transitionDelay: selectionMode ? '150ms' : '0ms',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1281,27 +1328,37 @@ function Finishing() {
             )}
 
             <form onSubmit={handleImportSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{
-                border: '2px dashed #cbd5e1',
-                borderRadius: '16px',
-                padding: '1.5rem',
-                textAlign: 'center',
-                backgroundColor: '#fafafa',
-                cursor: 'pointer'
-              }}>
+              <div
+                style={{
+                  border: '2px dashed #9a5323',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  textAlign: 'center',
+                  backgroundColor: '#fffcf7',
+                  cursor: 'pointer'
+                }}
+                onClick={() => finishFileInputRef.current?.click()}
+              >
                 <Upload size={32} color="#9a5323" style={{ margin: '0 auto 0.5rem' }} />
-                <label style={{ cursor: 'pointer', display: 'block', fontWeight: 700, color: '#1c1917', fontSize: '0.9rem' }}>
+                <div style={{ fontWeight: 700, color: '#1c1917', fontSize: '0.9rem' }}>
                   {importFile ? importFile.name : 'Click to select Excel / CSV file'}
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={e => setImportFile(e.target.files[0] || null)}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+                </div>
                 <span style={{ fontSize: '0.78rem', color: '#78716c', display: 'block', marginTop: '4px' }}>
-                  Supported formats: .xlsx, .xls, .csv
+                  Supported formats: .xlsx, .xls, .csv (with embedded swatch picture extraction)
                 </span>
+                <input
+                  ref={finishFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={e => {
+                    if (e.target.files?.[0]) {
+                      setImportFile(e.target.files[0]);
+                      setImportError('');
+                      setImportSuccess('');
+                    }
+                  }}
+                  style={{ display: 'none' }}
+                />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
@@ -1314,15 +1371,86 @@ function Finishing() {
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  disabled={!importFile || importing}
+                  type="button"
+                  onClick={(e) => {
+                    if (!importFile) {
+                      finishFileInputRef.current?.click();
+                    } else {
+                      handleImportSubmit(e);
+                    }
+                  }}
+                  disabled={importing}
                   className="btn-primary"
-                  style={{ padding: '0.6rem 1.4rem', borderRadius: '10px', backgroundColor: '#9a5323', fontWeight: 700 }}
+                  style={{ padding: '0.6rem 1.4rem', borderRadius: '10px', backgroundColor: '#9a5323', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  {importing ? 'Importing...' : 'Upload & Import'}
+                  {importing ? 'Importing...' : importFile ? 'Upload & Import' : 'Select & Upload File'}
                 </button>
               </div>
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Delete Confirmation Modal ── */}
+      {showBulkDeleteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999, padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            padding: '2rem',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
+            textAlign: 'center',
+            animation: 'fadeInScale 200ms cubic-bezier(0.22,1,0.36,1) both',
+          }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              backgroundColor: '#fef2f2', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'
+            }}>
+              <Trash2 size={26} color="#ef4444" />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 800, color: '#1c1917' }}>
+              Delete {selectedFinishIds.size} Finish{selectedFinishIds.size !== 1 ? 'es' : ''}?
+            </h3>
+            <p style={{ margin: '0 0 1.75rem', color: '#78716c', fontSize: '0.9rem', lineHeight: 1.6 }}>
+              Do you really want to delete{' '}
+              <strong style={{ color: '#dc2626' }}>{selectedFinishIds.size} finish{selectedFinishIds.size !== 1 ? 'es' : ''}</strong>?
+              {' '}This action <strong>cannot be undone</strong> and will permanently remove all associated swatches and data.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={deletingSelected}
+                className="btn-secondary"
+                style={{ flex: 1, padding: '0.65rem 1.25rem', borderRadius: '12px', fontWeight: 700 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDeleteFinishes}
+                disabled={deletingSelected}
+                style={{
+                  flex: 1, padding: '0.65rem 1.25rem', borderRadius: '12px',
+                  fontWeight: 700, fontSize: '0.9rem',
+                  backgroundColor: deletingSelected ? '#fca5a5' : '#ef4444',
+                  color: '#ffffff', border: 'none', cursor: deletingSelected ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.2s'
+                }}
+              >
+                {deletingSelected ? 'Deleting...' : `Yes, Delete ${selectedFinishIds.size}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

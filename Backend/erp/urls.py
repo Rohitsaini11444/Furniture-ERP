@@ -20,6 +20,7 @@ from .views import (
     DashboardStatsView,
     ProductionUnitViewSet, BuyerUnitAllocationViewSet, UnitWorkReallocationViewSet, WorkloadReallocationView,
     SampleExcelExportView, FinishExcelExportView, FinishExcelImportView,
+    SampleBulkDeleteView, FinishBulkDeleteView,
 )
 
 router = DefaultRouter()
@@ -74,6 +75,8 @@ urlpatterns = [
     path('samples/export-excel/', SampleExcelExportView.as_view(), name='samples-export-excel'),
     path('finishes/export-excel/', FinishExcelExportView.as_view(), name='finishes-export-excel'),
     path('finishes/import-excel/', FinishExcelImportView.as_view(), name='finishes-import-excel'),
+    path('samples/bulk-delete/', SampleBulkDeleteView.as_view(), name='samples-bulk-delete'),
+    path('finishes/bulk-delete/', FinishBulkDeleteView.as_view(), name='finishes-bulk-delete'),
 
     # Router URLs
     path('', include(router.urls)),

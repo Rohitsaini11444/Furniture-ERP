@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
@@ -278,6 +278,8 @@ function Samples() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const enterSelectionMode = () => setSelectionMode(true);
   const exitSelectionMode = () => {
@@ -300,6 +302,22 @@ function Samples() {
       setSelectedRowIds(new Set(filtered.map(s => s.id)));
     } else {
       setSelectedRowIds(new Set());
+    }
+  };
+
+  const handleBulkDeleteSamples = async () => {
+    if (selectedRowIds.size === 0) return;
+    setDeletingSelected(true);
+    try {
+      await api.post('/samples/bulk-delete/', { sample_ids: Array.from(selectedRowIds) });
+      setShowBulkDeleteConfirm(false);
+      exitSelectionMode();
+      fetchSamples();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      alert(err.response?.data?.error || 'Failed to delete selected samples.');
+    } finally {
+      setDeletingSelected(false);
     }
   };
 
@@ -1068,6 +1086,34 @@ function Samples() {
                     <Download size={15} />
                     {exportingExcel ? 'Exporting...' : 'Export Excel'}
                   </button>
+                  {/* Delete — stagger 150ms, only when items selected */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkDeleteConfirm(true)}
+                      disabled={selectedRowIds.size === 0}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        background: selectedRowIds.size > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.05)',
+                        border: selectedRowIds.size > 0 ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '10px',
+                        padding: '0.45rem 1.1rem',
+                        color: selectedRowIds.size > 0 ? '#fca5a5' : 'rgba(255,255,255,0.3)',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        cursor: selectedRowIds.size > 0 ? 'pointer' : 'not-allowed',
+                        opacity: selectionMode ? 1 : 0,
+                        transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                        transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease',
+                        transitionDelay: selectionMode ? '150ms' : '0ms',
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1514,11 +1560,85 @@ function Samples() {
 
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                   <button type="button" className="btn-secondary" onClick={() => setIsImportModalOpen(false)}>Close</button>
-                  <button type="submit" className="btn-primary" disabled={!importFile || importing}>
-                    {importing ? 'Processing & Extracting Images...' : 'Upload & Import Data'}
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={(e) => {
+                      if (!importFile) {
+                        document.getElementById('excelFileInput')?.click();
+                      } else {
+                        handleImportSubmit(e);
+                      }
+                    }}
+                    disabled={importing}
+                  >
+                    {importing ? 'Processing & Extracting Images...' : importFile ? 'Upload & Import Data' : 'Select & Upload File'}
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Delete Confirmation Modal ── */}
+      {showBulkDeleteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 99999, padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            padding: '2rem',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
+            textAlign: 'center',
+            animation: 'fadeInScale 200ms cubic-bezier(0.22,1,0.36,1) both',
+          }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '50%',
+              backgroundColor: '#fef2f2', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem'
+            }}>
+              <Trash2 size={26} color="#ef4444" />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 800, color: '#1c1917' }}>
+              Delete {selectedRowIds.size} Sample{selectedRowIds.size !== 1 ? 's' : ''}?
+            </h3>
+            <p style={{ margin: '0 0 1.75rem', color: '#78716c', fontSize: '0.9rem', lineHeight: 1.6 }}>
+              Do you really want to delete{' '}
+              <strong style={{ color: '#dc2626' }}>{selectedRowIds.size} sample{selectedRowIds.size !== 1 ? 's' : ''}</strong>?
+              {' '}This action <strong>cannot be undone</strong> and will permanently remove all associated images and data.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={deletingSelected}
+                className="btn-secondary"
+                style={{ flex: 1, padding: '0.65rem 1.25rem', borderRadius: '12px', fontWeight: 700 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDeleteSamples}
+                disabled={deletingSelected}
+                style={{
+                  flex: 1, padding: '0.65rem 1.25rem', borderRadius: '12px',
+                  fontWeight: 700, fontSize: '0.9rem',
+                  backgroundColor: deletingSelected ? '#fca5a5' : '#ef4444',
+                  color: '#ffffff', border: 'none', cursor: deletingSelected ? 'not-allowed' : 'pointer',
+                  transition: 'background 0.2s'
+                }}
+              >
+                {deletingSelected ? 'Deleting...' : `Yes, Delete ${selectedRowIds.size}`}
+              </button>
             </div>
           </div>
         </div>

@@ -600,7 +600,12 @@ class SampleViewSet(viewsets.ModelViewSet):
             else:
                 imported_count += 1
 
-            if excel_row_num in row_images:
+            if excel_row_num in row_images and row_images[excel_row_num]:
+                if not created:
+                    # Clear previous images on update to prevent duplicate stacked images
+                    sample_obj.images.all().delete()
+                    sample_obj.image = None
+
                 for img_idx, img_obj in enumerate(row_images[excel_row_num]):
                     try:
                         image_bytes = img_obj._data()
@@ -3932,6 +3937,7 @@ class FinishExcelImportView(APIView):
         file_name = file_obj.name.lower()
         imported_count = 0
         updated_count = 0
+        images_extracted = 0
 
         try:
             if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
@@ -3956,7 +3962,18 @@ class FinishExcelImportView(APIView):
                 color_col = find_idx(['color', 'finish color', 'shade'])
                 wood_col = find_idx(['wood type', 'wood', 'material'])
 
-                for r in rows[1:]:
+                row_images = {}
+                if hasattr(ws, '_images'):
+                    for img in ws._images:
+                        try:
+                            img_row = img.anchor._from.row + 1
+                            if img_row not in row_images:
+                                row_images[img_row] = []
+                            row_images[img_row].append(img)
+                        except Exception:
+                            pass
+
+                for excel_row_num, r in enumerate(rows[1:], start=2):
                     if not r or not any(r):
                         continue
                     name_val = str(r[name_col] or '').strip() if (name_col != -1 and name_col < len(r)) else ''
@@ -3987,13 +4004,28 @@ class FinishExcelImportView(APIView):
                         finish_obj.save()
                         updated_count += 1
                     else:
-                        Finish.objects.create(
+                        finish_obj = Finish.objects.create(
                             name=name_val,
                             finish_code=code_val or None,
                             color=color_val or None,
                             wood_type=wood_val or None
                         )
                         imported_count += 1
+
+                    if excel_row_num in row_images and row_images[excel_row_num]:
+                        try:
+                            img_obj = row_images[excel_row_num][0]
+                            image_bytes = img_obj._data()
+                            ext = img_obj.format if hasattr(img_obj, 'format') and img_obj.format else 'png'
+                            clean_name = (code_val or name_val).replace('/', '_').replace(' ', '_')
+                            file_name_img = f"finish_{clean_name}.{ext}"
+                            content_file = ContentFile(image_bytes, name=file_name_img)
+
+                            finish_obj.image = content_file
+                            finish_obj.save(update_fields=['image'])
+                            images_extracted += 1
+                        except Exception as img_err:
+                            print(f"Error saving finish image for row {excel_row_num}: {img_err}")
             else:
                 import csv
                 decoded_file = file_obj.read().decode('utf-8-sig')
@@ -4039,14 +4071,73 @@ class FinishExcelImportView(APIView):
                         )
                         imported_count += 1
 
+            msg = f"Successfully imported {imported_count} new finishes and updated {updated_count} finishes!"
+            if images_extracted > 0:
+                msg += f" {images_extracted} swatch image(s) extracted."
+
             return Response({
-                'message': f'Successfully imported {imported_count} new finishes and updated {updated_count} finishes!',
+                'message': msg,
                 'imported_count': imported_count,
-                'updated_count': updated_count
+                'updated_count': updated_count,
+                'images_extracted': images_extracted
             }, status=status.HTTP_200_OK)
+
 
         except Exception as e:
             return Response({'error': f'Failed to process file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ── Bulk Delete Views ──────────────────────────────────────────────────────────
+
+class SampleBulkDeleteView(APIView):
+    """
+    POST /api/samples/bulk-delete/
+    Body: { "sample_ids": [1, 2, 3, ...] }
+    Deletes all samples with the given IDs. Admin only.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        sample_ids = request.data.get('sample_ids', [])
+        if not sample_ids:
+            return Response({'error': 'No sample IDs provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            qs = Sample.objects.filter(id__in=sample_ids)
+            deleted_count = qs.count()
+            qs.delete()
+            return Response({
+                'message': f'Successfully deleted {deleted_count} sample(s).',
+                'deleted_count': deleted_count
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': f'Failed to delete samples: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FinishBulkDeleteView(APIView):
+    """
+    POST /api/finishes/bulk-delete/
+    Body: { "finish_ids": [1, 2, 3, ...] }
+    Deletes all finishes with the given IDs. Admin only.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        finish_ids = request.data.get('finish_ids', [])
+        if not finish_ids:
+            return Response({'error': 'No finish IDs provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            qs = Finish.objects.filter(id__in=finish_ids)
+            deleted_count = qs.count()
+            qs.delete()
+            return Response({
+                'message': f'Successfully deleted {deleted_count} finish(es).',
+                'deleted_count': deleted_count
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': f'Failed to delete finishes: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 
