@@ -39,6 +39,9 @@ function SizeGroup({ label, prefix, values, onChange }) {
 function BuyerMasters() {
   const { id, buyerId: paramBuyerId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isNewFormMode = location.pathname === '/buyer-masters/new';
+
 
   const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyers, setBuyers] = useState([]);
@@ -183,18 +186,23 @@ function BuyerMasters() {
 
   const fetchData = () => {
     setLoading(true);
-    api.get('/buyer-masters/', { params: { page: currentPage, ordering: ordering } })
-      .then(res => {
-        const data = res.data.results || res.data;
-        setBuyerMasters(data);
-        if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
-        } else {
-          setTotalPages(1);
-        }
-      })
-      .catch(err => console.error(err))
-      .finally(() => setLoading(false));
+    if (!isNewFormMode) {
+      api.get('/buyer-masters/', { params: { page: currentPage, ordering: ordering } })
+        .then(res => {
+          const data = res.data.results || res.data;
+          setBuyerMasters(data);
+          if (res.data.count !== undefined) {
+            setTotalPages(Math.ceil(res.data.count / 50));
+          } else {
+            setTotalPages(1);
+          }
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+
 
     api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
@@ -375,21 +383,29 @@ function BuyerMasters() {
     const item = styleQueue[idx];
     if (!item) return false;
 
-    // Duplicate check
+    // Duplicate check per buyer
     const styleNo = item.formData.style_no?.trim();
-    if (styleNo) {
-      const dup = buyerMasters.find(bm =>
-        bm.style_no && bm.style_no.trim().toLowerCase() === styleNo.toLowerCase()
-      );
+    const itemBuyerId = String(item.formData.buyer || globalBuyerId || '');
+    if (styleNo && itemBuyerId) {
+      const dup = buyerMasters.find(bm => {
+        const bmBuyerId = String(bm.buyer?.id || bm.buyer || bm.buyer_detail?.id || '');
+        return (
+          bmBuyerId === itemBuyerId &&
+          bm.style_no &&
+          bm.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
+          String(bm.id) !== String(item.existingId || '')
+        );
+      });
       if (dup) {
         setStyleQueue(prev => {
           const next = [...prev];
-          next[idx] = { ...next[idx], status: 'error', error: `Style No. '${styleNo}' already exists in Buyer Master.` };
+          next[idx] = { ...next[idx], status: 'error', error: `Style No. '${styleNo}' already exists for this Buyer in Buyer Master.` };
           return next;
         });
         return false;
       }
     }
+
 
     const woodTypeJoined = item.materialsList.map(m => m.trim()).filter(Boolean).join('/');
     const finishJoined = item.finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
@@ -840,8 +856,8 @@ function BuyerMasters() {
     navigate(`/buyer-masters/${bm.id}`);
   };
 
-  const location = useLocation();
   const fromBuyer = location.state?.fromBuyer;
+
 
   const closeModal = () => {
     setFormError('');
@@ -856,19 +872,25 @@ function BuyerMasters() {
     e.preventDefault();
     setFormError('');
 
-    // Pre-check for duplicate style_no
+    // Pre-check for duplicate style_no (scoped per buyer)
     const styleNo = formData.style_no?.trim();
-    if (styleNo) {
-      const duplicate = buyerMasters.find(bm =>
-        bm.style_no &&
-        bm.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
-        String(bm.id) !== String(editingId || '')
-      );
+    const currentBuyerId = String(formData.buyer || globalBuyerId || '');
+    if (styleNo && currentBuyerId) {
+      const duplicate = buyerMasters.find(bm => {
+        const bmBuyerId = String(bm.buyer?.id || bm.buyer || bm.buyer_detail?.id || '');
+        return (
+          bmBuyerId === currentBuyerId &&
+          bm.style_no &&
+          bm.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
+          String(bm.id) !== String(editingId || '')
+        );
+      });
       if (duplicate) {
-        setFormError(`Style No. '${styleNo}' already exists in Buyer Master.`);
+        setFormError(`Style No. '${styleNo}' already exists for this Buyer in Buyer Master.`);
         return;
       }
     }
+
 
     const woodTypeJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
     const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');

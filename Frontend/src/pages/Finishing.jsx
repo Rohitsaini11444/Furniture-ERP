@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { 
   X, Upload, Sparkles, Filter, Search, ArrowLeft, Download, 
-  Trash2, Edit3, Eye, CheckCircle, AlertCircle, Palette, Layers
+  Trash2, Edit3, Eye, CheckCircle, AlertCircle, Palette, Layers, FileSpreadsheet
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
@@ -120,6 +120,91 @@ function Finishing() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Multi-Selection, Excel Export & Import states
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedFinishIds, setSelectedFinishIds] = useState(new Set());
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState('');
+  const [importError, setImportError] = useState('');
+
+  const enterSelectionMode = () => setSelectionMode(true);
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedFinishIds(new Set());
+  };
+
+  const toggleSelectFinish = (finishId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedFinishIds(prev => {
+      const next = new Set(prev);
+      if (next.has(finishId)) next.delete(finishId);
+      else next.add(finishId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFinishes = () => {
+    if (selectedFinishIds.size === finishes.length && finishes.length > 0) {
+      setSelectedFinishIds(new Set());
+    } else {
+      setSelectedFinishIds(new Set(finishes.map(f => f.id)));
+    }
+  };
+
+  const handleExportSelectedExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const payload = {
+        finish_ids: Array.from(selectedFinishIds),
+        q: searchTerm
+      };
+      const response = await api.post('/finishes/export-excel/', payload, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', selectedFinishIds.size > 0 ? `Finishes_Selected_${selectedFinishIds.size}.xlsx` : 'Finishing_Catalog.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Finish export error:', err);
+      alert('Failed to export finishes to Excel.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!importFile) return;
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+
+    const formData = new FormData();
+    formData.append('file', importFile);
+
+    try {
+      const res = await api.post('/finishes/import-excel/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportSuccess(res.data.message || 'Finishes imported successfully!');
+      setImportFile(null);
+      fetchFinishes();
+    } catch (err) {
+      console.error('Import error:', err);
+      setImportError(err.response?.data?.error || 'Failed to import finishes file.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const isDetailPage = Boolean(id);
 
@@ -721,21 +806,179 @@ function Finishing() {
           }
         }
       `}</style>
+      <style>{`
+        @keyframes checkboxFadeIn {
+          from { opacity: 0; transform: scale(0.55); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
 
-      {/* ── Page Header ── */}
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.45rem', fontWeight: 800, color: '#1c1917', letterSpacing: '-0.02em' }}>
-          <Sparkles size={26} color="#9a5323" style={{ flexShrink: 0 }} /> Finishing Catalog
-          <span style={{ fontSize: '0.78rem', fontWeight: 700, backgroundColor: '#fff2e2', color: '#9a5323', padding: '2px 10px', borderRadius: '999px', marginLeft: '0.25rem' }}>
-            {finishes.length} Finishes
-          </span>
-        </h2>
-        {isAdmin && (
-          <button onClick={() => navigate('/finishing/new')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}>
-            + Add New Finish
-          </button>
-        )}
+      {/* ── Page Header (animated: both always in DOM, height via grid-template-rows) ── */}
+
+      {/* Selection Toolbar — collapses to 0 height when not in selectionMode */}
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: selectionMode ? '1fr' : '0fr',
+        transition: 'grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.75rem 1.25rem',
+            borderRadius: '16px',
+            backgroundColor: '#0f172a',
+            marginBottom: '1rem',
+            gap: '1rem',
+            flexWrap: 'wrap',
+            opacity: selectionMode ? 1 : 0,
+            transform: selectionMode ? 'translateY(0)' : 'translateY(-14px)',
+            transition: 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {/* Close button — appears immediately */}
+              <button
+                type="button"
+                onClick={exitSelectionMode}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#ffffff',
+                  flexShrink: 0,
+                  opacity: selectionMode ? 1 : 0,
+                  transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  transitionDelay: selectionMode ? '0ms' : '0ms',
+                }}
+              >
+                <X size={18} />
+              </button>
+              {/* Count label */}
+              <span style={{
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '1.05rem',
+                opacity: selectionMode ? 1 : 0,
+                transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                transitionDelay: selectionMode ? '20ms' : '0ms',
+              }}>
+                {selectedFinishIds.size > 0 ? `${selectedFinishIds.size} selected` : 'Select finishes'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              {/* Select All — stagger 50ms */}
+              <button
+                type="button"
+                onClick={toggleSelectAllFinishes}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '10px',
+                  padding: '0.45rem 1rem',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  opacity: selectionMode ? 1 : 0,
+                  transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                  transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  transitionDelay: selectionMode ? '50ms' : '0ms',
+                }}
+              >
+                {selectedFinishIds.size === finishes.length && finishes.length > 0 ? 'Deselect All' : 'Select All'}
+              </button>
+              {/* Export — stagger 100ms */}
+              <button
+                type="button"
+                onClick={handleExportSelectedExcel}
+                disabled={selectedFinishIds.size === 0 || exportingExcel}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: selectedFinishIds.size > 0 ? '#b45309' : 'rgba(255,255,255,0.08)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.45rem 1.1rem',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: selectedFinishIds.size > 0 ? 'pointer' : 'not-allowed',
+                  opacity: selectionMode ? (selectedFinishIds.size === 0 ? 0.5 : 1) : 0,
+                  transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                  transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease',
+                  transitionDelay: selectionMode ? '100ms' : '0ms',
+                }}
+              >
+                <Download size={15} />
+                {exportingExcel ? 'Exporting...' : 'Export Excel'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Normal Header — collapses to 0 height when selectionMode is active */}
+      <div style={{
+        display: 'grid',
+        gridTemplateRows: selectionMode ? '0fr' : '1fr',
+        transition: 'grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}>
+        <div style={{ overflow: 'hidden' }}>
+          <div className="page-header" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            padding: '0 0.5rem 1rem',
+            opacity: selectionMode ? 0 : 1,
+            transform: selectionMode ? 'translateY(-10px)' : 'translateY(0)',
+            transition: 'opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.45rem', fontWeight: 800, color: '#1c1917', letterSpacing: '-0.02em' }}>
+              <Sparkles size={26} color="#9a5323" style={{ flexShrink: 0 }} /> Finishing Catalog
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, backgroundColor: '#fff2e2', color: '#9a5323', padding: '2px 10px', borderRadius: '999px', marginLeft: '0.25rem' }}>
+                {finishes.length} Finishes
+              </span>
+            </h2>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={enterSelectionMode}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, cursor: 'pointer', borderRadius: '10px', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b' }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-5"/></svg>
+                Select Finishes
+              </button>
+              {isAdmin && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }}
+                    className="btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer', borderRadius: '10px' }}
+                  >
+                    <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
+                  </button>
+                  <button onClick={() => navigate('/finishing/new')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}>
+                    + Add New Finish
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       {/* ── Filter / Search Bar ── */}
       <div className="filter-bar">
@@ -815,13 +1058,15 @@ function Finishing() {
         <div className="finishing-grid-container">
           {finishes.map((finish, index) => {
             const imgSrc = finish.image_url || finish.image;
+            const isSelected = selectedFinishIds.has(finish.id);
+
             return (
               <div
                 key={finish.id}
                 className="finish-card-animated"
                 style={{
                   animationDelay: `${index * 50}ms`,
-                  backgroundColor: '#ffffff',
+                  backgroundColor: isSelected ? '#fffbeb' : '#ffffff',
                   borderRadius: '24px',
                   boxShadow: '0 8px 30px rgba(0, 0, 0, 0.04)',
                   padding: '1.25rem 1.35rem',
@@ -831,9 +1076,9 @@ function Finishing() {
                   cursor: 'pointer',
                   transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
                   position: 'relative',
-                  border: '1px solid rgba(0,0,0,0.02)'
+                  border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(0,0,0,0.04)'
                 }}
-                onClick={() => navigate(`/finishing/${finish.id}`)}
+                onClick={() => selectionMode ? toggleSelectFinish(finish.id) : navigate(`/finishing/${finish.id}`)}
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = 'translateY(-4px)';
                   e.currentTarget.style.boxShadow = '0 16px 36px rgba(0, 0, 0, 0.08)';
@@ -843,6 +1088,23 @@ function Finishing() {
                   e.currentTarget.style.boxShadow = '0 8px 30px rgba(0, 0, 0, 0.04)';
                 }}
               >
+                {/* Selection Checkbox – only in selectionMode, staggered fade-in */}
+                {selectionMode && (
+                  <div
+                    style={{
+                      position: 'absolute', top: '12px', right: '12px', zIndex: 10,
+                      animation: `checkboxFadeIn 200ms cubic-bezier(0.22, 1, 0.36, 1) ${Math.min(index * 18, 200)}ms both`,
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={e => toggleSelectFinish(finish.id, e)}
+                      style={{ cursor: 'pointer', width: '20px', height: '20px', accentColor: '#b45309' }}
+                    />
+                  </div>
+                )}
                 {/* ── Left Swatch Image ── */}
                 <div className="finish-swatch-box" style={{
                   width: '135px',
@@ -965,6 +1227,103 @@ function Finishing() {
       {totalPages > 1 && (
         <div style={{ marginTop: '1.75rem' }}>
           <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+        </div>
+      )}
+
+      {/* ── Import Finishes Excel Modal ── */}
+      {isImportModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 20000,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '24px',
+            padding: '1.75rem',
+            maxWidth: '480px',
+            width: '100%',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.18)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#1c1917', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileSpreadsheet color="#9a5323" size={22} /> Import Finishes Excel
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#78716c' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 1.25rem', fontSize: '0.86rem', color: '#78716c', lineHeight: 1.5 }}>
+              Upload an Excel (.xlsx) or CSV (.csv) file containing finish details (`Finish Code`, `Finish Name`, `Color`, `Wood Type`).
+            </p>
+
+            {importSuccess && (
+              <div style={{ padding: '0.85rem 1rem', borderRadius: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: '0.88rem', fontWeight: 700, marginBottom: '1rem' }}>
+                ✓ {importSuccess}
+              </div>
+            )}
+
+            {importError && (
+              <div style={{ padding: '0.85rem 1rem', borderRadius: '12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '0.88rem', fontWeight: 600, marginBottom: '1rem' }}>
+                ⚠ {importError}
+              </div>
+            )}
+
+            <form onSubmit={handleImportSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{
+                border: '2px dashed #cbd5e1',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                textAlign: 'center',
+                backgroundColor: '#fafafa',
+                cursor: 'pointer'
+              }}>
+                <Upload size={32} color="#9a5323" style={{ margin: '0 auto 0.5rem' }} />
+                <label style={{ cursor: 'pointer', display: 'block', fontWeight: 700, color: '#1c1917', fontSize: '0.9rem' }}>
+                  {importFile ? importFile.name : 'Click to select Excel / CSV file'}
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={e => setImportFile(e.target.files[0] || null)}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                <span style={{ fontSize: '0.78rem', color: '#78716c', display: 'block', marginTop: '4px' }}>
+                  Supported formats: .xlsx, .xls, .csv
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="btn-secondary"
+                  style={{ padding: '0.6rem 1.2rem', borderRadius: '10px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!importFile || importing}
+                  className="btn-primary"
+                  style={{ padding: '0.6rem 1.4rem', borderRadius: '10px', backgroundColor: '#9a5323', fontWeight: 700 }}
+                >
+                  {importing ? 'Importing...' : 'Upload & Import'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

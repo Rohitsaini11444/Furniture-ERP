@@ -169,7 +169,6 @@ function Samples() {
   const [filterBuyer, setFilterBuyer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
-  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
@@ -276,18 +275,15 @@ function Samples() {
 
   useEffect(() => { fetchSamples(); }, [fetchSamples]);
 
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filterBuyer, filterMaterial, ordering]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [exportingExcel, setExportingExcel] = useState(false);
 
-  // Local filter (instant feedback while typing)
-  useEffect(() => {
-    let f = samples;
-    if (filterBuyer) f = f.filter(s => s.buyer === filterBuyer);
-    if (filterMaterial) f = f.filter(s => s.material?.toLowerCase().includes(filterMaterial.toLowerCase()));
-    setFiltered(f);
-  }, [filterBuyer, filterMaterial, samples]);
+  const enterSelectionMode = () => setSelectionMode(true);
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedRowIds(new Set());
+  };
 
   const toggleSelectRow = (rowId, e) => {
     if (e) e.stopPropagation();
@@ -306,6 +302,47 @@ function Samples() {
       setSelectedRowIds(new Set());
     }
   };
+
+  const handleExportSelectedExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const payload = {
+        sample_ids: Array.from(selectedRowIds),
+        q: filterSearch,
+        buyer_id: filterBuyer
+      };
+      const response = await api.post('/samples/export-excel/', payload, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', selectedRowIds.size > 0 ? `Samples_Selected_${selectedRowIds.size}.xlsx` : 'Samples_Catalog.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to export samples to Excel.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedRowIds(new Set());
+  }, [filterBuyer, filterMaterial, ordering]);
+
+  // Local filter (instant feedback while typing)
+  useEffect(() => {
+    let f = samples;
+    if (filterBuyer) f = f.filter(s => s.buyer === filterBuyer);
+    if (filterMaterial) f = f.filter(s => s.material?.toLowerCase().includes(filterMaterial.toLowerCase()));
+    setFiltered(f);
+  }, [filterBuyer, filterMaterial, samples]);
 
   // Load sample on id change (routing edit)
   useEffect(() => {
@@ -920,21 +957,164 @@ function Samples() {
             }
           `}</style>
 
-          {/* Page Header (Contains Import Excel & + Create New) */}
-          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
-            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Package size={28} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
-            </h2>
-            <div className="samples-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button 
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }} 
-                className="btn-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer' }}
-              >
-                <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
-              </button>
-              <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+          {/* Page Header (animated: both always in DOM, height via grid-template-rows) */}
+
+          {/* Selection Toolbar — collapses to 0 height when not in selectionMode */}
+          <div style={{
+            display: 'grid',
+            gridTemplateRows: selectionMode ? '1fr' : '0fr',
+            transition: 'grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 1.25rem',
+                borderRadius: '16px',
+                backgroundColor: '#0f172a',
+                marginBottom: '1rem',
+                gap: '1rem',
+                flexWrap: 'wrap',
+                opacity: selectionMode ? 1 : 0,
+                transform: selectionMode ? 'translateY(0)' : 'translateY(-14px)',
+                transition: 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  {/* Close button — immediate */}
+                  <button
+                    type="button"
+                    onClick={exitSelectionMode}
+                    style={{
+                      background: 'rgba(255,255,255,0.12)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#ffffff',
+                      flexShrink: 0,
+                      opacity: selectionMode ? 1 : 0,
+                      transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      transitionDelay: selectionMode ? '0ms' : '0ms',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                  {/* Count label */}
+                  <span style={{
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '1.05rem',
+                    opacity: selectionMode ? 1 : 0,
+                    transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    transitionDelay: selectionMode ? '20ms' : '0ms',
+                  }}>
+                    {selectedRowIds.size > 0 ? `${selectedRowIds.size} selected` : 'Select samples'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {/* Select All — stagger 50ms */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRowIds(
+                      selectedRowIds.size === filtered.length && filtered.length > 0
+                        ? new Set()
+                        : new Set(filtered.map(s => s.id))
+                    )}
+                    style={{
+                      background: 'rgba(255,255,255,0.12)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '10px',
+                      padding: '0.45rem 1rem',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      opacity: selectionMode ? 1 : 0,
+                      transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                      transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1)',
+                      transitionDelay: selectionMode ? '50ms' : '0ms',
+                    }}
+                  >
+                    {selectedRowIds.size === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All'}
+                  </button>
+                  {/* Export — stagger 100ms */}
+                  <button
+                    type="button"
+                    onClick={handleExportSelectedExcel}
+                    disabled={selectedRowIds.size === 0 || exportingExcel}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: selectedRowIds.size > 0 ? '#2563eb' : 'rgba(255,255,255,0.08)',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '0.45rem 1.1rem',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      cursor: selectedRowIds.size > 0 ? 'pointer' : 'not-allowed',
+                      opacity: selectionMode ? (selectedRowIds.size === 0 ? 0.5 : 1) : 0,
+                      transform: selectionMode ? 'translateY(0)' : 'translateY(-6px)',
+                      transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease',
+                      transitionDelay: selectionMode ? '100ms' : '0ms',
+                    }}
+                  >
+                    <Download size={15} />
+                    {exportingExcel ? 'Exporting...' : 'Export Excel'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Normal Header — collapses to 0 height when selectionMode is active */}
+          <div style={{
+            display: 'grid',
+            gridTemplateRows: selectionMode ? '0fr' : '1fr',
+            transition: 'grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            <div style={{ overflow: 'hidden' }}>
+              <div className="page-header" style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                padding: '0 0.5rem 1rem',
+                opacity: selectionMode ? 0 : 1,
+                transform: selectionMode ? 'translateY(-10px)' : 'translateY(0)',
+                transition: 'opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+              }}>
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Package size={28} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
+                </h2>
+                <div className="samples-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={enterSelectionMode}
+                    className="btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, cursor: 'pointer', borderRadius: '10px', backgroundColor: '#f8fafc', borderColor: '#cbd5e1', color: '#334155' }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-5"/></svg>
+                    Select Samples
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }}
+                    className="btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
+                  </button>
+                  <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1004,6 +1184,16 @@ function Samples() {
             <table className="data-table table-fade-slide-up">
               <thead>
                 <tr>
+                  {selectionMode && (
+                    <th style={{ width: '40px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && selectedRowIds.size === filtered.length}
+                        onChange={toggleSelectAll}
+                        style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+                      />
+                    </th>
+                  )}
                   <th>Images</th>
                   <th>Style No.</th>
                   <th>Product Name</th>
@@ -1019,21 +1209,31 @@ function Samples() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={11} hasImage={true} />
+                  <TableSkeleton rows={8} cols={12} hasImage={true} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan="11" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="12" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
                       No samples found.
                     </td>
                   </tr>
                 ) : (
                   filtered.map(s => (
-                    <tr 
-                      key={s.id} 
-                      onClick={() => openEditModal(s)} 
-                      style={{ cursor: 'pointer' }}
+                    <tr
+                      key={s.id}
+                      onClick={() => selectionMode ? toggleSelectRow(s.id) : openEditModal(s)}
+                      style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : 'transparent', transition: 'background 0.15s' }}
                       className="table-fade-slide-up"
                     >
+                      {selectionMode && (
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRowIds.has(s.id)}
+                            onChange={e => toggleSelectRow(s.id, e)}
+                            style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+                          />
+                        </td>
+                      )}
                       <td>
                         <div className="table-image-stack">
                           {(s.images || []).slice(0, 3).map((img, idx) => (

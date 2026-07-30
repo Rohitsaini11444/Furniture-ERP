@@ -355,7 +355,7 @@ body {
 
 @media (max-width: 768px) {
   .container {
-    padding: 1rem 0.75rem;
+    padding: 0.5rem 0.5rem;
   }
 }
 

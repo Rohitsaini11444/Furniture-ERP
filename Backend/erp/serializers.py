@@ -3,11 +3,12 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
-    User, Finish, Sample, SampleImage,
+    User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
     Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
+    GateInwardReceipt, SupplierDebitNote,
 )
 
 
@@ -36,6 +37,50 @@ class TokenResponseSerializer(serializers.Serializer):
     user = serializers.DictField()
 
 
+# ─── Production Unit & Work Allocation Serializers ─────────────────────────
+
+class ProductionUnitSerializer(serializers.ModelSerializer):
+    supervisor_count = serializers.SerializerMethodField()
+    contractor_count = serializers.SerializerMethodField()
+    stock_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductionUnit
+        fields = '__all__'
+
+    def get_supervisor_count(self, obj):
+        return obj.users.filter(role='supervisor', is_active=True).count()
+
+    def get_contractor_count(self, obj):
+        return obj.users.filter(role='contractor', is_active=True).count()
+
+    def get_stock_count(self, obj):
+        return sum(float(item.quantity or 0) for item in obj.stock_items.all())
+
+
+class BuyerUnitAllocationSerializer(serializers.ModelSerializer):
+    buyer_name = serializers.CharField(source='buyer.name', read_only=True)
+    buyer_code = serializers.CharField(source='buyer.code', read_only=True)
+    unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    unit_code = serializers.CharField(source='production_unit.unit_code', read_only=True)
+
+    class Meta:
+        model = BuyerUnitAllocation
+        fields = '__all__'
+
+
+class UnitWorkReallocationSerializer(serializers.ModelSerializer):
+    buyer_name = serializers.CharField(source='buyer.name', read_only=True)
+    po_number = serializers.CharField(source='po.po_number', read_only=True)
+    from_unit_name = serializers.CharField(source='from_unit.name', read_only=True)
+    to_unit_name = serializers.CharField(source='to_unit.name', read_only=True)
+    reallocated_by_name = serializers.CharField(source='reallocated_by.username', read_only=True)
+
+    class Meta:
+        model = UnitWorkReallocation
+        fields = '__all__'
+
+
 # ─── User Serializers ─────────────────────────────────────────────────────────
 
 class UserSerializer(serializers.ModelSerializer):
@@ -43,12 +88,14 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     supervisor_name = serializers.SerializerMethodField()
     contractor_count = serializers.SerializerMethodField()
+    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'first_name', 'last_name', 'email',
-            'role', 'batch_category', 'supervisor', 'supervisor_name',
+            'role', 'batch_category', 'production_unit', 'production_unit_name',
+            'supervisor', 'supervisor_name',
             'phone', 'is_active', 'password', 'contractor_count', 'profile_image',
         ]
         read_only_fields = ['id']
@@ -150,6 +197,13 @@ class BuyerDropdownSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code']
 
 
+class SampleDropdownSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Sample
+        fields = ['id', 'sample_id', 'style_no', 'product_name']
+
+
+
 class SampleSerializer(serializers.ModelSerializer):
     images = SampleImageSerializer(many=True, read_only=True)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
@@ -242,25 +296,43 @@ class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
 
 
 class BuyerMasterSerializer(serializers.ModelSerializer):
-    buyer_detail = BuyerSerializer(source='buyer', read_only=True)
-    sample_detail = SampleSerializer(source='sample', read_only=True)
+    buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
+    sample_detail = SampleDropdownSerializer(source='sample', read_only=True)
     finishing_images = BuyerMasterFinishingImageSerializer(many=True, read_only=True)
     packaging_image_url = serializers.SerializerMethodField()
+
 
     class Meta:
         model = BuyerMaster
         fields = '__all__'
 
-    def validate_style_no(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Style No is required.")
-        code = value.strip()
-        qs = BuyerMaster.objects.filter(style_no__iexact=code)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(f"Style No '{code}' already exists in Buyer Master.")
-        return code
+    def validate(self, attrs):
+        style_no = attrs.get('style_no')
+        buyer = attrs.get('buyer')
+        
+        if not style_no and self.instance:
+            style_no = self.instance.style_no
+        if not buyer and self.instance:
+            buyer = self.instance.buyer
+
+        if style_no:
+            if not style_no.strip():
+                raise serializers.ValidationError({"style_no": "Style No is required."})
+            code = style_no.strip()
+            attrs['style_no'] = code
+            
+            if buyer:
+                qs = BuyerMaster.objects.filter(buyer=buyer, style_no__iexact=code)
+                if self.instance:
+                    qs = qs.exclude(pk=self.instance.pk)
+                if qs.exists():
+                    buyer_name = getattr(buyer, 'name', 'this Buyer')
+                    raise serializers.ValidationError({
+                        "style_no": f"Style No '{code}' already exists for {buyer_name} in Buyer Master."
+                    })
+
+        return attrs
+
 
     def get_packaging_image_url(self, obj):
         request = self.context.get('request')
@@ -272,7 +344,8 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
 
 class BuyerMasterListSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
-    sample_detail = SampleSerializer(source='sample', read_only=True)
+    sample_detail = SampleDropdownSerializer(source='sample', read_only=True)
+
 
     class Meta:
         model = BuyerMaster
@@ -660,5 +733,27 @@ class StockItemSerializer(serializers.ModelSerializer):
         model = StockItem
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class GateInwardReceiptSerializer(serializers.ModelSerializer):
+    po_number_str = serializers.CharField(source='supplier_po.po_number', read_only=True)
+    supplier_name_str = serializers.CharField(source='supplier_po.supplier.name', read_only=True)
+
+    class Meta:
+        model = GateInwardReceipt
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at']
+
+
+class SupplierDebitNoteSerializer(serializers.ModelSerializer):
+    supplier_name_str = serializers.CharField(source='supplier.name', read_only=True)
+    supplier_gstin_str = serializers.CharField(source='supplier.gstin', read_only=True)
+    po_number_str = serializers.CharField(source='supplier_po.po_number', read_only=True)
+
+    class Meta:
+        model = SupplierDebitNote
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at']
+
 
 

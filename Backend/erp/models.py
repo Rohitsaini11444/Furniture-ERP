@@ -20,6 +20,27 @@ class BatchCategory(models.TextChoices):
     PACKAGING = 'packaging', 'Packaging'
 
 
+# ─── Production Unit / Factory Model ───────────────────────────────────────
+
+class ProductionUnit(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150, verbose_name="Unit / Factory Name")
+    unit_code = models.CharField(max_length=50, unique=True, verbose_name="Unit Code")
+    location = models.CharField(max_length=255, blank=True, null=True, verbose_name="Location / Address")
+    capacity_pcs = models.IntegerField(default=1000, verbose_name="Monthly Capacity (pcs)")
+    is_active = models.BooleanField(default=True, verbose_name="Is Active")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['unit_code']
+        verbose_name = "Production Unit"
+        verbose_name_plural = "Production Units"
+
+    def __str__(self):
+        return f"{self.name} ({self.unit_code})"
+
+
 # ─── Custom User Model ────────────────────────────────────────────────────────
 
 class User(AbstractUser):
@@ -40,6 +61,14 @@ class User(AbstractUser):
         null=True,
         blank=True,
         help_text="Required for Supervisors — defines which manufacturing stage they manage",
+    )
+    production_unit = models.ForeignKey(
+        ProductionUnit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+        help_text="Assigned Factory / Production Unit",
     )
     # Contractor → their Supervisor link
     supervisor = models.ForeignKey(
@@ -169,6 +198,42 @@ class Buyer(models.Model):
         return f"{self.name} ({self.code})"
 
 
+class BuyerUnitAllocation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='unit_allocations')
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.CASCADE, related_name='buyer_allocations')
+    is_primary = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ('buyer', 'production_unit')
+        verbose_name = "Buyer Unit Allocation"
+        verbose_name_plural = "Buyer Unit Allocations"
+
+    def __str__(self):
+        return f"{self.buyer.name} -> {self.production_unit.name}"
+
+
+class UnitWorkReallocation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='work_reallocations')
+    po = models.ForeignKey('SupplierPO', on_delete=models.SET_NULL, null=True, blank=True, related_name='unit_reallocations')
+    from_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name='reallocated_from')
+    to_unit = models.ForeignKey(ProductionUnit, on_delete=models.CASCADE, related_name='reallocated_to')
+    reallocated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='work_reallocations')
+    reason = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Unit Work Re-allocation Audit"
+        verbose_name_plural = "Unit Work Re-allocation Audits"
+
+    def __str__(self):
+        return f"Work Reallocated: {self.from_unit.name if self.from_unit else 'All'} -> {self.to_unit.name}"
+
+
 class BuyerMaster(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     buyer = models.ForeignKey(Buyer, on_delete=models.CASCADE, related_name='buyer_masters')
@@ -253,6 +318,7 @@ class SupplierPO(models.Model):
     """
     PO_STATUS_CHOICES = [
         ('Pending', 'Pending'),
+        ('Partial Received', 'Partial Received'),
         ('Received', 'Received'),
         ('Cancelled', 'Cancelled'),
     ]
@@ -261,6 +327,14 @@ class SupplierPO(models.Model):
     po_number = models.CharField(max_length=100, unique=True, verbose_name='PO Number')
     po_date = models.DateField(verbose_name='PO Date')
     due_date = models.DateField(null=True, blank=True, verbose_name='PO Due Date')
+    production_unit = models.ForeignKey(
+        ProductionUnit,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='supplier_pos',
+        verbose_name='Production Unit / Factory'
+    )
     supplier = models.ForeignKey(
         Supplier,
         on_delete=models.PROTECT,
@@ -506,8 +580,74 @@ class SupplierPOItemDefectImage(models.Model):
     image = models.ImageField(upload_to='po_defects/')
     created_at = models.DateTimeField(auto_now_add=True)
 
+class GateInwardReceipt(models.Model):
+    """
+    Tracks individual partial inward shipments for a Supplier PO Item.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplier_po = models.ForeignKey(SupplierPO, on_delete=models.CASCADE, related_name='gate_receipts')
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.CASCADE, related_name='inward_receipts')
+    receipt_date = models.DateField(default=timezone.now, verbose_name='Receipt Date')
+    challan_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Supplier Challan / Invoice No.')
+    received_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Received Qty')
+    passed_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Passed Qty')
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rejected Qty')
+    notes = models.TextField(blank=True, null=True)
+    inspected_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
-        return f"Image for {self.defect}"
+        return f"Receipt #{self.challan_no or self.id.hex[:6]} — Passed: {self.passed_qty}, Rejected: {self.rejected_qty}"
+
+
+class SupplierDebitNote(models.Model):
+    """
+    Tally-compatible Debit Note Voucher for rejected goods return.
+    Strictly enforced to be <= INR 2,00,000 to comply with E-Way Bill threshold limits.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vch_type = models.CharField(max_length=50, default='Debit Note', verbose_name='Vch Type')
+    vch_no = models.CharField(max_length=100, unique=True, verbose_name='Debit Note No.')
+    vch_date = models.DateField(default=timezone.now, verbose_name='Vch Date / Dated')
+    original_inv_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Original Invoice No.')
+    original_inv_date = models.DateField(null=True, blank=True, verbose_name='Original Invoice Date')
+    
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='debit_notes')
+    supplier_po = models.ForeignKey(SupplierPO, on_delete=models.SET_NULL, null=True, blank=True, related_name='debit_notes')
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='debit_notes')
+    
+    hsn_sac = models.CharField(max_length=50, default='70099200', verbose_name='HSN/SAC Code')
+    item_description = models.TextField(verbose_name='Description of Goods and Services')
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rejected Quantity')
+    unit = models.CharField(max_length=30, default='No.', verbose_name='Unit (No./pcs)')
+    rate = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rate (INR)')
+    subtotal_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name='Subtotal Amount')
+    
+    cartage_gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18.0, verbose_name='Pur Cartage GST Rate %')
+    cartage_gst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=9.0, verbose_name='Input CGST Rate %')
+    cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    sgst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=9.0, verbose_name='Input SGST Rate %')
+    sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    igst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
+    igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    round_off = models.DecimalField(max_digits=6, decimal_places=2, default=0.0, verbose_name='Round Off')
+    
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name='Total Debit Note Amount (Max Rs 2 Lakh)')
+    amount_in_words = models.CharField(max_length=300, blank=True, null=True, verbose_name='Amount in Words')
+    remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
+    company_pan = models.CharField(max_length=50, default='ABXPS4077R', verbose_name="Company's PAN")
+    tally_synced = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.vch_no} ({self.supplier.name}) — ₹{self.total_amount}"
 
 
 class StockTypeChoices(models.TextChoices):
@@ -536,6 +676,7 @@ class StockItem(models.Model):
     sample = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Sample')
     buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Buyer')
     buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Buyer Master')
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_items', verbose_name='Production Unit / Factory')
     
     style_no = models.CharField(max_length=100, verbose_name='Style No.')
     item_name = models.CharField(max_length=255, verbose_name='Item / Product Name')
@@ -577,6 +718,7 @@ class ProductionJob(models.Model):
     buyer_master = models.ForeignKey(BuyerMaster, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
     sample = models.ForeignKey(Sample, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
     buyer = models.ForeignKey(Buyer, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs')
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs', verbose_name='Production Unit / Factory')
     
     style_no = models.CharField(max_length=100, verbose_name='Style No.')
     item_name = models.CharField(max_length=255, verbose_name='Item / Product Name')

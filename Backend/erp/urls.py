@@ -16,9 +16,18 @@ from .views import (
     NotificationViewSet,
     StockItemViewSet,
     GeneratePresentationView, ScanLookupView,
+    GateInwardReceiptViewSet, SupplierDebitNoteViewSet, StockOriginBreakdownView,
+    DashboardStatsView,
+    ProductionUnitViewSet, BuyerUnitAllocationViewSet, UnitWorkReallocationViewSet, WorkloadReallocationView,
+    SampleExcelExportView, FinishExcelExportView, FinishExcelImportView,
 )
 
 router = DefaultRouter()
+
+# Production Units & Work Allocation
+router.register(r'production-units', ProductionUnitViewSet, basename='production-unit')
+router.register(r'buyer-unit-allocations', BuyerUnitAllocationViewSet, basename='buyer-unit-allocation')
+router.register(r'unit-work-reallocations', UnitWorkReallocationViewSet, basename='unit-work-reallocation')
 
 # ERP Core
 router.register(r'finishes', FinishViewSet, basename='finish')
@@ -29,11 +38,13 @@ router.register(r'buyer-masters', BuyerMasterViewSet, basename='buyer-master')
 router.register(r'buyer-master-finishing-images', BuyerMasterFinishingImageViewSet, basename='buyer-master-finishing-image')
 router.register(r'buyer-pis', BuyerPIViewSet, basename='buyer-pi')
 
-# Supplier PO routes
+# Supplier PO & Accounting routes
 router.register(r'suppliers', SupplierViewSet, basename='supplier')
 router.register(r'supplier-pos', SupplierPOViewSet, basename='supplier-po')
 router.register(r'supplier-po-items', SupplierPOItemViewSet, basename='supplier-po-item')
 router.register(r'supplier-po-defects', SupplierPOItemDefectViewSet, basename='supplier-po-defect')
+router.register(r'gate-inward-receipts', GateInwardReceiptViewSet, basename='gate-inward-receipt')
+router.register(r'supplier-debit-notes', SupplierDebitNoteViewSet, basename='supplier-debit-note')
 
 router.register(r'performa-invoices', PerformaInvoiceViewSet, basename='performa-invoice')
 router.register(r'stock', StockItemViewSet, basename='stock')
@@ -54,11 +65,18 @@ urlpatterns = [
     path('auth/devices/', ActiveDevicesView.as_view(), name='auth-devices'),
     path('auth/me/', CurrentUserView.as_view(), name='auth-me'),
 
-    # Presentation Generator & QR Scanner Lookup
+    # Presentation Generator & QR Scanner Lookup & Stock Breakdown
+    path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('generate-presentation/', GeneratePresentationView.as_view(), name='generate-presentation'),
     path('scan-lookup/', ScanLookupView.as_view(), name='scan-lookup'),
+    path('stock/origin-breakdown/', StockOriginBreakdownView.as_view(), name='stock-origin-breakdown'),
+    path('production-units/reallocate-work/', WorkloadReallocationView.as_view(), name='workload-reallocate'),
+    path('samples/export-excel/', SampleExcelExportView.as_view(), name='samples-export-excel'),
+    path('finishes/export-excel/', FinishExcelExportView.as_view(), name='finishes-export-excel'),
+    path('finishes/import-excel/', FinishExcelImportView.as_view(), name='finishes-import-excel'),
 
     # Router URLs
     path('', include(router.urls)),
 ]
+
 

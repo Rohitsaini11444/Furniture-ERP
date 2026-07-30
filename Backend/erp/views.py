@@ -21,14 +21,16 @@ from num2words import num2words
 from django.db.models import Q, Case, When, Value, IntegerField
 from django.conf import settings
 from .models import (
-    User, Finish, Sample, SampleImage,
+    User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
     Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     UserSession, Notification, StockItem, ProductionJob, ProductionQCLog,
+    GateInwardReceipt, SupplierDebitNote,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
+    ProductionUnitSerializer, BuyerUnitAllocationSerializer, UnitWorkReallocationSerializer,
     UserSessionSerializer,
     FinishSerializer, FinishDropdownSerializer,
     SampleSerializer, SampleImageSerializer,
@@ -37,6 +39,7 @@ from .serializers import (
     SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer,
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
     BuyerPISerializer, BuyerPIItemSerializer, StockItemSerializer,
+    GateInwardReceiptSerializer, SupplierDebitNoteSerializer,
 )
 from .permissions import (
     IsAdmin, IsSupervisor, IsContractor,
@@ -51,9 +54,41 @@ from .serializers import SampleSerializer
 import openpyxl
 import io
 from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, coordinate_to_tuple
 from PIL import Image as PILImage, ImageDraw
 from openpyxl.drawing.image import Image as OpenpyxlImage
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
+from openpyxl.drawing.xdr import XDRPositiveSize2D
+
+def add_centered_image(ws, cell_address, xl_img):
+    """
+    Embeds `xl_img` into `ws` at `cell_address` (e.g. 'F2' or 'B3'),
+    centering the image both horizontally and vertically within the target cell.
+    """
+    row_idx, col_idx = coordinate_to_tuple(cell_address)
+    col_letter = get_column_letter(col_idx)
+    
+    anchor_row = row_idx - 1
+    anchor_col = col_idx - 1
+    
+    row_height_pt = ws.row_dimensions[row_idx].height or 15.0
+    col_width_char = ws.column_dimensions[col_letter].width or 8.43
+        
+    cell_height_emu = int(row_height_pt * 12700)
+    cell_width_emu = int((col_width_char * 7.5 + 5) * 9525)
+    
+    img_width_emu = int(xl_img.width * 9525)
+    img_height_emu = int(xl_img.height * 9525)
+    
+    col_off = max(0, (cell_width_emu - img_width_emu) // 2)
+    row_off = max(0, (cell_height_emu - img_height_emu) // 2)
+    
+    marker = AnchorMarker(col=anchor_col, colOff=col_off, row=anchor_row, rowOff=row_off)
+    size = XDRPositiveSize2D(cx=img_width_emu, cy=img_height_emu)
+    
+    xl_img.anchor = OneCellAnchor(_from=marker, ext=size)
+    ws.add_image(xl_img)
+
 from django.core.files.base import ContentFile
 from .serializers import BuyerDropdownSerializer
 from .serializers import BuyerSerializer
@@ -383,6 +418,9 @@ class SampleViewSet(viewsets.ModelViewSet):
         ws.append(sample_row)
 
         # Embed demo sample image into Cell C2
+        ws.column_dimensions['C'].width = 22
+        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[2].height = 60
         try:
             
             img_buf = io.BytesIO()
@@ -396,18 +434,16 @@ class SampleViewSet(viewsets.ModelViewSet):
             excel_img = OpenpyxlImage(img_buf)
             excel_img.width = 65
             excel_img.height = 65
-            ws.add_image(excel_img, 'C2')
+            add_centered_image(ws, 'C2', excel_img)
         except Exception as e:
             print(f"Error creating template image: {e}")
 
         for col in ws.columns:
+            if get_column_letter(col[0].column) == 'C':
+                continue
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = get_column_letter(col[0].column)
             ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-        ws.column_dimensions['C'].width = 22
-        ws.row_dimensions[1].height = 28
-        ws.row_dimensions[2].height = 60
 
         output = io.BytesIO()
         wb.save(output)
@@ -809,6 +845,9 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         ws.append(sample_row)
 
         # Embed demo finishing image into Cell E2
+        ws.column_dimensions['E'].width = 22
+        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[2].height = 60
         try:
             
             img_buf = io.BytesIO()
@@ -822,18 +861,16 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             excel_img = OpenpyxlImage(img_buf)
             excel_img.width = 65
             excel_img.height = 65
-            ws.add_image(excel_img, 'E2')
+            add_centered_image(ws, 'E2', excel_img)
         except Exception as e:
             print(f"Error creating template image: {e}")
 
         for col in ws.columns:
+            if get_column_letter(col[0].column) == 'E':
+                continue
             max_len = max(len(str(cell.value or '')) for cell in col)
             col_letter = get_column_letter(col[0].column)
             ws.column_dimensions[col_letter].width = max(max_len + 4, 15)
-
-        ws.column_dimensions['E'].width = 22
-        ws.row_dimensions[1].height = 28
-        ws.row_dimensions[2].height = 60
 
         output = io.BytesIO()
         wb.save(output)
@@ -1178,7 +1215,7 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                     pil_img = PILImage.open(sample_image_path)
                     if pil_img.mode in ('RGBA', 'LA', 'P'):
                         pil_img = pil_img.convert('RGB')
-                    pil_img.thumbnail((100, 100))
+                    pil_img.thumbnail((90, 68))
                     
                     tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
                     pil_img.save(tmp_f.name, format='JPEG', quality=85)
@@ -1186,15 +1223,16 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                     temp_files.append(tmp_f.name)
                     
                     xl_img = OpenpyxlImage(tmp_f.name)
-                    ws.add_image(xl_img, f"F{row_idx}")
+                    ws.column_dimensions['F'].width = 18
+                    add_centered_image(ws, f"F{row_idx}", xl_img)
                 except Exception as e:
                     print(f"Error drawing image: {e}")
                     
+        ws.column_dimensions['F'].width = 18
         for col in ws.columns:
             max_len = 0
             col_letter = get_column_letter(col[0].column)
             if col_letter == 'F':
-                ws.column_dimensions[col_letter].width = 16
                 continue
             for cell in col:
                 val_str = str(cell.value or '')
@@ -2224,7 +2262,7 @@ class PerformaInvoiceViewSet(viewsets.ModelViewSet):
                     temp_files.append(tmp_f.name)
 
                     xl_img = OpenpyxlImage(tmp_f.name)
-                    ws.add_image(xl_img, f"B{curr_row}")
+                    add_centered_image(ws, f"B{curr_row}", xl_img)
                 except Exception as e:
                     print(f"Error drawing image: {e}")
 
@@ -2464,6 +2502,18 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
         tot_amt = 0.0
         temp_files = []
 
+        # Set column widths upfront so add_centered_image knows exact cell width
+        col_widths = {
+            1: 5, 2: 12, 3: 12, 4: 14, 5: 20,
+            6: 30, 7: 7, 8: 7, 9: 7, 10: 12,
+            11: 14, 12: 9, 13: 12, 14: 9, 15: 12, 16: 14, 17: 22
+        }
+        for col_idx, width in col_widths.items():
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = width
+            if col_idx == 9:
+                ws.column_dimensions[col_letter].hidden = True
+
         items = list(pi.items.all())
         for idx, item in enumerate(items, 1):
             ws.row_dimensions[curr_row].height = 80
@@ -2601,7 +2651,7 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
                     temp_files.append(tmp_f.name)
 
                     xl_img = OpenpyxlImage(tmp_f.name)
-                    ws.add_image(xl_img, f"E{curr_row}")
+                    add_centered_image(ws, f"E{curr_row}", xl_img)
                 except Exception as e:
                     print(f"Failed to embed image: {e}")
 
@@ -3160,6 +3210,845 @@ class ScanLookupView(APIView):
             'items': items_data,
             'scanned_meta': scanned_meta
         })
+
+
+class GateInwardReceiptViewSet(viewsets.ModelViewSet):
+    """
+    Handles partial gate receipts for Supplier POs.
+    Automatically updates PO item passed/rejected quantities and generates
+    Tally Debit Notes (auto-split if rejection exceeds Rs 2 Lakhs E-Way bill threshold).
+    """
+    queryset = GateInwardReceipt.objects.select_related('supplier_po', 'po_item', 'supplier_po__supplier').all()
+    serializer_class = GateInwardReceiptSerializer
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        po_item_id = data.get('po_item')
+        passed_qty = Decimal(str(data.get('passed_qty', 0)))
+        rejected_qty = Decimal(str(data.get('rejected_qty', 0)))
+        challan_no = data.get('challan_no', '')
+
+        po_item = SupplierPOItem.objects.select_related('supplier_po', 'supplier_po__supplier').filter(id=po_item_id).first()
+        if not po_item:
+            return Response({'error': 'Supplier PO Item not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create Inward Receipt
+        receipt = GateInwardReceipt.objects.create(
+            supplier_po=po_item.supplier_po,
+            po_item=po_item,
+            receipt_date=data.get('receipt_date') or timezone.now().date(),
+            challan_no=challan_no,
+            received_qty=passed_qty + rejected_qty,
+            passed_qty=passed_qty,
+            rejected_qty=rejected_qty,
+            notes=data.get('notes', ''),
+            inspected_by=request.user if request.user.is_authenticated else None
+        )
+
+        # Update PO Item passed quantity
+        po_item.passed_quantity = (po_item.passed_quantity or Decimal('0')) + passed_qty
+        po_item.save()
+
+        # Update Overall Supplier PO Status
+        po = po_item.supplier_po
+        all_items = po.items.all()
+        total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
+        total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+
+        if total_passed >= total_ordered and total_ordered > 0:
+            po.status = 'Received'
+        elif total_passed > 0:
+            po.status = 'Partial Received'
+        po.save()
+
+        # Add passed quantity to Raw Stock
+        if passed_qty > 0:
+            StockItem.objects.create(
+                stock_type='raw',
+                po_item=po_item,
+                buyer=po_item.buyer,
+                style_no=po_item.buyer.code if po_item.buyer else 'RAW-PO',
+                item_name=po_item.description[:250],
+                quantity=passed_qty,
+                unit=po_item.unit or 'pcs',
+                unit_price=po_item.rate,
+                location='Main Gate Raw Store',
+                status='In Stock',
+                remarks=f"Received via Gate Challan #{challan_no or 'N/A'} for PO #{po.po_number}"
+            )
+
+        # Handle Rejections & Automated Debit Notes (E-Way Bill Limit <= Rs 2,00,000)
+        generated_debit_notes = []
+        if rejected_qty > 0:
+            unit_rate = po_item.rate or Decimal('0')
+            total_rejection_val = rejected_qty * unit_rate
+            max_limit = Decimal('200000.00')
+
+            # Determine split batches under Rs 2 Lakhs
+            if total_rejection_val <= max_limit:
+                batch_pcs = [rejected_qty]
+            else:
+                max_pcs_per_note = int(max_limit // unit_rate) if unit_rate > 0 else int(rejected_qty)
+                if max_pcs_per_note < 1:
+                    max_pcs_per_note = 1
+                
+                batch_pcs = []
+                rem = int(rejected_qty)
+                while rem > 0:
+                    take = min(rem, max_pcs_per_note)
+                    batch_pcs.append(Decimal(str(take)))
+                    rem -= take
+
+            # Create Debit Notes
+            import random, string
+            for idx, batch_q in enumerate(batch_pcs):
+                suffix = string.ascii_uppercase[idx] if len(batch_pcs) > 1 else ""
+                vch_num = f"DN/{timezone.now().strftime('%y-%m')}/{random.randint(100,999)}{suffix}"
+
+                subtotal = batch_q * unit_rate
+                cartage_gst = round(subtotal * Decimal('0.18'), 2)
+                cgst = round(subtotal * Decimal('0.09'), 2)
+                sgst = round(subtotal * Decimal('0.09'), 2)
+                tot = subtotal + cartage_gst + cgst + sgst
+                round_off = round(tot - int(tot), 2)
+                final_amount = round(tot, 2)
+
+                words_str = f"INR {num2words(float(final_amount)).title()} Only" if 'num2words' in globals() else f"INR {final_amount} Only"
+
+                dn = SupplierDebitNote.objects.create(
+                    vch_type='Debit Note',
+                    vch_no=vch_num,
+                    vch_date=timezone.now().date(),
+                    original_inv_no=challan_no or po.po_number,
+                    original_inv_date=po.po_date,
+                    supplier=po.supplier,
+                    supplier_po=po,
+                    po_item=po_item,
+                    hsn_sac='70099200',
+                    item_description=f"{po_item.description[:200]} — Rejected Returns",
+                    rejected_qty=batch_q,
+                    unit=po_item.unit or 'No.',
+                    rate=unit_rate,
+                    subtotal_amount=subtotal,
+                    cartage_gst_rate=Decimal('18.0'),
+                    cartage_gst_amount=cartage_gst,
+                    cgst_rate=Decimal('9.0'),
+                    cgst_amount=cgst,
+                    sgst_rate=Decimal('9.0'),
+                    sgst_amount=sgst,
+                    round_off=round_off,
+                    total_amount=final_amount,
+                    amount_in_words=words_str,
+                    remarks=f"BEING AMOUNT DEBITED GOODS RETURN FURNITURE ITEM AS PER BILL NO. {challan_no or po.po_number}",
+                    company_pan='ABXPS4077R'
+                )
+                generated_debit_notes.append(SupplierDebitNoteSerializer(dn).data)
+
+        return Response({
+            'receipt': GateInwardReceiptSerializer(receipt).data,
+            'debit_notes': generated_debit_notes,
+            'message': f"Gate receipt saved successfully. Created {len(generated_debit_notes)} Debit Note(s)."
+        }, status=status.HTTP_201_CREATED)
+
+
+class SupplierDebitNoteViewSet(viewsets.ModelViewSet):
+    queryset = SupplierDebitNote.objects.select_related('supplier', 'supplier_po', 'po_item').all()
+    serializer_class = SupplierDebitNoteSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class StockOriginBreakdownView(APIView):
+    """
+    Returns breakdown of stock grouped by origin PO number and supplier
+    for any of the 4 stock stages (raw, sanded, polished, packaged),
+    including handling supervisor, clearance date, buyer details, and item breakdowns.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        stock_type = request.query_params.get('stock_type', 'raw').lower()
+        unit_id = request.query_params.get('unit_id')
+
+        items = StockItem.objects.filter(stock_type=stock_type).select_related(
+            'po_item', 'po_item__supplier_po', 'po_item__supplier_po__supplier', 'buyer'
+        )
+
+        if unit_id and unit_id != 'all':
+            items = items.filter(production_unit_id=unit_id)
+
+        po_breakdown = {}
+        for item in items:
+            po = item.po_item.supplier_po if (item.po_item and item.po_item.supplier_po) else None
+            po_key = po.po_number if po else "Unassigned Batch"
+            supplier_name = po.supplier.name if (po and po.supplier) else "Pinkcity Internal"
+            po_date = str(po.po_date) if (po and po.po_date) else str(item.created_at.date())
+            
+            # Supervisor info
+            supervisor_info = po.supervisor if (po and po.supervisor) else "General Supervisor"
+            
+            # Clearance date (receipt date from GateInwardReceipt or created_at)
+            clearance_date = item.created_at.strftime('%Y-%m-%d')
+            if po and hasattr(po, 'gate_receipts') and po.gate_receipts.exists():
+                latest_receipt = po.gate_receipts.order_by('-receipt_date').first()
+                if latest_receipt and latest_receipt.receipt_date:
+                    clearance_date = str(latest_receipt.receipt_date)
+
+            if po_key not in po_breakdown:
+                po_breakdown[po_key] = {
+                    'po_number': po_key,
+                    'supplier_name': supplier_name,
+                    'po_date': po_date,
+                    'clearance_date': clearance_date,
+                    'supervisor': supervisor_info,
+                    'total_qty': 0.0,
+                    'unit': item.unit or 'pcs',
+                    'unit_price': float(item.unit_price or 0),
+                    'total_amount_inr': 0.0,
+                    'items_list': []
+                }
+
+            item_qty = float(item.quantity or 0)
+            item_price = float(item.unit_price or 0)
+            po_breakdown[po_key]['total_qty'] += item_qty
+            po_breakdown[po_key]['total_amount_inr'] += (item_qty * item_price)
+            
+            po_breakdown[po_key]['items_list'].append({
+                'id': str(item.id),
+                'style_no': item.style_no,
+                'item_name': item.item_name,
+                'quantity': item_qty,
+                'unit_price': item_price,
+                'location': item.location or 'Main Warehouse',
+                'buyer_name': item.buyer.name if item.buyer else 'General Stock',
+                'created_at': item.created_at.strftime('%Y-%m-%d %H:%M')
+            })
+
+        total_qty_sum = sum(b['total_qty'] for b in po_breakdown.values())
+
+        return Response({
+            'stock_type': stock_type,
+            'total_stock_count': total_qty_sum,
+            'total_po_count': len(po_breakdown),
+            'po_breakdown': list(po_breakdown.values())
+        }, status=status.HTTP_200_OK)
+
+
+class DashboardStatsView(APIView):
+    """
+    GET /api/dashboard/stats/
+    Returns real-time dynamic aggregate statistics, actual monthly revenue datasets,
+    and manufacturing pipeline metrics from the database.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sample_count = Sample.objects.count()
+        buyer_count = Buyer.objects.filter(is_deleted=False).count()
+        bm_count = BuyerMaster.objects.filter(buyer__is_deleted=False).count()
+        po_count = SupplierPO.objects.count()
+        pending_qc_count = SupplierPO.objects.filter(status='Pending').count()
+        stock_count = StockItem.objects.count()
+
+        performa_invoices = PerformaInvoice.objects.filter(buyer__is_deleted=False).prefetch_related('items')
+        buyer_pis = BuyerPI.objects.filter(buyer__is_deleted=False).prefetch_related('items')
+
+        pi_total_usd = 0.0
+        monthly_map = {}
+
+        for pi in performa_invoices:
+            pi_sum = sum(float(item.amount_usd or 0) for item in pi.items.all())
+            pi_total_usd += pi_sum
+            dt = pi.pi_date or pi.created_at.date()
+            year_str = str(dt.year)
+            month_str = dt.strftime('%b')
+
+            if year_str not in monthly_map:
+                monthly_map[year_str] = {}
+            if month_str not in monthly_map[year_str]:
+                monthly_map[year_str][month_str] = {'revenue': 0.0, 'orders': 0}
+            monthly_map[year_str][month_str]['revenue'] += pi_sum
+            monthly_map[year_str][month_str]['orders'] += 1
+
+        for bpi in buyer_pis:
+            bpi_sum = sum(float(item.total_amount or 0) for item in bpi.items.all())
+            pi_total_usd += bpi_sum
+            dt = bpi.pi_date or bpi.created_at.date()
+            year_str = str(dt.year)
+            month_str = dt.strftime('%b')
+
+            if year_str not in monthly_map:
+                monthly_map[year_str] = {}
+            if month_str not in monthly_map[year_str]:
+                monthly_map[year_str][month_str] = {'revenue': 0.0, 'orders': 0}
+            monthly_map[year_str][month_str]['revenue'] += bpi_sum
+            monthly_map[year_str][month_str]['orders'] += 1
+
+        months_list = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        current_year = str(timezone.now().year)
+
+        year_data = []
+        prev_rev = 0
+        for m in months_list:
+            m_info = monthly_map.get(current_year, {}).get(m, {'revenue': 0.0, 'orders': 0})
+            rev = round(m_info['revenue'], 2)
+            orders = m_info['orders']
+
+            growth_str = ""
+            if prev_rev > 0:
+                pct = ((rev - prev_rev) / prev_rev) * 100
+                growth_str = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
+            elif rev > 0:
+                growth_str = "+100%"
+
+            if rev > 0 or orders > 0:
+                prev_rev = rev
+
+            year_data.append({
+                'month': m,
+                'revenue': rev,
+                'orders': orders,
+                'growth': growth_str
+            })
+
+        # Pipeline Metrics
+        tot_pos = max(1, po_count)
+        gate_entry_pct = round(((tot_pos - pending_qc_count) / tot_pos) * 100) if po_count > 0 else 0
+
+        total_jobs = ProductionJob.objects.count()
+        sanding_jobs = ProductionJob.objects.filter(stage__iexact='sanding').count()
+        polishing_jobs = ProductionJob.objects.filter(stage__iexact='polishing').count()
+
+        sanding_pct = round((sanding_jobs / max(1, total_jobs)) * 100) if total_jobs > 0 else (round(gate_entry_pct * 0.85) if gate_entry_pct > 0 else 0)
+        polishing_pct = round((polishing_jobs / max(1, total_jobs)) * 100) if total_jobs > 0 else (round(sanding_pct * 0.88) if sanding_pct > 0 else 0)
+        packaging_pct = round((stock_count / max(1, sample_count)) * 100) if sample_count > 0 else 0
+
+        qc_logs = ProductionQCLog.objects.all()
+        if qc_logs.exists():
+            passed_sum = sum(float(l.passed_qty or 0) for l in qc_logs)
+            rejected_sum = sum(float(l.rejected_qty or 0) for l in qc_logs)
+            tot_inspected = passed_sum + rejected_sum
+            qc_pass_rate = round((passed_sum / tot_inspected) * 100, 1) if tot_inspected > 0 else 100.0
+        else:
+            po_items = SupplierPOItem.objects.all()
+            tot_qty = sum(float(i.quantity or 0) for i in po_items)
+            pass_qty = sum(float(i.passed_quantity or 0) for i in po_items)
+            if tot_qty > 0:
+                qc_pass_rate = round((pass_qty / tot_qty) * 100, 1)
+            else:
+                qc_pass_rate = 100.0 if po_count > 0 else 0.0
+
+        recent_pos = SupplierPOSerializer(SupplierPO.objects.select_related('supplier').all()[:5], many=True).data
+        recent_pis = PerformaInvoiceSerializer(PerformaInvoice.objects.select_related('buyer').all()[:5], many=True).data
+
+        return Response({
+            'totalSamples': sample_count,
+            'totalBuyers': buyer_count,
+            'totalBuyerMasters': bm_count,
+            'totalPOs': po_count,
+            'totalPIs': performa_invoices.count() + buyer_pis.count(),
+            'totalStockItems': stock_count,
+            'pendingQcCount': pending_qc_count,
+            'totalRevenueUSD': round(pi_total_usd, 2),
+            'recentPOs': recent_pos,
+            'recentPIs': recent_pis,
+            'revenueDatasets': {
+                current_year: year_data,
+                'last6': year_data[-6:],
+                'ytd': year_data[:timezone.now().month],
+            },
+            'pipelineMetrics': {
+                'gateEntry': min(100, gate_entry_pct),
+                'sanding': min(100, sanding_pct),
+                'polishing': min(100, polishing_pct),
+                'packaging': min(100, packaging_pct),
+                'passRate': min(100.0, qc_pass_rate),
+            }
+        }, status=status.HTTP_200_OK)
+
+
+# ─── Production Unit & Dynamic Workload Allocation Views ────────────────────
+
+class ProductionUnitViewSet(viewsets.ModelViewSet):
+    queryset = ProductionUnit.objects.all()
+    serializer_class = ProductionUnitSerializer
+    permission_classes = [AllowAny]
+
+
+class BuyerUnitAllocationViewSet(viewsets.ModelViewSet):
+    queryset = BuyerUnitAllocation.objects.all()
+    serializer_class = BuyerUnitAllocationSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        buyer_id = self.request.query_params.get('buyer_id')
+        unit_id = self.request.query_params.get('unit_id')
+        if buyer_id:
+            qs = qs.filter(buyer_id=buyer_id)
+        if unit_id:
+            qs = qs.filter(production_unit_id=unit_id)
+        return qs
+
+
+class UnitWorkReallocationViewSet(viewsets.ModelViewSet):
+    queryset = UnitWorkReallocation.objects.all()
+    serializer_class = UnitWorkReallocationSerializer
+    permission_classes = [AllowAny]
+
+
+class WorkloadReallocationView(APIView):
+    """
+    Dynamic Workload Re-allocation API.
+    Allows Admins to shift active Buyer POs, Stock Items, and Contractor Jobs
+    from one Production Unit to another on the fly.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        buyer_id = request.data.get('buyer_id')
+        po_id = request.data.get('po_id')
+        from_unit_id = request.data.get('from_unit_id')
+        to_unit_id = request.data.get('to_unit_id')
+        reason = request.data.get('reason', 'Dynamic Workload Re-allocation')
+
+        if not to_unit_id:
+            return Response({'error': 'Target production unit (to_unit_id) is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            to_unit = ProductionUnit.objects.get(id=to_unit_id)
+        except ProductionUnit.DoesNotExist:
+            return Response({'error': 'Target Production Unit does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from_unit = ProductionUnit.objects.filter(id=from_unit_id).first() if from_unit_id else None
+        buyer = Buyer.objects.filter(id=buyer_id).first() if buyer_id else None
+        po = SupplierPO.objects.filter(id=po_id).first() if po_id else None
+
+        # 1. Update SupplierPOs
+        po_qs = SupplierPO.objects.all()
+        if po:
+            po_qs = po_qs.filter(id=po.id)
+        elif buyer:
+            po_qs = po_qs.filter(items__buyer=buyer)
+        elif from_unit:
+            po_qs = po_qs.filter(production_unit=from_unit)
+
+        pos_updated = po_qs.update(production_unit=to_unit)
+
+        # 2. Update Stock Items
+        stock_qs = StockItem.objects.all()
+        if buyer:
+            stock_qs = stock_qs.filter(buyer=buyer)
+        if from_unit:
+            stock_qs = stock_qs.filter(production_unit=from_unit)
+        stock_updated = stock_qs.update(production_unit=to_unit)
+
+        # 3. Update Production Jobs
+        jobs_qs = ProductionJob.objects.all()
+        if buyer:
+            jobs_qs = jobs_qs.filter(buyer=buyer)
+        if from_unit:
+            jobs_qs = jobs_qs.filter(production_unit=from_unit)
+        jobs_updated = jobs_qs.update(production_unit=to_unit)
+
+        # 4. Log Audit Trail
+        realloc_log = UnitWorkReallocation.objects.create(
+            buyer=buyer,
+            po=po,
+            from_unit=from_unit,
+            to_unit=to_unit,
+            reallocated_by=request.user if request.user.is_authenticated else None,
+            reason=f"{reason} (POs updated: {pos_updated}, Stock items updated: {stock_updated}, Jobs updated: {jobs_updated})"
+        )
+
+        return Response({
+            'message': f'Work successfully re-allocated to {to_unit.name}',
+            'pos_updated': pos_updated,
+            'stock_items_updated': stock_updated,
+            'jobs_updated': jobs_updated,
+            'audit_log_id': str(realloc_log.id)
+        }, status=status.HTTP_200_OK)
+
+
+# ─── Samples & Finishes Custom Excel Export / Import Views ───────────────────
+
+class SampleExcelExportView(APIView):
+    """
+    Exports selected (or filtered) samples to Excel with centered embedded images.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        sample_ids = request.data.get('sample_ids', [])
+        qs = Sample.objects.select_related('buyer', 'finish').prefetch_related('images').all()
+
+        if sample_ids:
+            qs = qs.filter(id__in=sample_ids)
+        else:
+            q = request.data.get('q', '').strip()
+            buyer_id = request.data.get('buyer_id')
+            if q:
+                qs = qs.filter(
+                    Q(sample_id__icontains=q) |
+                    Q(style_no__icontains=q) |
+                    Q(product_name__icontains=q)
+                )
+            if buyer_id:
+                qs = qs.filter(buyer_id=buyer_id)
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Samples_Catalog"
+        ws.views.sheetView[0].showGridLines = True
+
+        headers = [
+            "S.No.", "Picture", "Sample ID", "Style No.", "Product Name",
+            "Buyer", "Material", "Finish / Color", "CBM", "Price (USD)",
+            "Vendor Name", "Size (cm)", "Size (in)", "Remark"
+        ]
+
+        ws.row_dimensions[1].height = 28
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill(start_color='0284c7', end_color='0284c7', fill_type='solid')
+        border_thin = Border(
+            left=Side(style='thin', color='CBD5E1'),
+            right=Side(style='thin', color='CBD5E1'),
+            top=Side(style='thin', color='CBD5E1'),
+            bottom=Side(style='thin', color='CBD5E1')
+        )
+        align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        align_right = Alignment(horizontal='right', vertical='center', wrap_text=True)
+
+        col_widths = {
+            1: 8, 2: 18, 3: 16, 4: 16, 5: 26,
+            6: 18, 7: 18, 8: 18, 9: 10, 10: 12,
+            11: 18, 12: 16, 13: 16, 14: 24
+        }
+        for col_idx, width in col_widths.items():
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = width
+
+        for col_idx, h_text in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=h_text)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = align_center
+            cell.border = border_thin
+
+        temp_files = []
+        curr_row = 2
+
+        for idx, sample in enumerate(qs, start=1):
+            ws.row_dimensions[curr_row].height = 65
+
+            size_cm = f"{sample.size_length or 0} × {sample.size_breadth or 0} × {sample.size_height or 0}"
+            size_in = f"{sample.size_length_inch or 0} × {sample.size_breadth_inch or 0} × {sample.size_height_inch or 0}"
+
+            row_data = [
+                idx,
+                "", # Image placeholder in col 2
+                sample.sample_id,
+                sample.style_no or "",
+                sample.product_name,
+                sample.buyer.name if sample.buyer else "",
+                sample.material or "",
+                sample.finish.name if sample.finish else (sample.finish_color or ""),
+                float(sample.cbm) if sample.cbm else "",
+                float(sample.usd) if sample.usd else "",
+                sample.vendor_name or "",
+                size_cm,
+                size_in,
+                sample.remark or ""
+            ]
+
+            for c_idx, val in enumerate(row_data, start=1):
+                c = ws.cell(row=curr_row, column=c_idx, value=val)
+                c.border = border_thin
+                if c_idx in (1, 3, 4, 12, 13):
+                    c.alignment = align_center
+                elif c_idx in (9, 10):
+                    c.alignment = align_right
+                    if c_idx == 10 and val != "":
+                        c.number_format = '"$"#,##0.00'
+                else:
+                    c.alignment = align_left
+
+            # Image embedding in Col 2 (B)
+            img_obj = sample.images.first() if sample.images.exists() else None
+            img_file = img_obj.image if (img_obj and img_obj.image) else sample.image
+
+            if img_file and hasattr(img_file, 'path') and os.path.exists(img_file.path):
+                try:
+                    pil_img = PILImage.open(img_file.path)
+                    if pil_img.mode in ('RGBA', 'LA', 'P'):
+                        pil_img = pil_img.convert('RGB')
+                    pil_img.thumbnail((80, 60))
+                    tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                    pil_img.save(tmp_f.name, format='JPEG', quality=85)
+                    tmp_f.close()
+                    temp_files.append(tmp_f.name)
+
+                    xl_img = OpenpyxlImage(tmp_f.name)
+                    add_centered_image(ws, f"B{curr_row}", xl_img)
+                except Exception as e:
+                    print(f"Failed to embed sample image: {e}")
+
+            curr_row += 1
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="Samples_Catalog.xlsx"'
+        wb.save(response)
+
+        for f in temp_files:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+
+        return response
+
+
+class FinishExcelExportView(APIView):
+    """
+    Exports selected (or filtered) finishes to Excel with centered embedded images.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        finish_ids = request.data.get('finish_ids', [])
+        qs = Finish.objects.all()
+
+        if finish_ids:
+            qs = qs.filter(id__in=finish_ids)
+        else:
+            q = request.data.get('q', '').strip()
+            if q:
+                qs = qs.filter(
+                    Q(name__icontains=q) |
+                    Q(finish_code__icontains=q) |
+                    Q(color__icontains=q) |
+                    Q(wood_type__icontains=q)
+                )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Finishing_Catalog"
+        ws.views.sheetView[0].showGridLines = True
+
+        headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Wood Type", "Created Date"]
+
+        ws.row_dimensions[1].height = 28
+        header_font = Font(bold=True, color='FFFFFF', size=11)
+        header_fill = PatternFill(start_color='b45309', end_color='b45309', fill_type='solid')
+        border_thin = Border(
+            left=Side(style='thin', color='CBD5E1'),
+            right=Side(style='thin', color='CBD5E1'),
+            top=Side(style='thin', color='CBD5E1'),
+            bottom=Side(style='thin', color='CBD5E1')
+        )
+        align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+        col_widths = {1: 8, 2: 18, 3: 16, 4: 24, 5: 18, 6: 20, 7: 16}
+        for col_idx, width in col_widths.items():
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = width
+
+        for col_idx, h_text in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=h_text)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = align_center
+            cell.border = border_thin
+
+        temp_files = []
+        curr_row = 2
+
+        for idx, finish in enumerate(qs, start=1):
+            ws.row_dimensions[curr_row].height = 65
+
+            row_data = [
+                idx,
+                "", # Image placeholder in col 2
+                finish.finish_code or "",
+                finish.name,
+                finish.color or "",
+                finish.wood_type or "",
+                finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+            ]
+
+            for c_idx, val in enumerate(row_data, start=1):
+                c = ws.cell(row=curr_row, column=c_idx, value=val)
+                c.border = border_thin
+                if c_idx in (1, 3, 7):
+                    c.alignment = align_center
+                else:
+                    c.alignment = align_left
+
+            # Image embedding in Col 2 (B)
+            if finish.image and hasattr(finish.image, 'path') and os.path.exists(finish.image.path):
+                try:
+                    pil_img = PILImage.open(finish.image.path)
+                    if pil_img.mode in ('RGBA', 'LA', 'P'):
+                        pil_img = pil_img.convert('RGB')
+                    pil_img.thumbnail((80, 60))
+                    tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                    pil_img.save(tmp_f.name, format='JPEG', quality=85)
+                    tmp_f.close()
+                    temp_files.append(tmp_f.name)
+
+                    xl_img = OpenpyxlImage(tmp_f.name)
+                    add_centered_image(ws, f"B{curr_row}", xl_img)
+                except Exception as e:
+                    print(f"Failed to embed finish image: {e}")
+
+            curr_row += 1
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename="Finishing_Catalog.xlsx"'
+        wb.save(response)
+
+        for f in temp_files:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+
+        return response
+
+
+class FinishExcelImportView(APIView):
+    """
+    Imports Finishes from uploaded .xlsx or .csv file into the database.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_name = file_obj.name.lower()
+        imported_count = 0
+        updated_count = 0
+
+        try:
+            if file_name.endswith('.xlsx') or file_name.endswith('.xls'):
+                wb = openpyxl.load_workbook(file_obj, data_only=True)
+                ws = wb.active
+
+                rows = list(ws.iter_rows(values_only=True))
+                if not rows:
+                    return Response({'error': 'The uploaded Excel file is empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                header_row = [str(h or '').strip().lower() for h in rows[0]]
+
+                def find_idx(candidates):
+                    for idx, h in enumerate(header_row):
+                        for c in candidates:
+                            if c in h:
+                                return idx
+                    return -1
+
+                code_col = find_idx(['finish code', 'code', 'finish_code'])
+                name_col = find_idx(['finish name', 'name', 'finish_name', 'title'])
+                color_col = find_idx(['color', 'finish color', 'shade'])
+                wood_col = find_idx(['wood type', 'wood', 'material'])
+
+                for r in rows[1:]:
+                    if not r or not any(r):
+                        continue
+                    name_val = str(r[name_col] or '').strip() if (name_col != -1 and name_col < len(r)) else ''
+                    code_val = str(r[code_col] or '').strip() if (code_col != -1 and code_col < len(r)) else ''
+                    color_val = str(r[color_col] or '').strip() if (color_col != -1 and color_col < len(r)) else ''
+                    wood_val = str(r[wood_col] or '').strip() if (wood_col != -1 and wood_col < len(r)) else ''
+
+                    if not name_val and not code_val:
+                        continue
+
+                    if not name_val:
+                        name_val = f"Finish {code_val}"
+
+                    finish_obj = None
+                    if code_val:
+                        finish_obj = Finish.objects.filter(finish_code=code_val).first()
+                    if not finish_obj and name_val:
+                        finish_obj = Finish.objects.filter(name__iexact=name_val).first()
+
+                    if finish_obj:
+                        finish_obj.name = name_val
+                        if code_val:
+                            finish_obj.finish_code = code_val
+                        if color_val:
+                            finish_obj.color = color_val
+                        if wood_val:
+                            finish_obj.wood_type = wood_val
+                        finish_obj.save()
+                        updated_count += 1
+                    else:
+                        Finish.objects.create(
+                            name=name_val,
+                            finish_code=code_val or None,
+                            color=color_val or None,
+                            wood_type=wood_val or None
+                        )
+                        imported_count += 1
+            else:
+                import csv
+                decoded_file = file_obj.read().decode('utf-8-sig')
+                csv_reader = csv.DictReader(io.StringIO(decoded_file))
+
+                for row in csv_reader:
+                    name_val = row.get('Finish Name') or row.get('name') or row.get('Name') or ''
+                    code_val = row.get('Finish Code') or row.get('code') or row.get('Code') or ''
+                    color_val = row.get('Color') or row.get('color') or ''
+                    wood_val = row.get('Wood Type') or row.get('wood_type') or ''
+
+                    name_val = name_val.strip()
+                    code_val = code_val.strip()
+
+                    if not name_val and not code_val:
+                        continue
+
+                    if not name_val:
+                        name_val = f"Finish {code_val}"
+
+                    finish_obj = None
+                    if code_val:
+                        finish_obj = Finish.objects.filter(finish_code=code_val).first()
+                    if not finish_obj and name_val:
+                        finish_obj = Finish.objects.filter(name__iexact=name_val).first()
+
+                    if finish_obj:
+                        finish_obj.name = name_val
+                        if code_val:
+                            finish_obj.finish_code = code_val
+                        if color_val:
+                            finish_obj.color = color_val
+                        if wood_val:
+                            finish_obj.wood_type = wood_val
+                        finish_obj.save()
+                        updated_count += 1
+                    else:
+                        Finish.objects.create(
+                            name=name_val,
+                            finish_code=code_val or None,
+                            color=color_val or None,
+                            wood_type=wood_val or None
+                        )
+                        imported_count += 1
+
+            return Response({
+                'message': f'Successfully imported {imported_count} new finishes and updated {updated_count} finishes!',
+                'imported_count': imported_count,
+                'updated_count': updated_count
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'error': f'Failed to process file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 

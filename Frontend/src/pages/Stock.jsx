@@ -7,6 +7,8 @@ import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_QTY } from '../components/OrderBySelect';
 import { StatusSelect, STOCK_STATUS_FILTER_OPTIONS, STOCK_STATUS_FORM_OPTIONS } from '../components/StatusSelect';
 import CustomSelect from '../components/CustomSelect';
+import StockOriginModal from '../components/StockOriginModal';
+
 
 function Stock() {
   const navigate = useNavigate();
@@ -32,6 +34,18 @@ function Stock() {
   // Modal / Form state
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  // Stock Origin Drill-Down Modal state
+  const [showOriginModal, setShowOriginModal] = useState(false);
+  const [activeStageKey, setActiveStageKey] = useState('raw');
+  const [activeStageTitle, setActiveStageTitle] = useState('Raw Stock');
+
+  const openStageModal = (key, title) => {
+    setActiveStageKey(key);
+    setActiveStageTitle(title);
+    setShowOriginModal(true);
+  };
+
   
   const emptyForm = {
     style_no: '',
@@ -327,6 +341,137 @@ function Stock() {
               <button onClick={openCreateModal} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <Plus size={16} /> + Add Stock Item
               </button>
+            </div>
+          </div>
+
+          {/* Stock Origin Breakdown Modal */}
+          <StockOriginModal
+            isOpen={showOriginModal}
+            onClose={() => setShowOriginModal(false)}
+            stockType={activeStageKey}
+            stageTitle={activeStageTitle}
+          />
+
+          {/* 4 Interactive Stock Stage Cards (Click for PO Origin Breakdown) */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.75rem' }}>
+              🔍 Stock Stages — Click Any Stage Box for PO Origin Breakdown:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              
+              {/* Stage 1: Raw Stock */}
+              <div
+                onClick={() => navigate('/stock/details/raw')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  border: '2px solid #38bdf8',
+                  boxShadow: '0 4px 14px rgba(56, 189, 248, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0284c7', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '999px' }}>
+                    Stage 1
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700 }}>Open Separate Page →</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                  Raw Stock Details
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>Passed Gate Receiving Audit</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0284c7' }}>
+                  {stockItems.filter(s => s.stock_type === 'raw').reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0)} pcs
+                </div>
+              </div>
+
+              {/* Stage 2: Sanded Stock */}
+              <div
+                onClick={() => navigate('/stock/details/sanded')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  border: '2px solid #f59e0b',
+                  boxShadow: '0 4px 14px rgba(245, 158, 11, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#b45309', backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '999px' }}>
+                    Stage 2
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>Open Separate Page →</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                  Sanded Stock Details
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>Passed Sanding QC Audit</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#d97706' }}>
+                  {stockItems.filter(s => s.stock_type === 'sanded').reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0)} pcs
+                </div>
+              </div>
+
+              {/* Stage 3: Polished Stock */}
+              <div
+                onClick={() => navigate('/stock/details/polished')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  border: '2px solid #8b5cf6',
+                  boxShadow: '0 4px 14px rgba(139, 92, 246, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#6d28d9', backgroundColor: '#f3e8ff', padding: '2px 8px', borderRadius: '999px' }}>
+                    Stage 3
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>Open Separate Page →</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                  Polished Stock Details
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>Passed Polishing QC Audit</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#7c3aed' }}>
+                  {stockItems.filter(s => s.stock_type === 'polished').reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0)} pcs
+                </div>
+              </div>
+
+              {/* Stage 4: Finished Goods */}
+              <div
+                onClick={() => navigate('/stock/details/packaged')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  border: '2px solid #10b981',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.15)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#047857', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '999px' }}>
+                    Stage 4
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Open Separate Page →</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                  Finished Goods
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>Packaged / Ready Shipment</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#059669' }}>
+                  {stockItems.filter(s => s.stock_type === 'packaged').reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0)} pcs
+                </div>
+              </div>
+
             </div>
           </div>
 

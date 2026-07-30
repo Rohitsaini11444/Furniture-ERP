@@ -19,6 +19,8 @@ import GateEntry      from './pages/GateEntry';
 import PIs            from './pages/PIs';
 import BuyerPIs       from './pages/BuyerPIs';
 import Stock          from './pages/Stock';
+import StockDetails   from './pages/StockDetails';
+import UnitManagement from './pages/UnitManagement';
 import Tools          from './pages/Tools';
 import NotificationsPage from './pages/NotificationsPage';
 
@@ -1358,6 +1360,8 @@ function AppLayout() {
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
+            <Route path="/stock/details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StockDetails /></ProtectedRoute>} />
+            <Route path="/stock-details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StockDetails /></ProtectedRoute>} />
 
             {/* Tools & Catalog Generators */}
             <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
@@ -1402,6 +1406,14 @@ function AppLayout() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <UserManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/units"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'supervisor']}>
+                  <UnitManagement />
                 </ProtectedRoute>
               }
             />

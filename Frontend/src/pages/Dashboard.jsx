@@ -417,82 +417,36 @@ function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.allSettled([
-      api.get('/samples/', { params: { limit: 1 } }),
-      api.get('/buyers/', { params: { limit: 1 } }),
-      api.get('/buyer-masters/', { params: { limit: 1 } }),
-      api.get('/supplier-pos/'),
-      api.get('/stock/'),
-      api.get('/buyer-pis/'),
-    ]).then(([samplesRes, buyersRes, bmRes, posRes, stockRes, pisRes]) => {
-      let sampleCount = samplesRes.status === 'fulfilled' ? (samplesRes.value.data.count ?? (samplesRes.value.data.length || 0)) : 0;
-      let buyerCount = buyersRes.status === 'fulfilled' ? (buyersRes.value.data.count ?? (buyersRes.value.data.length || 0)) : 0;
-      let bmCount = bmRes.status === 'fulfilled' ? (bmRes.value.data.count ?? (bmRes.value.data.length || 0)) : 0;
-      
-      let poData = posRes.status === 'fulfilled' ? (posRes.value.data.results || posRes.value.data || []) : [];
-      let stockData = stockRes.status === 'fulfilled' ? (stockRes.value.data.results || stockRes.value.data || []) : [];
-      let piData = pisRes.status === 'fulfilled' ? (pisRes.value.data.results || pisRes.value.data || []) : [];
+    api.get('/dashboard/stats/')
+      .then((res) => {
+        const d = res.data;
+        if (d) {
+          setStats({
+            totalSamples: d.totalSamples || 0,
+            totalBuyers: d.totalBuyers || 0,
+            totalBuyerMasters: d.totalBuyerMasters || 0,
+            totalPOs: d.totalPOs || 0,
+            totalPIs: d.totalPIs || 0,
+            totalStockItems: d.totalStockItems || 0,
+            pendingQcCount: d.pendingQcCount || 0,
+            totalRevenueUSD: d.totalRevenueUSD || 0,
+            recentPOs: d.recentPOs || [],
+            recentPIs: d.recentPIs || [],
+          });
 
-      let totalUSD = piData.reduce((sum, item) => {
-        let val = parseFloat(item.total_usd || item.total_amount || 0);
-        if (!val && item.items && Array.isArray(item.items)) {
-          val = item.items.reduce((iSum, sub) => iSum + parseFloat(sub.total_amount || 0), 0);
-        }
-        return sum + val;
-      }, 0);
-
-      let pendingQC = poData.filter(p => p.status === 'Pending').length;
-
-      // Dynamically calculate monthly revenue from PIs if present
-      if (piData.length > 0) {
-        const monthMap = {};
-        piData.forEach(item => {
-          const dt = new Date(item.created_at || item.issue_date || item.date || Date.now());
-          const monthStr = dt.toLocaleString('en-US', { month: 'short' });
-          let val = parseFloat(item.total_usd || item.total_amount || 0);
-          if (!val && item.items && Array.isArray(item.items)) {
-            val = item.items.reduce((iSum, sub) => iSum + parseFloat(sub.total_amount || 0), 0);
+          if (d.revenueDatasets) {
+            setRevenueDatasets(d.revenueDatasets);
           }
-          monthMap[monthStr] = (monthMap[monthStr] || 0) + val;
-        });
 
-        const monthsOrder = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
-        const dynamicMonthly = monthsOrder.map((m) => {
-          const rev = monthMap[m] !== undefined ? monthMap[m] : 0;
-          return { month: m, revenue: rev, orders: Math.max(0, Math.round(rev / 1500)) };
-        });
-        setMonthlyRevenueData(dynamicMonthly);
-      }
-
-      // Dynamically calculate pipeline stats
-      const completedPOs = poData.filter(p => p.status === 'Completed' || p.status === 'Verified' || p.status === 'Received').length;
-      const totalPOCount = Math.max(1, poData.length);
-      const gateRate = Math.min(100, Math.round(((totalPOCount - pendingQC) / totalPOCount) * 100));
-      const sandingRate = Math.min(100, Math.round(gateRate * 0.85));
-      const polishRate = Math.min(100, Math.round(sandingRate * 0.88));
-      const packRate = Math.min(100, Math.round((stockData.length / Math.max(1, sampleCount)) * 90));
-
-      setPipelineMetrics({
-        gateEntry: gateRate,
-        sanding: sandingRate,
-        polishing: polishRate,
-        packaging: packRate,
-        passRate: parseFloat((95 + (completedPOs / totalPOCount) * 4).toFixed(1))
-      });
-
-      setStats({
-        totalSamples: sampleCount,
-        totalBuyers: buyerCount,
-        totalBuyerMasters: bmCount,
-        totalPOs: poData.length,
-        totalPIs: piData.length,
-        totalStockItems: stockData.length,
-        pendingQcCount: pendingQC,
-        totalRevenueUSD: totalUSD,
-        recentPOs: poData.slice(0, 5),
-        recentPIs: piData.slice(0, 5),
-      });
-    }).finally(() => setLoading(false));
+          if (d.pipelineMetrics) {
+            setPipelineMetrics(d.pipelineMetrics);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading dashboard stats:', err);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
 

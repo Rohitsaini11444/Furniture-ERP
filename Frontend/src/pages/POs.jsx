@@ -161,6 +161,24 @@ function POForm({ poId, onBack, onSaved }) {
   const [suppliers, setSuppliers] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [buyerPIs, setBuyerPIs] = useState([]);
+  const [supervisors, setSupervisors] = useState([]);
+
+  // Load reference data
+  useEffect(() => {
+    Promise.all([
+      api.get('/suppliers/'),
+      api.get('/buyers/'),
+      api.get('/buyer-pis/'),
+      api.get('/users/supervisors/'),
+    ]).then(([s, b, p, u]) => {
+      setSuppliers(s.data.results || s.data);
+      setBuyers(b.data.results || b.data);
+      setBuyerPIs(p.data.results || p.data);
+      setSupervisors(u.data.results || u.data || []);
+    }).catch(err => {
+      console.error('Error loading reference data:', err);
+    });
+  }, []);
 
   const [header, setHeader] = useState({
     po_number: '',
@@ -451,8 +469,32 @@ function POForm({ poId, onBack, onSaved }) {
               </div>
               <div className="form-group">
                 <label className="form-label">Supervisor</label>
-                <input type="text" className="form-input" placeholder="Supervisor name"
-                  value={header.supervisor} onChange={e => updateHeader('supervisor', e.target.value)} />
+                <CustomSelect
+                  value={header.supervisor}
+                  onChange={val => {
+                    const selectedVal = val?.target ? val.target.value : val;
+                    updateHeader('supervisor', selectedVal);
+                  }}
+                  placeholder="-- Select Supervisor --"
+                  options={[
+                    { value: '', label: '-- Select Supervisor --' },
+                    ...supervisors.map(sup => {
+                      const nameStr = sup.full_name || (sup.first_name || sup.last_name ? `${sup.first_name || ''} ${sup.last_name || ''}`.trim() : sup.username);
+                      const batchStr = sup.batch_category ? sup.batch_category.charAt(0).toUpperCase() + sup.batch_category.slice(1) : '';
+                      const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
+                      return {
+                        value: displayLabel,
+                        label: displayLabel,
+                      };
+                    }),
+                    ...(header.supervisor && !supervisors.some(s => {
+                      const nameStr = s.full_name || (s.first_name || s.last_name ? `${s.first_name || ''} ${s.last_name || ''}`.trim() : s.username);
+                      const batchStr = s.batch_category ? s.batch_category.charAt(0).toUpperCase() + s.batch_category.slice(1) : '';
+                      const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
+                      return displayLabel === header.supervisor || nameStr === header.supervisor;
+                    }) ? [{ value: header.supervisor, label: header.supervisor }] : [])
+                  ]}
+                />
               </div>
               <div className="form-group full-width">
                 <label className="form-label">Terms of Delivery</label>

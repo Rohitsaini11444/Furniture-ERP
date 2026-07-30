@@ -9,6 +9,8 @@ import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
 import QRScannerModal from '../components/QRScannerModal';
+import DebitNotePrintout from '../components/DebitNotePrintout';
+
 
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
@@ -287,9 +289,8 @@ function RejectItemModal({ item, remaining, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (savedImages.length === 0 && !imageLoaded) return alert("Please upload and annotate at least one image.");
     
-    if (imageLoaded) {
+    if (imageLoaded && canvasRef.current) {
       canvasRef.current.toBlob(blob => {
         processSubmit([...savedImages, blob]);
       }, 'image/png');
@@ -319,7 +320,7 @@ function RejectItemModal({ item, remaining, onClose, onSaved }) {
             </div>
             
             <div className="form-group">
-              <label className="form-label">Defect Images ({savedImages.length} saved)</label>
+              <label className="form-label">Defect Images (Optional, {savedImages.length} saved)</label>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
                 <input type="file" accept="image/*" onChange={handleImageUpload} />
                 {imageLoaded && (
@@ -413,6 +414,7 @@ function QCForm({ poId, onBack }) {
   const [rejectItemData, setRejectItemData] = useState(null);
   const [passItemData, setPassItemData] = useState(null);
   const [expandedLogs, setExpandedLogs] = useState({});
+  const [selectedDebitNote, setSelectedDebitNote] = useState(null);
 
   const toggleLogs = (itemId) => setExpandedLogs(prev => ({ ...prev, [itemId]: !prev[itemId] }));
 
@@ -430,6 +432,11 @@ function QCForm({ poId, onBack }) {
 
   return (
     <div className="new-page-form" style={{ padding: '1rem 0' }}>
+      <DebitNotePrintout
+        debitNote={selectedDebitNote}
+        onClose={() => setSelectedDebitNote(null)}
+      />
+
       {rejectItemData && (
         <RejectItemModal 
           item={rejectItemData.item}
@@ -481,10 +488,11 @@ function QCForm({ poId, onBack }) {
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>#</th>
-                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Description</th>
+                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Description of Goods</th>
                   <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ordered Qty</th>
                   <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Passed Qty</th>
                   <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rejected Qty</th>
+                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: '#b45309' }}>Outstanding Balance Qty</th>
                   <th style={{ padding: '10px', textAlign: 'right', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Actions</th>
                 </tr>
               </thead>
@@ -493,42 +501,70 @@ function QCForm({ poId, onBack }) {
                   const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
                   const passedTotal = parseFloat(item.passed_quantity || 0);
                   const ordered = parseFloat(item.quantity || 0);
-                  const remaining = ordered - passedTotal - rejectedTotal;
+                  const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
 
                   return (
                     <React.Fragment key={item.id}>
                       <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '12px 10px', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
                         <td style={{ padding: '12px 10px' }}>
-                          {item.description}
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit}</div>
+                          <strong style={{ color: '#0f172a' }}>{item.description}</strong>
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600 }}>{item.quantity} {item.unit}</td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#16a34a' }}>
-                          {passedTotal}
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700 }}>{item.quantity} {item.unit}</td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700, color: '#16a34a' }}>
+                          {passedTotal} {item.unit}
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>
-                          {rejectedTotal}
-                          {item.defects?.length > 0 && (
-                            <div 
-                              style={{ fontSize: '0.75rem', color: '#ef4444', textDecoration: 'underline', cursor: 'pointer', marginTop: '4px' }}
-                              onClick={() => toggleLogs(item.id)}
-                            >
-                              View {item.defects.length} log(s)
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
+                          {rejectedTotal} {item.unit}
+                          {rejectedTotal > 0 && (
+                            <div style={{ marginTop: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDebitNote({
+                                  vch_type: 'Debit Note',
+                                  vch_no: `DN/26-27/01${idx + 14}`,
+                                  vch_date: new Date().toISOString().split('T')[0],
+                                  original_inv_no: po.po_number,
+                                  original_inv_date: po.po_date,
+                                  supplier_name_str: po.supplier_detail?.name || 'Supplier',
+                                  supplier_gstin_str: po.supplier_detail?.gstin || '08DNKPK3004E1ZB',
+                                  item_description: `${item.description} — Rejected Returns`,
+                                  rejected_qty: rejectedTotal,
+                                  unit: item.unit || 'No.',
+                                  rate: parseFloat(item.rate || 1200),
+                                  subtotal_amount: rejectedTotal * parseFloat(item.rate || 1200),
+                                  company_pan: 'ABXPS4077R'
+                                })}
+                                style={{
+                                  backgroundColor: '#fee2e2',
+                                  border: '1px solid #fca5a5',
+                                  color: '#dc2626',
+                                  borderRadius: '4px',
+                                  padding: '2px 6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                📄 Tally Debit Note PDF
+                              </button>
                             </div>
                           )}
+                        </td>
+                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 800, color: remaining > 0 ? '#d97706' : '#16a34a' }}>
+                          {remaining} {item.unit}
                         </td>
                         <td style={{ padding: '12px 10px', textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                             <button type="button" onClick={() => setPassItemData({ item, remaining })}
                               disabled={remaining <= 0}
                               style={{ background: remaining > 0 ? '#dcfce7' : '#f1f5f9', border: remaining > 0 ? '1px solid #86efac' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#16a34a' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                              Pass
+                              Pass Lot
                             </button>
                             <button type="button" onClick={() => setRejectItemData({ item, remaining })}
                               disabled={remaining <= 0}
                               style={{ background: remaining > 0 ? '#fee2e2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fca5a5' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                              Reject
+                              Reject Lot
                             </button>
                           </div>
                         </td>

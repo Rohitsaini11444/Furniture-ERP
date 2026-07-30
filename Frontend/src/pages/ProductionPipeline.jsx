@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import CustomSelect from '../components/CustomSelect';
@@ -20,7 +21,10 @@ import {
   ArrowRight,
   X,
   Layers,
-  FileText
+  FileText,
+  Factory,
+  ArrowRightLeft,
+  Building2
 } from 'lucide-react';
 
 const STAGE_CONFIG = {
@@ -30,6 +34,7 @@ const STAGE_CONFIG = {
 };
 
 export default function ProductionPipeline() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('stock'); // 'stock' | 'sanding' | 'polishing' | 'packaging' | 'qc'
   
@@ -37,6 +42,8 @@ export default function ProductionPipeline() {
   const [stockItems, setStockItems] = useState([]);
   const [productionJobs, setProductionJobs] = useState([]);
   const [contractors, setContractors] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [selectedUnitId, setSelectedUnitId] = useState('all');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [stockTypeFilter, setStockTypeFilter] = useState('raw'); // 'raw' | 'sanded' | 'polished' | 'packaged'
@@ -67,14 +74,17 @@ export default function ProductionPipeline() {
     Promise.all([
       api.get('/stock/', { params: { nopage: true } }),
       api.get('/production-jobs/', { params: { nopage: true } }),
-      isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] })
-    ]).then(([stockRes, jobsRes, contractorRes]) => {
+      isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] }),
+      api.get('/production-units/')
+    ]).then(([stockRes, jobsRes, contractorRes, unitRes]) => {
       const sData = stockRes.data.results || stockRes.data || [];
       const jData = jobsRes.data.results || jobsRes.data || [];
       const cData = contractorRes.data.results || contractorRes.data || [];
+      const uData = unitRes.data.results || unitRes.data || [];
       setStockItems(sData);
       setProductionJobs(jData);
       setContractors(cData);
+      setUnits(uData);
     }).catch(err => console.error(err))
       .finally(() => setLoading(false));
   };
@@ -83,11 +93,20 @@ export default function ProductionPipeline() {
     fetchData();
   }, [user]);
 
-  // Calculations for stats summary
-  const rawStockTotal = stockItems.filter(s => s.stock_type === 'raw').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const sandedStockTotal = stockItems.filter(s => s.stock_type === 'sanded').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const polishedStockTotal = stockItems.filter(s => s.stock_type === 'polished').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const packagedStockTotal = stockItems.filter(s => s.stock_type === 'packaged').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  // Unit-filtered items
+  const unitFilteredStock = selectedUnitId === 'all'
+    ? stockItems
+    : stockItems.filter(s => s.production_unit === selectedUnitId);
+
+  const unitFilteredJobs = selectedUnitId === 'all'
+    ? productionJobs
+    : productionJobs.filter(j => j.production_unit === selectedUnitId);
+
+  // Calculations for stats summary based on selected unit
+  const rawStockTotal = unitFilteredStock.filter(s => s.stock_type === 'raw').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const sandedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'sanded').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const polishedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'polished').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const packagedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'packaged').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
 
   // Handlers
   const handleOpenAssignModal = (stage = 'sanding', defaultStock = null) => {
@@ -179,22 +198,22 @@ export default function ProductionPipeline() {
   };
 
   // Filtered views
-  const filteredStock = stockItems.filter(s => {
+  const filteredStock = unitFilteredStock.filter(s => {
     const matchesType = s.stock_type === stockTypeFilter;
     const matchesSearch = !searchTerm || s.style_no?.toLowerCase().includes(searchTerm.toLowerCase()) || s.item_name?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesType && matchesSearch;
   });
 
   const getJobsByStage = (stageName) => {
-    return productionJobs.filter(j => j.stage === stageName && (!searchTerm || j.style_no?.toLowerCase().includes(searchTerm.toLowerCase()) || j.item_name?.toLowerCase().includes(searchTerm.toLowerCase())));
+    return unitFilteredJobs.filter(j => j.stage === stageName && (!searchTerm || j.style_no?.toLowerCase().includes(searchTerm.toLowerCase()) || j.item_name?.toLowerCase().includes(searchTerm.toLowerCase())));
   };
 
-  const qcPendingJobs = productionJobs.filter(j => j.status === 'qc_requested');
-  const reworkJobs = productionJobs.filter(j => j.rejected_qty > 0 && j.status !== 'qc_completed');
+  const qcPendingJobs = unitFilteredJobs.filter(j => j.status === 'qc_requested');
+  const reworkJobs = unitFilteredJobs.filter(j => j.rejected_qty > 0 && j.status !== 'qc_completed');
 
   return (
     <div className="page-container" style={{ padding: '1.5rem' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: '700', color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <Boxes color="#16a34a" size={28} /> Production & Quality Control Pipeline
@@ -203,7 +222,10 @@ export default function ProductionPipeline() {
             Multi-stage manufacturing tracking: Raw Stock → Sanding → Sanded Stock → Polishing → Polished Stock → Packaging → Finished Goods.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button onClick={() => navigate('/units')} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#e0f2fe', color: '#0284c7', borderColor: '#bae6fd', fontWeight: 700 }}>
+            <Factory size={16} /> Manage 6 Factory Units
+          </button>
           <button onClick={fetchData} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <RefreshCw size={16} /> Refresh Data
           </button>
@@ -215,50 +237,139 @@ export default function ProductionPipeline() {
         </div>
       </div>
 
+      {/* ── Production Unit Selector Bar (6 Factory Units) ── */}
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '0.85rem 1.25rem', border: '1.5px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflowX: 'auto', paddingBottom: '4px' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap', marginRight: '0.5rem' }}>
+            <Building2 size={16} color="#0284c7" /> Factory Unit:
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setSelectedUnitId('all')}
+            style={{
+              padding: '0.45rem 0.9rem',
+              borderRadius: '10px',
+              border: selectedUnitId === 'all' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+              backgroundColor: selectedUnitId === 'all' ? '#e0f2fe' : '#ffffff',
+              color: selectedUnitId === 'all' ? '#0284c7' : '#475569',
+              fontWeight: selectedUnitId === 'all' ? 800 : 600,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            All Units ({stockItems.length} Items)
+          </button>
+
+          {units.map((u) => {
+            const isSel = selectedUnitId === u.id;
+            const uStockCount = stockItems.filter(s => s.production_unit === u.id).length;
+
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setSelectedUnitId(u.id)}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  borderRadius: '10px',
+                  border: isSel ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                  backgroundColor: isSel ? '#e0f2fe' : '#ffffff',
+                  color: isSel ? '#0284c7' : '#475569',
+                  fontWeight: isSel ? 800 : 600,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {u.name} ({uStockCount})
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => navigate('/units')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#0284c7', fontWeight: 800, fontSize: '0.82rem', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          ⚡ Re-allocate Unit Workload →
+        </button>
+      </div>
+
       {/* ── Summary Stats Grid ── */}
       <div className="pipeline-stats-grid">
-        <div className="pipeline-stat-card" style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div
+          className="pipeline-stat-card"
+          onClick={() => navigate('/stock/details/raw')}
+          style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #0284c7', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: '600' }}>Raw Stock</span>
-            <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 1</span>
+            <span style={{ color: '#0284c7', fontSize: '0.85rem', fontWeight: '700' }}>Raw Stock Details</span>
+            <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 1</span>
           </div>
           <div className="pipeline-stat-val" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem' }}>
             {rawStockTotal.toLocaleString()} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>pcs</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>Passed Gate Receiving</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Gate Receiving</span>
+            <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700 }}>Open Page →</span>
+          </div>
         </div>
 
-        <div className="pipeline-stat-card" style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div
+          className="pipeline-stat-card"
+          onClick={() => navigate('/stock/details/sanded')}
+          style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #d97706', boxShadow: '0 2px 8px rgba(217, 119, 6, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#3b82f6', fontSize: '0.85rem', fontWeight: '600' }}>Sanded Stock</span>
-            <span style={{ background: '#eff6ff', color: '#2563eb', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 2</span>
+            <span style={{ color: '#d97706', fontSize: '0.85rem', fontWeight: '700' }}>Sanded Stock Details</span>
+            <span style={{ background: '#fef3c7', color: '#b45309', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 2</span>
           </div>
           <div className="pipeline-stat-val" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#1d4ed8', marginTop: '0.4rem' }}>
             {sandedStockTotal.toLocaleString()} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>pcs</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>Passed Sanding QC</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Sanding QC</span>
+            <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>Open Page →</span>
+          </div>
         </div>
 
-        <div className="pipeline-stat-card" style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div
+          className="pipeline-stat-card"
+          onClick={() => navigate('/stock/details/polished')}
+          style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #7c3aed', boxShadow: '0 2px 8px rgba(124, 58, 237, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#9333ea', fontSize: '0.85rem', fontWeight: '600' }}>Polished Stock</span>
-            <span style={{ background: '#faf5ff', color: '#7e22ce', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 3</span>
+            <span style={{ color: '#7c3aed', fontSize: '0.85rem', fontWeight: '700' }}>Polished Stock Details</span>
+            <span style={{ background: '#f3e8ff', color: '#7e22ce', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Stage 3</span>
           </div>
           <div className="pipeline-stat-val" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#6b21a8', marginTop: '0.4rem' }}>
             {polishedStockTotal.toLocaleString()} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>pcs</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>Passed Polishing QC</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Polishing QC</span>
+            <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>Open Page →</span>
+          </div>
         </div>
 
-        <div className="pipeline-stat-card" style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div
+          className="pipeline-stat-card"
+          onClick={() => navigate('/stock/details/packaged')}
+          style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #059669', boxShadow: '0 2px 8px rgba(5, 150, 105, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#16a34a', fontSize: '0.85rem', fontWeight: '600' }}>Finished Goods</span>
-            <span style={{ background: '#f0fdf4', color: '#15803d', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Packaged</span>
+            <span style={{ color: '#059669', fontSize: '0.85rem', fontWeight: '700' }}>Finished Goods Details</span>
+            <span style={{ background: '#d1fae5', color: '#15803d', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700' }}>Packaged</span>
           </div>
           <div className="pipeline-stat-val" style={{ fontSize: '1.8rem', fontWeight: '800', color: '#15803d', marginTop: '0.4rem' }}>
             {packagedStockTotal.toLocaleString()} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>pcs</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>Ready for Shipment</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Ready for Shipment</span>
+            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Open Page →</span>
+          </div>
         </div>
       </div>
 
