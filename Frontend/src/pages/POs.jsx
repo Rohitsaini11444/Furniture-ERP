@@ -14,6 +14,7 @@ import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
 import { CustomDatePicker } from '../components/CustomDatePicker';
 import CustomSelect from '../components/CustomSelect';
 import GateEntry from './GateEntry';
+import VendorManagement from './VendorManagement';
 
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
@@ -345,6 +346,7 @@ function POForm({ poId, onBack, onSaved }) {
     setSaving(true);
     const payload = {
       ...header,
+      supervisor: header.supervisor || null,
       items: items.map(it => ({
         ...(it.id ? { id: it.id } : {}),
         buyer: it.buyer || null,
@@ -483,16 +485,10 @@ function POForm({ poId, onBack, onSaved }) {
                       const batchStr = sup.batch_category ? sup.batch_category.charAt(0).toUpperCase() + sup.batch_category.slice(1) : '';
                       const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
                       return {
-                        value: displayLabel,
+                        value: sup.id,
                         label: displayLabel,
                       };
-                    }),
-                    ...(header.supervisor && !supervisors.some(s => {
-                      const nameStr = s.full_name || (s.first_name || s.last_name ? `${s.first_name || ''} ${s.last_name || ''}`.trim() : s.username);
-                      const batchStr = s.batch_category ? s.batch_category.charAt(0).toUpperCase() + s.batch_category.slice(1) : '';
-                      const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
-                      return displayLabel === header.supervisor || nameStr === header.supervisor;
-                    }) ? [{ value: header.supervisor, label: header.supervisor }] : [])
+                    })
                   ]}
                 />
               </div>
@@ -516,7 +512,7 @@ function POForm({ poId, onBack, onSaved }) {
 
           {/* ── Supplier ── */}
           <div className="form-section">
-            <h3 className="form-section-title">🏢 Supplier (Bill From)</h3>
+            <h3 className="form-section-title">Supplier (Bill From)</h3>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
               <div className="form-group" style={{ flex: 1, margin: 0 }}>
                 <label className="form-label">Supplier *</label>
@@ -532,7 +528,7 @@ function POForm({ poId, onBack, onSaved }) {
                   onAddNew={() => setShowSupplierModal(true)}
                   addNewText="Add New Supplier"
                   footerIcon={Building2}
-                  footerText={(count) => `🏢 ${count} supplier${count !== 1 ? 's' : ''} found`}
+                  footerText={(count) => ` ${count} supplier${count !== 1 ? 's' : ''} found`}
                 />
               </div>
               <button type="button" className="btn-secondary" onClick={() => setShowSupplierModal(true)}
@@ -685,7 +681,7 @@ function POForm({ poId, onBack, onSaved }) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: isLoss ? '#991b1b' : '#166534', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AlertCircle size={20} color={isLoss ? '#dc2626' : '#16a34a'} style={{ flexShrink: 0 }} />
-                    <span>{isLoss ? '⚠️ Trade Loss Alert: Supplier Cost Exceeds Buyer Revenue!' : '🟢 Profitable Purchase Order'}</span>
+                    <span>{isLoss ? '⚠️ Trade Loss Alert: Supplier Cost Exceeds Buyer Revenue!' : ' Profitable Purchase Order'}</span>
                   </div>
                   <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isLoss ? '#b91c1c' : '#15803d', background: isLoss ? '#fee2e2' : '#dcfce7', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
                     Reference Exchange Rate: 1 USD = ₹{EXCHANGE_RATE_INR} INR
@@ -794,7 +790,7 @@ function POs() {
           supplier: poItem.supplier || poItem.supplier_detail?.id,
           mode_of_payment: poItem.mode_of_payment || '',
           terms_of_delivery: poItem.terms_of_delivery || '',
-          supervisor: poItem.supervisor || '',
+          supervisor: poItem.supervisor || poItem.supervisor_detail?.id || null,
           nku_refs: poItem.nku_refs || '',
           remarks: poItem.remarks || '',
           status: 'Cancelled'
@@ -873,13 +869,28 @@ function POs() {
 
   return (
     <div>
-      {/* ── Module Tabs (PO Listing & Gate Entry) ── */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid #e2e8f0',
-        marginBottom: '1.5rem',
-        gap: '2rem'
-      }}>
+      <style>{`
+        .po-tabs-nav-bar {
+          display: flex;
+          border-bottom: 1px solid #e2e8f0;
+          margin-bottom: 1.5rem;
+          gap: 1.25rem;
+          overflow-x: auto;
+          white-space: nowrap;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .po-tabs-nav-bar::-webkit-scrollbar {
+          display: none;
+        }
+        .po-tabs-nav-bar button {
+          flex-shrink: 0;
+          white-space: nowrap;
+        }
+      `}</style>
+
+      {/* ── Module Tabs (PO Listing & Gate Entry & Vendor Management) ── */}
+      <div className="po-tabs-nav-bar">
         <button
           onClick={() => { setActiveTab('pos'); setSearchParams({}); }}
           style={{
@@ -890,7 +901,7 @@ function POs() {
             fontWeight: activeTab === 'pos' ? 600 : 500,
             padding: '0.75rem 0.5rem',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem'
@@ -909,7 +920,7 @@ function POs() {
             fontWeight: activeTab === 'gate-entry' ? 600 : 500,
             padding: '0.75rem 0.5rem',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: '0.95rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem'
@@ -917,9 +928,30 @@ function POs() {
         >
           <ClipboardCheck size={18} /> Gate Entry & Material Receiving
         </button>
+
+        <button
+          onClick={() => { setActiveTab('vendor-management'); setSearchParams({ tab: 'vendor-management' }); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'vendor-management' ? '3px solid #dc2626' : '3px solid transparent',
+            color: activeTab === 'vendor-management' ? '#dc2626' : 'var(--text-muted)',
+            fontWeight: activeTab === 'vendor-management' ? 600 : 500,
+            padding: '0.75rem 0.5rem',
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}
+        >
+          <TruckIcon size={18} /> Vendor / Supplier Management
+        </button>
       </div>
 
-      {activeTab === 'gate-entry' ? (
+      {activeTab === 'vendor-management' ? (
+        <VendorManagement />
+      ) : activeTab === 'gate-entry' ? (
         <GateEntry />
       ) : (
         <>
@@ -1052,9 +1084,10 @@ function POs() {
                 <tr>
                   <th>PO Number</th>
                   <th>Supplier</th>
+                  <th>Supervisor</th>
                   <th>PO Date</th>
                   <th>Due Date</th>
-                  <th>Items</th>
+                  <th>Items & Ordered Qty</th>
                   <th>Total Amount</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -1062,10 +1095,10 @@ function POs() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={6} cols={8} hasImage={false} />
+                  <TableSkeleton rows={6} cols={9} hasImage={false} />
                 ) : filteredPOs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                       <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
                       <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
                       <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
@@ -1095,11 +1128,16 @@ function POs() {
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.supplier_detail.state_name}</div>
                       )}
                     </td>
+                    <td>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
+                        {p.supervisor_detail?.full_name || p.supervisor_detail?.username || p.supervisor || '—'}
+                      </span>
+                    </td>
                     <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
                     <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
                     <td>
-                      <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '2px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
-                        {(p.items || []).length} item{(p.items || []).length !== 1 ? 's' : ''}
+                      <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '3px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
+                        {(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} pcs)
                       </span>
                     </td>
                     <td style={{ fontWeight: 700, color: '#8b5a2b' }}>{fmtINR(p.total_amount)}</td>

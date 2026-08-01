@@ -4,7 +4,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
-    Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
+    Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect, POExtensionLog,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
@@ -433,40 +433,130 @@ class SupplierDropdownSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = ['id', 'name', 'state_name']
 
+class POExtensionLogSerializer(serializers.ModelSerializer):
+    extended_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = POExtensionLog
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at']
+
+    def get_extended_by_name(self, obj):
+        if obj.extended_by:
+            return obj.extended_by.get_full_name() or obj.extended_by.username
+        return 'System'
+
+
+def get_po_metrics(obj):
+    from datetime import date
+    from decimal import Decimal
+
+    total_ordered = sum((it.quantity or Decimal('0')) for it in obj.items.all())
+    total_received = sum((it.passed_quantity or Decimal('0')) for it in obj.items.all())
+
+    today = date.today()
+    days_remaining = None
+    if obj.due_date:
+        days_remaining = (obj.due_date - today).days
+
+    if obj.status == 'Received' or (total_ordered > 0 and total_received >= total_ordered):
+        color_status = 'green'
+    elif days_remaining is not None and days_remaining <= 15:
+        color_status = 'red'
+    else:
+        color_status = 'yellow'
+
+    return {
+        'total_ordered_qty': float(total_ordered),
+        'total_received_qty': float(total_received),
+        'days_remaining': days_remaining,
+        'color_status': color_status,
+    }
+
+
 class SupplierPOItemMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplierPOItem
-        fields = ['id']
+        fields = ['id', 'description', 'quantity', 'passed_quantity', 'unit', 'rate', 'amount']
+
 
 class SupplierPOListSerializer(serializers.ModelSerializer):
     items = SupplierPOItemMinimalSerializer(many=True, read_only=True)
     supplier_detail = SupplierDropdownSerializer(source='supplier', read_only=True)
+    supervisor_detail = UserMinimalSerializer(source='supervisor', read_only=True)
     total_amount = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+    color_status = serializers.SerializerMethodField()
+    total_ordered_qty = serializers.SerializerMethodField()
+    total_received_qty = serializers.SerializerMethodField()
+    extension_logs = POExtensionLogSerializer(many=True, read_only=True)
 
     class Meta:
         model = SupplierPO
         fields = [
-            'id', 'po_number', 'po_date', 'due_date', 
-            'supplier', 'supplier_detail', 'total_amount', 'status', 'items'
+            'id', 'po_number', 'po_date', 'due_date', 'original_due_date',
+            'supplier', 'supplier_detail', 'supervisor', 'supervisor_detail',
+            'total_amount', 'status', 'items',
+            'days_remaining', 'color_status', 'total_ordered_qty', 'total_received_qty',
+            'extension_logs', 'created_at'
         ]
 
     def get_total_amount(self, obj):
         from decimal import Decimal
         return sum(item.amount or Decimal('0') for item in obj.items.all())
 
+    def get_days_remaining(self, obj):
+        return get_po_metrics(obj)['days_remaining']
+
+    def get_color_status(self, obj):
+        return get_po_metrics(obj)['color_status']
+
+    def get_total_ordered_qty(self, obj):
+        return get_po_metrics(obj)['total_ordered_qty']
+
+    def get_total_received_qty(self, obj):
+        return get_po_metrics(obj)['total_received_qty']
+
+
 class SupplierPOSerializer(serializers.ModelSerializer):
     items = SupplierPOItemSerializer(many=True, required=False)
     supplier_detail = SupplierSerializer(source='supplier', read_only=True)
+    supervisor_detail = UserMinimalSerializer(source='supervisor', read_only=True)
     total_amount = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+    color_status = serializers.SerializerMethodField()
+    total_ordered_qty = serializers.SerializerMethodField()
+    total_received_qty = serializers.SerializerMethodField()
+    extension_logs = POExtensionLogSerializer(many=True, read_only=True)
 
     class Meta:
         model = SupplierPO
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            if data.get('supervisor') == '' or data.get('supervisor') == 'null':
+                data['supervisor'] = None
+        return super().to_internal_value(data)
+
     def get_total_amount(self, obj):
         from decimal import Decimal
         return sum(item.amount or Decimal('0') for item in obj.items.all())
+
+    def get_days_remaining(self, obj):
+        return get_po_metrics(obj)['days_remaining']
+
+    def get_color_status(self, obj):
+        return get_po_metrics(obj)['color_status']
+
+    def get_total_ordered_qty(self, obj):
+        return get_po_metrics(obj)['total_ordered_qty']
+
+    def get_total_received_qty(self, obj):
+        return get_po_metrics(obj)['total_received_qty']
+
 
     def validate(self, attrs):
         items_data = attrs.get('items', [])

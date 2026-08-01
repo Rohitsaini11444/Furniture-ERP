@@ -20,7 +20,7 @@ const BATCH_LABELS = {
 
 const EMPTY_FORM = {
   username: '', first_name: '', last_name: '', email: '', phone: '',
-  role: 'contractor', batch_category: '', supervisor: '', password: '', is_active: true,
+  role: 'supervisor', batch_category: '', supervisor: '', password: '', is_active: true,
 };
 
 function UserManagement() {

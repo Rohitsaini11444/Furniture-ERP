@@ -67,7 +67,7 @@ export default function ProductionPipeline() {
   });
 
   const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
-  const isContractor = user?.role === 'contractor';
+  const isContractor = false;
 
   const fetchData = () => {
     setLoading(true);
@@ -231,7 +231,7 @@ export default function ProductionPipeline() {
           </button>
           {isSupervisor && (
             <button onClick={() => handleOpenAssignModal('sanding')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Plus size={18} /> Assign Contractor Job
+              <Plus size={18} /> Start Stage Batch Job
             </button>
           )}
         </div>

@@ -327,6 +327,7 @@ class SupplierPO(models.Model):
     po_number = models.CharField(max_length=100, unique=True, verbose_name='PO Number')
     po_date = models.DateField(verbose_name='PO Date')
     due_date = models.DateField(null=True, blank=True, verbose_name='PO Due Date')
+    original_due_date = models.DateField(null=True, blank=True, verbose_name='Original PO Due Date')
     production_unit = models.ForeignKey(
         ProductionUnit,
         on_delete=models.SET_NULL,
@@ -343,7 +344,15 @@ class SupplierPO(models.Model):
     )
     mode_of_payment = models.CharField(max_length=150, blank=True, null=True, verbose_name='Mode of Payment')
     terms_of_delivery = models.TextField(blank=True, null=True, verbose_name='Terms of Delivery')
-    supervisor = models.CharField(max_length=100, blank=True, null=True, verbose_name='Supervisor')
+    supervisor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_supplier_pos',
+        limit_choices_to={'role': RoleChoices.SUPERVISOR},
+        verbose_name='Assigned Supervisor'
+    )
     nku_refs = models.CharField(max_length=300, blank=True, null=True, verbose_name='NKU Reference Numbers')
     remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
     status = models.CharField(
@@ -358,12 +367,50 @@ class SupplierPO(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if not self.original_due_date and self.due_date:
+            self.original_due_date = self.due_date
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.po_number} → {self.supplier.name}"
 
     @property
     def total_amount(self):
         return sum(item.amount or Decimal('0') for item in self.items.all())
+
+
+class POExtensionLog(models.Model):
+    """
+    Audit log of date extension requests granted for a Supplier PO.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplier_po = models.ForeignKey(
+        SupplierPO,
+        on_delete=models.CASCADE,
+        related_name='extension_logs',
+        verbose_name='Supplier PO'
+    )
+    extended_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name='Extended By'
+    )
+    days_added = models.IntegerField(default=5, verbose_name='Days Added')
+    previous_due_date = models.DateField(null=True, blank=True, verbose_name='Previous Due Date')
+    new_due_date = models.DateField(verbose_name='New Due Date')
+    reason = models.TextField(blank=True, null=True, verbose_name='Call Notes / Extension Reason')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'PO Extension Log'
+        verbose_name_plural = 'PO Extension Logs'
+
+    def __str__(self):
+        return f"{self.supplier_po.po_number} extended by +{self.days_added} days on {self.created_at.strftime('%Y-%m-%d')}"
 
 
 class SupplierPOItem(models.Model):
@@ -722,7 +769,7 @@ class ProductionJob(models.Model):
     
     style_no = models.CharField(max_length=100, verbose_name='Style No.')
     item_name = models.CharField(max_length=255, verbose_name='Item / Product Name')
-    contractor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='production_jobs', limit_choices_to={'role': RoleChoices.CONTRACTOR})
+    contractor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='production_jobs', limit_choices_to={'role': RoleChoices.CONTRACTOR})
     assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_production_jobs')
     
     assigned_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Assigned Quantity')

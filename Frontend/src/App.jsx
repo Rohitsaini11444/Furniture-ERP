@@ -23,6 +23,7 @@ import StockDetails   from './pages/StockDetails';
 import UnitManagement from './pages/UnitManagement';
 import Tools          from './pages/Tools';
 import NotificationsPage from './pages/NotificationsPage';
+import VendorManagement from './pages/VendorManagement';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
 
@@ -1355,6 +1356,8 @@ function AppLayout() {
             <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
             <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+            <Route path="/vendor-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
+            <Route path="/vendor-management/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
             
             {/* Gate Entry & Stock */}
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />

@@ -713,7 +713,7 @@ export default function GateEntry() {
   };
 
   if (id) {
-    return <QCForm poId={id} onBack={() => { navigate('/gate-entry'); fetchPOs(); }} />;
+    return <QCForm poId={id} onBack={() => { navigate('/pos?tab=gate-entry'); fetchPOs(); }} />;
   }
 
   const filteredPOs = pos.filter(p => {
@@ -976,8 +976,10 @@ export default function GateEntry() {
                 <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Package size={18} color="#059669" />
                   <div>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEM COUNT</div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>{(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''}</div>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEMS & ORDERED QTY</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>
+                      {(p.items || []).length} Line Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} Pcs)
+                    </div>
                   </div>
                 </div>
                 <StatusBadge status={p.status} />

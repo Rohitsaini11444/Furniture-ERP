@@ -1287,6 +1287,9 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        user = self.request.user
+        if user.is_authenticated and user.role == 'supervisor':
+            qs = qs.filter(supervisor=user)
         supplier_id = self.request.query_params.get('supplier')
         if supplier_id:
             qs = qs.filter(supplier_id=supplier_id)
@@ -1305,6 +1308,57 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
+
+    @action(detail=True, methods=['post'], url_path='extend-due-date')
+    def extend_due_date(self, request, pk=None):
+        from datetime import timedelta, datetime
+        from .models import POExtensionLog
+
+        po = self.get_object()
+        days_added = request.data.get('days_added')
+        reason = request.data.get('reason', '')
+        custom_new_date = request.data.get('new_due_date')
+
+        if not po.original_due_date and po.due_date:
+            po.original_due_date = po.due_date
+
+        prev_due_date = po.due_date
+
+        if custom_new_date:
+            try:
+                new_due_date = datetime.strptime(str(custom_new_date), '%Y-%m-%d').date()
+                if prev_due_date:
+                    days_added = (new_due_date - prev_due_date).days
+                else:
+                    days_added = 0
+            except ValueError:
+                return Response({'detail': 'Invalid date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            try:
+                days_added = int(days_added) if days_added is not None else 5
+            except (ValueError, TypeError):
+                days_added = 5
+
+            if prev_due_date:
+                new_due_date = prev_due_date + timedelta(days=days_added)
+            else:
+                new_due_date = timezone.now().date() + timedelta(days=days_added)
+
+        po.due_date = new_due_date
+        po.save()
+
+        # Log extension
+        POExtensionLog.objects.create(
+            supplier_po=po,
+            extended_by=request.user if request.user.is_authenticated else None,
+            days_added=days_added,
+            previous_due_date=prev_due_date,
+            new_due_date=new_due_date,
+            reason=reason
+        )
+
+        serializer = SupplierPOSerializer(po, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def download_pdf(self, request, pk=None):
@@ -1773,7 +1827,10 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
         if user.role == 'contractor':
             qs = qs.filter(contractor=user)
         elif user.role == 'supervisor':
-            qs = qs.filter(assigned_by=user)
+            if user.production_unit:
+                qs = qs.filter(Q(assigned_by=user) | Q(production_unit=user.production_unit) | Q(assigned_by__isnull=True))
+            else:
+                qs = qs.filter(Q(assigned_by=user) | Q(assigned_by__isnull=True))
             
         return qs
 
