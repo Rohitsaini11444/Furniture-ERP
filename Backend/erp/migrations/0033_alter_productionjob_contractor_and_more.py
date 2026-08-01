@@ -5,6 +5,11 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def clean_supervisor_empty_strings(apps, schema_editor):
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute("UPDATE erp_supplierpo SET supervisor = NULL WHERE supervisor = '' OR supervisor IS NOT NULL;")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +17,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(clean_supervisor_empty_strings, reverse_code=migrations.RunPython.noop),
         migrations.AlterField(
             model_name='productionjob',
             name='contractor',
