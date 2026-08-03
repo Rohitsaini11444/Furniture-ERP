@@ -327,10 +327,10 @@ function Buyers() {
             gap: '2rem'
           }}>
             {[
-              { id: 'Overview', label: '🏠 Overview' },
-              { id: 'Buyer Master', label: `📐 Buyer Master (${buyerDetails.buyerMasters.length})` },
-              { id: 'PI', label: `📄 PI (${buyerDetails.buyerPIs.length})` },
-              { id: 'PO', label: `📋 PO (${buyerDetails.pos.length})` }
+              { id: 'Overview', label: 'Overview' },
+              { id: 'Buyer Master', label: `Buyer Master (${buyerDetails.buyerMasters.length})` },
+              { id: 'PI', label: `PI (${buyerDetails.buyerPIs.length})` },
+              { id: 'PO', label: `PO (${buyerDetails.pos.length})` }
             ].map(tab => (
               <button
                 key={tab.id}

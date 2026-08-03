@@ -22,11 +22,11 @@ from django.db.models import Q, Case, When, Value, IntegerField
 from django.conf import settings
 from .models import (
     User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
-    Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem,
+    Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem, POSupplierHistory,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     UserSession, Notification, StockItem, ProductionJob, ProductionQCLog,
-    GateInwardReceipt, SupplierDebitNote,
+    GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
@@ -36,10 +36,10 @@ from .serializers import (
     SampleSerializer, SampleImageSerializer,
     ProductionJobSerializer, ProductionQCLogSerializer,
     BuyerSerializer, BuyerMasterSerializer,
-    SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer,
+    SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer, POSupplierHistorySerializer,
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
     BuyerPISerializer, BuyerPIItemSerializer, StockItemSerializer,
-    GateInwardReceiptSerializer, SupplierDebitNoteSerializer,
+    GateInwardReceiptSerializer, SupplierDebitNoteSerializer, SupplierTaxInvoiceSerializer, SupplierTaxInvoiceItemSerializer, SupplierDebitNoteItemSerializer,
 )
 from .permissions import (
     IsAdmin, IsSupervisor, IsContractor,
@@ -1309,6 +1309,22 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
+    def perform_update(self, serializer):
+        old_po = self.get_object()
+        new_supplier = serializer.validated_data.get('supplier')
+        reason = self.request.data.get('supplier_change_reason', '')
+
+        updated_po = serializer.save()
+
+        if old_po.supplier and new_supplier and old_po.supplier != new_supplier:
+            POSupplierHistory.objects.create(
+                supplier_po=updated_po,
+                previous_supplier=old_po.supplier,
+                new_supplier=new_supplier,
+                reason=reason or 'Supplier transferred',
+                changed_by=self.request.user
+            )
+
     @action(detail=True, methods=['post'], url_path='extend-due-date')
     def extend_due_date(self, request, pk=None):
         from datetime import timedelta, datetime
@@ -1359,6 +1375,212 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
         serializer = SupplierPOSerializer(po, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='receive-installment')
+    def receive_installment(self, request, pk=None):
+        """
+        Record a full multi-item delivery installment / round for a Purchase Order.
+        A single truck delivery with 1 supplier invoice can contain multiple PO items.
+        Generates 1 single combined Debit Note for all rejected SKUs in the round.
+        """
+        import json
+        po = self.get_object()
+        data = request.data
+
+        raw_items = data.get('items', [])
+        if isinstance(raw_items, str):
+            try:
+                items_payload = json.loads(raw_items)
+            except Exception:
+                items_payload = []
+        else:
+            items_payload = raw_items
+
+        if not items_payload:
+            return Response({'detail': 'No line items provided for this delivery installment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        invoice_no = str(data.get('supplier_invoice_no', '')).strip()
+        invoice_date = data.get('supplier_invoice_date') or timezone.now().date()
+        invoice_amount = Decimal(str(data.get('supplier_invoice_amount', 0))) if data.get('supplier_invoice_amount') else None
+        vehicle_no = str(data.get('vehicle_no', '')).strip()
+        driver_contact = str(data.get('driver_contact', '')).strip()
+        receipt_date = data.get('receipt_date') or timezone.now().date()
+        notes = str(data.get('notes', '')).strip()
+
+        # Compute next Round Number and GRN Number for this PO
+        existing_grns = list(GateInwardReceipt.objects.filter(supplier_po=po).values_list('grn_number', flat=True).distinct())
+        existing_grns = [g for g in existing_grns if g]
+        round_number = len(existing_grns) + 1
+        grn_number = f"GRN-{po.po_number}-R{round_number}"
+
+        created_receipts = []
+        all_rejected_items = []
+
+        for idx, item_data in enumerate(items_payload):
+            po_item_id = item_data.get('po_item')
+            passed_qty = Decimal(str(item_data.get('passed_qty', 0)))
+            rejected_qty = Decimal(str(item_data.get('rejected_qty', 0)))
+
+            if passed_qty == 0 and rejected_qty == 0:
+                continue
+
+            po_item = po.items.filter(id=po_item_id).first()
+            if not po_item:
+                continue
+
+            # Update PO Item passed quantity
+            po_item.passed_quantity = (po_item.passed_quantity or Decimal('0')) + passed_qty
+            po_item.save()
+
+            # Create Inward Receipt record for this item
+            receipt = GateInwardReceipt.objects.create(
+                grn_number=grn_number,
+                round_number=round_number,
+                supplier_po=po,
+                po_item=po_item,
+                receipt_date=receipt_date,
+                challan_no=invoice_no,
+                supplier_invoice_no=invoice_no,
+                supplier_invoice_date=invoice_date,
+                supplier_invoice_amount=invoice_amount,
+                vehicle_no=vehicle_no,
+                driver_contact=driver_contact,
+                received_qty=passed_qty + rejected_qty,
+                passed_qty=passed_qty,
+                rejected_qty=rejected_qty,
+                notes=notes or item_data.get('remark', ''),
+                inspected_by=request.user if request.user.is_authenticated else None
+            )
+            created_receipts.append(receipt)
+
+            # Raw Stock Addition
+            if passed_qty > 0:
+                words = po_item.description.split()
+                style = words[0] if words else "RAW-ITEM"
+                item_name = po_item.description[:100] if po_item.description else "Raw Furniture Item"
+
+                StockItem.objects.create(
+                    stock_type='raw',
+                    po_item=po_item,
+                    buyer=po_item.buyer,
+                    style_no=style,
+                    item_name=item_name,
+                    quantity=passed_qty,
+                    unit=po_item.unit or 'pcs',
+                    unit_price=po_item.rate,
+                    location='Main Gate Raw Store',
+                    status='In Stock',
+                    remarks=f"GRN #{grn_number} (Round #{round_number}) via Inv #{invoice_no or 'N/A'}"
+                )
+
+            # Rejections Logging & Defect Images
+            if rejected_qty > 0:
+                remark = item_data.get('remark') or notes or 'Gate inspection rejected pieces'
+                defect_file = request.FILES.get(f'defect_image_{po_item_id}') or request.FILES.get(f'defect_image_{idx}')
+                
+                defect_obj = SupplierPOItemDefect.objects.create(
+                    po_item=po_item,
+                    reported_by=request.user if request.user.is_authenticated else None,
+                    quantity=rejected_qty,
+                    defective_image=defect_file,
+                    remark=remark
+                )
+                if defect_file:
+                    SupplierPOItemDefectImage.objects.create(
+                        defect=defect_obj,
+                        image=defect_file
+                    )
+
+                unit_rate = po_item.rate or Decimal('0')
+                subtotal = round(rejected_qty * unit_rate, 2)
+                all_rejected_items.append({
+                    'po_item': po_item,
+                    'rejected_qty': rejected_qty,
+                    'unit_rate': unit_rate,
+                    'subtotal': subtotal,
+                    'remark': remark
+                })
+
+        # Generate ONE Combined Debit Note for all rejected SKUs in this shipment round
+        generated_debit_notes = []
+        if all_rejected_items:
+            first_receipt_hex = created_receipts[0].id.hex[:4].upper() if created_receipts else "0000"
+            dn_number = f"DN-{po.po_number}-{first_receipt_hex}"
+
+            subtotal_all = sum(r['subtotal'] for r in all_rejected_items)
+            cartage_gst = round(subtotal_all * Decimal('0.18') * Decimal('0.03'), 2)
+            cgst = round(subtotal_all * Decimal('0.09'), 2)
+            sgst = round(subtotal_all * Decimal('0.09'), 2)
+
+            raw_total = subtotal_all + cartage_gst + cgst + sgst
+            final_amount = Decimal(str(round(raw_total)))
+            round_off = final_amount - raw_total
+            words_str = num2words(float(final_amount), lang='en_IN').title() + " Rupees Only"
+
+            total_rejected_pcs = sum(r['rejected_qty'] for r in all_rejected_items)
+
+            dn = SupplierDebitNote.objects.create(
+                vch_no=dn_number,
+                vch_date=receipt_date,
+                original_inv_no=invoice_no or po.po_number,
+                original_inv_date=invoice_date,
+                supplier=po.supplier,
+                supplier_po=po,
+                po_item=all_rejected_items[0]['po_item'],
+                status='Issued',
+                item_description=f"Combined Rejection ({len(all_rejected_items)} SKUs) — GRN #{grn_number} (Round #{round_number})",
+                rejected_qty=total_rejected_pcs,
+                unit='pcs',
+                rate=Decimal('0'),
+                subtotal_amount=subtotal_all,
+                cartage_gst_rate=Decimal('18.0'),
+                cartage_gst_amount=cartage_gst,
+                cgst_rate=Decimal('9.0'),
+                cgst_amount=cgst,
+                sgst_rate=Decimal('9.0'),
+                sgst_amount=sgst,
+                round_off=round_off,
+                total_amount=final_amount,
+                amount_in_words=words_str,
+                remarks=f"BEING AMOUNT DEBITED FOR REJECTED GOODS IN GRN #{grn_number} (ROUND #{round_number})",
+                company_pan='ABXPS4077R'
+            )
+
+            # Create line items for each rejected SKU in the Debit Note
+            for r_item in all_rejected_items:
+                SupplierDebitNoteItem.objects.create(
+                    debit_note=dn,
+                    po_item=r_item['po_item'],
+                    description=r_item['po_item'].description,
+                    hsn_sac='9403',
+                    rejected_qty=r_item['rejected_qty'],
+                    unit=r_item['po_item'].unit or 'pcs',
+                    rate=r_item['unit_rate'],
+                    amount=r_item['subtotal'],
+                    reason=r_item['remark']
+                )
+
+            generated_debit_notes.append(SupplierDebitNoteSerializer(dn).data)
+
+        # Update PO Status
+        all_items = po.items.all()
+        total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
+        total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+
+        if total_passed >= total_ordered and total_ordered > 0:
+            po.status = 'Received'
+        elif total_passed > 0:
+            po.status = 'Partial Received'
+        po.save()
+
+        return Response({
+            'detail': f'Recorded Delivery Round #{round_number} ({grn_number}) with {len(created_receipts)} item(s).',
+            'grn_number': grn_number,
+            'round_number': round_number,
+            'po_status': po.status,
+            'receipts': GateInwardReceiptSerializer(created_receipts, many=True).data,
+            'debit_notes': generated_debit_notes
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def download_pdf(self, request, pk=None):
@@ -1954,7 +2176,7 @@ class ProductionQCLogViewSet(viewsets.ReadOnlyModelViewSet):
 
 # ─── Number To Words Helper ───────────────────────────────────────────────────
 
-def num2words(num):
+def num2words(num, *args, **kwargs):
     if num is None:
         return ""
     try:
@@ -2843,17 +3065,47 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='receive-qc')
     def receive_qc(self, request, pk=None):
-        """Supervisor inspects gate entry items: passed pcs enter Raw Stock, rejected pcs log defect."""
+        """Supervisor inspects gate entry items: passed pcs enter Raw Stock, rejected pcs log defect & generate GRN & Debit Notes."""
         po_item = self.get_object()
+        po = po_item.supplier_po
         passed_qty = Decimal(str(request.data.get('passed_qty', 0)))
         rejected_qty = Decimal(str(request.data.get('rejected_qty', 0)))
+        challan_no = request.data.get('challan_no', '') or request.data.get('supplier_invoice_no', '')
         
         if passed_qty < 0 or rejected_qty < 0:
             return Response({'detail': 'Quantities cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
+        if passed_qty == 0 and rejected_qty == 0:
+            return Response({'detail': 'Please enter a valid passed or rejected quantity.'}, status=status.HTTP_400_BAD_REQUEST)
             
         po_item.passed_quantity = (po_item.passed_quantity or Decimal(0)) + passed_qty
         po_item.save()
         
+        # Determine Delivery Round & GRN Number
+        existing_grns = list(GateInwardReceipt.objects.filter(supplier_po=po).values_list('grn_number', flat=True).distinct())
+        existing_grns = [g for g in existing_grns if g]
+        round_number = len(existing_grns) + 1
+        grn_number = f"GRN-{po.po_number}-R{round_number}"
+
+        # Create Inward Receipt (GRN Record)
+        receipt = GateInwardReceipt.objects.create(
+            grn_number=grn_number,
+            round_number=round_number,
+            supplier_po=po,
+            po_item=po_item,
+            receipt_date=request.data.get('receipt_date') or timezone.now().date(),
+            challan_no=challan_no,
+            supplier_invoice_no=request.data.get('supplier_invoice_no', '') or challan_no,
+            supplier_invoice_date=request.data.get('supplier_invoice_date') or timezone.now().date(),
+            supplier_invoice_amount=Decimal(str(request.data.get('supplier_invoice_amount', 0))) if request.data.get('supplier_invoice_amount') else None,
+            vehicle_no=request.data.get('vehicle_no', ''),
+            driver_contact=request.data.get('driver_contact', ''),
+            received_qty=passed_qty + rejected_qty,
+            passed_qty=passed_qty,
+            rejected_qty=rejected_qty,
+            notes=request.data.get('remark', '') or request.data.get('notes', ''),
+            inspected_by=request.user if request.user.is_authenticated else None
+        )
+
         # Automatically add passed_qty to Raw Stock
         if passed_qty > 0:
             words = po_item.description.split()
@@ -2876,7 +3128,8 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
             raw_stock.status = 'In Stock'
             raw_stock.save()
             
-        # Log defect if any pieces rejected
+        # Log defect & Debit Note if any pieces rejected
+        generated_debit_notes = []
         if rejected_qty > 0:
             remark = request.data.get('remark', 'Gate inspection rejected pieces')
             SupplierPOItemDefect.objects.create(
@@ -2886,23 +3139,80 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
                 remark=remark
             )
 
-        # Check if all items in parent PO are fully passed -> auto-update PO status to Received
-        po = po_item.supplier_po
+            unit_rate = po_item.rate or Decimal('0')
+            total_rejection_val = rejected_qty * unit_rate
+            max_limit = Decimal('200000.00')
+
+            if total_rejection_val <= max_limit:
+                batch_pcs = [rejected_qty]
+            else:
+                max_pcs_per_note = int(max_limit // unit_rate) if unit_rate > 0 else int(rejected_qty)
+                full_notes_count = int(rejected_qty // max_pcs_per_note)
+                rem_pcs = rejected_qty % max_pcs_per_note
+                batch_pcs = [Decimal(str(max_pcs_per_note))] * full_notes_count
+                if rem_pcs > 0:
+                    batch_pcs.append(rem_pcs)
+
+            for idx, batch_q in enumerate(batch_pcs, 1):
+                dn_suffix = f"-{idx}" if len(batch_pcs) > 1 else ""
+                dn_number = f"DN-{po.po_number}-{receipt.id.hex[:4].upper()}{dn_suffix}"
+
+                subtotal = batch_q * unit_rate
+                cartage_gst = round(subtotal * Decimal('0.18') * Decimal('0.03'), 2)
+                cgst = round(subtotal * Decimal('0.09'), 2)
+                sgst = round(subtotal * Decimal('0.09'), 2)
+                
+                raw_total = subtotal + cartage_gst + cgst + sgst
+                final_amount = Decimal(str(round(raw_total)))
+                round_off = final_amount - raw_total
+                words_str = num2words(float(final_amount), lang='en_IN').title() + " Rupees Only"
+
+                dn = SupplierDebitNote.objects.create(
+                    vch_no=dn_number,
+                    vch_date=request.data.get('receipt_date') or timezone.now().date(),
+                    original_inv_no=receipt.supplier_invoice_no or challan_no or po.po_number,
+                    original_inv_date=request.data.get('supplier_invoice_date') or timezone.now().date(),
+                    supplier=po.supplier,
+                    supplier_po=po,
+                    po_item=po_item,
+                    status='Issued',
+                    item_description=f"{po_item.description} (GRN #{grn_number} - Round #{round_number})",
+                    rejected_qty=batch_q,
+                    unit=po_item.unit or 'pcs',
+                    rate=unit_rate,
+                    subtotal_amount=subtotal,
+                    cartage_gst_rate=Decimal('18.0'),
+                    cartage_gst_amount=cartage_gst,
+                    cgst_rate=Decimal('9.0'),
+                    cgst_amount=cgst,
+                    sgst_rate=Decimal('9.0'),
+                    sgst_amount=sgst,
+                    round_off=round_off,
+                    total_amount=final_amount,
+                    amount_in_words=words_str,
+                    remarks=f"BEING AMOUNT DEBITED FOR REJECTED GOODS IN GRN #{grn_number} (ROUND #{round_number})",
+                    company_pan='ABXPS4077R'
+                )
+                generated_debit_notes.append(SupplierDebitNoteSerializer(dn).data)
+
+        # Check if parent PO status should update
         if po:
-            all_received = True
-            for item in po.items.all():
-                passed_tot = item.passed_quantity or Decimal(0)
-                if passed_tot < item.quantity:
-                    all_received = False
-                    break
-            if all_received:
+            all_items = po.items.all()
+            total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
+            total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+
+            if total_passed >= total_ordered and total_ordered > 0:
                 po.status = 'Received'
-                po.save()
+            elif total_passed > 0:
+                po.status = 'Partial Received'
+            po.save()
             
         return Response({
-            'detail': f'Gate QC recorded successfully. {passed_qty} pcs added to Raw Stock.',
+            'detail': f'Gate QC recorded for Round #{round_number} (GRN #{grn_number}).',
             'passed_quantity': float(po_item.passed_quantity),
-            'po_status': po.status if po else 'Pending'
+            'po_status': po.status if po else 'Pending',
+            'receipt': GateInwardReceiptSerializer(receipt).data,
+            'debit_notes': generated_debit_notes
         })
 
 
@@ -3295,12 +3605,34 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
         if not po_item:
             return Response({'error': 'Supplier PO Item not found'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Determine Delivery Round & GRN Number
+        po = po_item.supplier_po
+        existing_grns = list(GateInwardReceipt.objects.filter(supplier_po=po).values_list('grn_number', flat=True).distinct())
+        existing_grns = [g for g in existing_grns if g]
+
+        requested_grn = data.get('grn_number')
+        requested_round = data.get('round_number')
+
+        if requested_grn:
+            grn_number = requested_grn
+            round_number = int(requested_round or 1)
+        else:
+            round_number = len(existing_grns) + 1
+            grn_number = f"GRN-{po.po_number}-R{round_number}"
+
         # Create Inward Receipt
         receipt = GateInwardReceipt.objects.create(
-            supplier_po=po_item.supplier_po,
+            grn_number=grn_number,
+            round_number=round_number,
+            supplier_po=po,
             po_item=po_item,
             receipt_date=data.get('receipt_date') or timezone.now().date(),
             challan_no=challan_no,
+            supplier_invoice_no=data.get('supplier_invoice_no', '') or challan_no,
+            supplier_invoice_date=data.get('supplier_invoice_date') or data.get('receipt_date') or timezone.now().date(),
+            supplier_invoice_amount=Decimal(str(data.get('supplier_invoice_amount', 0))) if data.get('supplier_invoice_amount') else None,
+            vehicle_no=data.get('vehicle_no', ''),
+            driver_contact=data.get('driver_contact', ''),
             received_qty=passed_qty + rejected_qty,
             passed_qty=passed_qty,
             rejected_qty=rejected_qty,
@@ -3313,7 +3645,6 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
         po_item.save()
 
         # Update Overall Supplier PO Status
-        po = po_item.supplier_po
         all_items = po.items.all()
         total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
         total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
@@ -3337,7 +3668,7 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
                 unit_price=po_item.rate,
                 location='Main Gate Raw Store',
                 status='In Stock',
-                remarks=f"Received via Gate Challan #{challan_no or 'N/A'} for PO #{po.po_number}"
+                remarks=f"GRN #{grn_number} (Round #{round_number}) via Inv #{receipt.supplier_invoice_no or challan_no or 'N/A'} for PO #{po.po_number}"
             )
 
         # Handle Rejections & Automated Debit Notes (E-Way Bill Limit <= Rs 2,00,000)
@@ -3414,10 +3745,221 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
 
+class SupplierTaxInvoiceViewSet(viewsets.ModelViewSet):
+    queryset = SupplierTaxInvoice.objects.select_related('supplier').prefetch_related('items__supplier_po').all()
+    serializer_class = SupplierTaxInvoiceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        supplier_id = self.request.query_params.get('supplier')
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        return qs
+
+
+def generate_debit_note_pdf(debit_note):
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
+    )
+
+    styles = getSampleStyleSheet()
+    normal_style = styles['Normal']
+
+    title_style = ParagraphStyle(
+        'DNTitle',
+        parent=normal_style,
+        fontName='Helvetica-Bold',
+        fontSize=16,
+        leading=20,
+        textColor=colors.HexColor('#8b5a2b'),
+        alignment=1
+    )
+
+    subtitle_style = ParagraphStyle(
+        'DNSubtitle',
+        parent=normal_style,
+        fontName='Helvetica-Bold',
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor('#334155'),
+        alignment=1
+    )
+
+    header_style = ParagraphStyle(
+        'DNHeader',
+        parent=normal_style,
+        fontName='Helvetica-Bold',
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor('#1e293b')
+    )
+
+    body_style = ParagraphStyle(
+        'DNBody',
+        parent=normal_style,
+        fontName='Helvetica',
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor('#334155')
+    )
+
+    elements = []
+
+    # Title Banner
+    elements.append(Paragraph("PINKCITY ENTERPRISES (P) LTD", title_style))
+    elements.append(Paragraph("DEBIT NOTE VOUCHER (GOODS RETURN / REJECTION)", subtitle_style))
+    elements.append(Paragraph("G-21 Sitapura Industrial Area, Jaipur, Rajasthan 302022 | GSTIN: 08AADCP4381R2ZO", body_style))
+    elements.append(Spacer(1, 8))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#8b5a2b'), spaceAfter=12))
+
+    # Details Grid Table
+    details_data = [
+        [
+            Paragraph(f"<b>Debit Note No:</b> {debit_note.vch_no}", body_style),
+            Paragraph(f"<b>Dated:</b> {debit_note.vch_date}", body_style)
+        ],
+        [
+            Paragraph(f"<b>Supplier:</b> {debit_note.supplier.name}", body_style),
+            Paragraph(f"<b>Supplier GSTIN:</b> {debit_note.supplier.gstin or 'N/A'}", body_style)
+        ],
+        [
+            Paragraph(f"<b>Address:</b> {debit_note.supplier.address or 'N/A'}", body_style),
+            Paragraph(f"<b>Original Inv Ref:</b> {debit_note.original_inv_no or 'N/A'}", body_style)
+        ],
+        [
+            Paragraph(f"<b>Status:</b> {debit_note.status}", body_style),
+            Paragraph(f"<b>PO Ref:</b> {debit_note.supplier_po.po_number if debit_note.supplier_po else 'N/A'}", body_style)
+        ]
+    ]
+
+    details_table = Table(details_data, colWidths=[260, 260])
+    details_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#fcfaf6')),
+        ('PADDING', (0,0), (-1,-1), 5),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#e2e8f0')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    elements.append(details_table)
+    elements.append(Spacer(1, 12))
+
+    # Line Items Table
+    items_data = [
+        [
+            Paragraph("<b>#</b>", header_style),
+            Paragraph("<b>Description of Goods</b>", header_style),
+            Paragraph("<b>HSN/SAC</b>", header_style),
+            Paragraph("<b>Rejected Qty</b>", header_style),
+            Paragraph("<b>Rate (₹)</b>", header_style),
+            Paragraph("<b>Amount (₹)</b>", header_style),
+        ]
+    ]
+
+    note_items = debit_note.items.all()
+    if note_items.exists():
+        for idx, item in enumerate(note_items, 1):
+            items_data.append([
+                Paragraph(str(idx), body_style),
+                Paragraph(item.description, body_style),
+                Paragraph(item.hsn_sac, body_style),
+                Paragraph(f"{item.rejected_qty} {item.unit}", body_style),
+                Paragraph(f"₹{float(item.rate):,.2f}", body_style),
+                Paragraph(f"₹{float(item.amount):,.2f}", body_style),
+            ])
+    else:
+        items_data.append([
+            Paragraph("1", body_style),
+            Paragraph(debit_note.item_description or "Rejected Furniture Components", body_style),
+            Paragraph(debit_note.hsn_sac or "9403", body_style),
+            Paragraph(f"{debit_note.rejected_qty} {debit_note.unit}", body_style),
+            Paragraph(f"₹{float(debit_note.rate):,.2f}", body_style),
+            Paragraph(f"₹{float(debit_note.total_amount):,.2f}", body_style),
+        ])
+
+    table = Table(items_data, colWidths=[25, 225, 70, 75, 60, 65])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('PADDING', (0,0), (-1,-1), 5),
+        ('ALIGN', (3,0), (-1,-1), 'RIGHT'),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 12))
+
+    # Summary box
+    tot = float(debit_note.total_amount or 0)
+    summary_data = [
+        [Paragraph("<b>Subtotal Amount:</b>", body_style), Paragraph(f"₹{tot:,.2f}", body_style)],
+        [Paragraph("<b>Total Debit Note Amount:</b>", header_style), Paragraph(f"₹{tot:,.2f} INR", header_style)],
+    ]
+    summary_table = Table(summary_data, colWidths=[360, 160])
+    summary_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
+        ('PADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 25))
+
+    # Signature Block
+    sig_data = [
+        [Paragraph("<b>Prepared By</b>", body_style), Paragraph("<b>Authorized Signatory</b>", body_style)]
+    ]
+    sig_table = Table(sig_data, colWidths=[260, 260])
+    sig_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (0,0), 'LEFT'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(sig_table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 class SupplierDebitNoteViewSet(viewsets.ModelViewSet):
     queryset = SupplierDebitNote.objects.select_related('supplier', 'supplier_po', 'po_item').all()
     serializer_class = SupplierDebitNoteSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def download_pdf(self, request, pk=None):
+        dn = self.get_object()
+        pdf_bytes = generate_debit_note_pdf(dn)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="DebitNote_{dn.vch_no}.pdf"'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='resolve-repaired')
+    def resolve_repaired(self, request, pk=None):
+        dn = self.get_object()
+        dn.status = 'Resolved (Repaired)'
+        dn.save()
+
+        # Increment passed qty on matching PO item if linked
+        if dn.po_item:
+            dn.po_item.passed_quantity = (dn.po_item.passed_quantity or Decimal('0')) + dn.rejected_qty
+            dn.po_item.save()
+
+        return Response({'status': 'Debit note resolved as Repaired & Accepted without financial penalty.', 'debit_note': SupplierDebitNoteSerializer(dn).data})
+
+    @action(detail=True, methods=['post'], url_path='confirm-issue')
+    def confirm_issue(self, request, pk=None):
+        dn = self.get_object()
+        dn.status = 'Issued'
+        dn.save()
+        return Response({'status': 'Debit Note issued successfully.', 'debit_note': SupplierDebitNoteSerializer(dn).data})
 
 
 class StockOriginBreakdownView(APIView):

@@ -1971,7 +1971,7 @@ function Tools() {
                           transition: 'all 0.15s'
                         }}
                       >
-                        📦 Samples Catalog
+                      Samples Catalog
                       </button>
                       <button
                         type="button"
@@ -1990,7 +1990,7 @@ function Tools() {
                           transition: 'all 0.15s'
                         }}
                       >
-                        🏷️ Buyer Master Styles
+                      Buyer Master Styles
                       </button>
                     </div>
                   </div>

@@ -1,0 +1,142 @@
+{% load i18n static %}
+
+<div id="nav-sidebar" class="sticky" aria-label="{% translate 'Sidebar' %}" style="display: flex; flex-direction: column; background-color: #1e293b; color: #f8fafc;">
+  
+  <!-- Sidebar Search Header -->
+  <div style="padding: 12px 12px 10px 12px; position: sticky; top: 0; background: #1e293b; z-index: 100; border-bottom: 1px solid #334155;">
+    <div style="position: relative; display: flex; align-items: center;">
+      <span style="position: absolute; left: 10px; color: #94a3b8; font-size: 13px; pointer-events: none;">🔍</span>
+      <input 
+        type="text" 
+        id="sidebar-search-input" 
+        placeholder="Search sidebar options..." 
+        aria-label="Filter navigation"
+        style="width: 100%; padding: 8px 28px 8px 30px; background-color: #0f172a; border: 1.5px solid #334155; border-radius: 8px; color: #f8fafc; font-size: 13px; outline: none; transition: all 0.2s ease; box-sizing: border-box;"
+        onfocus="this.style.borderColor='#38bdf8'; this.style.boxShadow='0 0 0 3px rgba(56,189,248,0.25)'"
+        onblur="this.style.borderColor='#334155'; this.style.boxShadow='none'"
+      />
+      <button 
+        type="button" 
+        id="sidebar-search-clear" 
+        title="Clear Search" 
+        style="position: absolute; right: 8px; background: none; border: none; color: #94a3b8; font-size: 15px; cursor: pointer; display: none; padding: 2px 6px;"
+        onclick="document.getElementById('sidebar-search-input').value=''; document.getElementById('sidebar-search-input').dispatchEvent(new Event('input'));"
+      >×</button>
+    </div>
+    <div id="sidebar-search-count" style="font-size: 11px; color: #38bdf8; margin-top: 6px; padding-left: 4px; font-weight: 700; display: none;"></div>
+  </div>
+
+  <!-- Main Navigation Apps List Container -->
+  <div id="sidebar-nav-content" style="padding-top: 6px; flex: 1;">
+    {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=True %}
+  </div>
+
+  <!-- Real-Time Filter Script -->
+  <script>
+    (function() {
+      // Synonyms and related field tags dictionary for intelligent searching
+      const KEYWORD_MAP = {
+        'po': ['purchase order', 'supplier po', 'order', 'items', 'defects'],
+        'so': ['sale order', 'buyer pi', 'pi', 'proforma', 'invoice'],
+        'buyer': ['customer', 'client', 'master', 'finishing', 'unit allocation', 'buyer pis'],
+        'supplier': ['vendor', 'supplier pos', 'tax invoice', 'debit note', 'grn', 'inward receipt'],
+        'grn': ['gate inward', 'receipt', 'delivery', 'round', 'installment', 'inspection'],
+        'debit': ['supplier debit note', 'dn', 'return', 'rejection', 'tally', 'credit'],
+        'invoice': ['supplier tax invoice', 'bill', 'gst', 'hsn', 'performa invoice'],
+        'defect': ['po item defect', 'rejection', 'qc', 'quality', 'return', 'image'],
+        'unit': ['buyer unit allocation', 'pcs', 'measurement'],
+        'user': ['account', 'login', 'contractor', 'permission', 'group', 'auth']
+      };
+
+      function initSidebarFilter() {
+        const input = document.getElementById('sidebar-search-input');
+        const clearBtn = document.getElementById('sidebar-search-clear');
+        const countBadge = document.getElementById('sidebar-search-count');
+        const navContent = document.getElementById('sidebar-nav-content');
+
+        if (!input || !navContent) return;
+
+        // Enhance links with searchable metadata
+        const links = navContent.querySelectorAll('a');
+        links.forEach(function(link) {
+          const rawText = link.innerText.trim().toLowerCase();
+          let keywords = [rawText];
+          
+          Object.keys(KEYWORD_MAP).forEach(function(key) {
+            if (rawText.includes(key)) {
+              keywords = keywords.concat(KEYWORD_MAP[key]);
+            }
+          });
+
+          link.setAttribute('data-search-terms', keywords.join(' '));
+        });
+
+        input.addEventListener('input', function() {
+          const query = this.value.trim().toLowerCase();
+          
+          if (query.length > 0) {
+            clearBtn.style.display = 'block';
+          } else {
+            clearBtn.style.display = 'none';
+            countBadge.style.display = 'none';
+          }
+
+          let matchedCount = 0;
+
+          // Target list elements or table rows in Django admin nav sidebar
+          const items = navContent.querySelectorAll('tr, li, div.model-row, div.app-list-item');
+          
+          if (items.length > 0) {
+            items.forEach(function(item) {
+              const link = item.querySelector('a');
+              if (!link) return;
+              
+              const searchTerms = (link.getAttribute('data-search-terms') || link.innerText).toLowerCase();
+              
+              if (query === '' || searchTerms.includes(query)) {
+                item.style.display = '';
+                matchedCount++;
+              } else {
+                item.style.display = 'none';
+              }
+            });
+          } else {
+            // Fallback for direct link lists
+            links.forEach(function(link) {
+              const searchTerms = (link.getAttribute('data-search-terms') || link.innerText).toLowerCase();
+              const container = link.closest('li') || link.closest('tr') || link;
+              if (query === '' || searchTerms.includes(query)) {
+                container.style.display = '';
+                matchedCount++;
+              } else {
+                container.style.display = 'none';
+              }
+            });
+          }
+
+          // Show/Hide App Section Containers (Modules)
+          const modules = navContent.querySelectorAll('.module, section, div.app-list-module');
+          modules.forEach(function(mod) {
+            const visibleItems = mod.querySelectorAll('tr:not([style*="display: none"]), li:not([style*="display: none"])');
+            if (query !== '' && visibleItems.length === 0) {
+              mod.style.display = 'none';
+            } else {
+              mod.style.display = '';
+            }
+          });
+
+          if (query.length > 0) {
+            countBadge.innerText = matchedCount + ' option(s) found';
+            countBadge.style.display = 'block';
+          }
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSidebarFilter);
+      } else {
+        initSidebarFilter();
+      }
+    })();
+  </script>
+</div>

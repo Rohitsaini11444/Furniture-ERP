@@ -24,6 +24,8 @@ import UnitManagement from './pages/UnitManagement';
 import Tools          from './pages/Tools';
 import NotificationsPage from './pages/NotificationsPage';
 import VendorManagement from './pages/VendorManagement';
+import RecordTaxInvoice from './pages/RecordTaxInvoice';
+import SupplierManagement from './pages/SupplierManagement';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
 
@@ -1358,6 +1360,8 @@ function AppLayout() {
             <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
             <Route path="/vendor-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
             <Route path="/vendor-management/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
+            <Route path="/record-tax-invoice" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><RecordTaxInvoice /></ProtectedRoute>} />
+            <Route path="/suppliers" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><SupplierManagement /></ProtectedRoute>} />
             
             {/* Gate Entry & Stock */}
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />

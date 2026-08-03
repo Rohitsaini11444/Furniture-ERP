@@ -1,12 +1,67 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Printer, Download, X } from 'lucide-react';
 import pinkcityLogo from '../assets/pinkcity_logo.png';
 
 export default function DebitNotePrintout({ debitNote, onClose }) {
   if (!debitNote) return null;
+  const [downloading, setDownloading] = useState(false);
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById('debit-note-printable');
+    if (!element) {
+      window.print();
+      return;
+    }
+
+    setDownloading(true);
+
+    const loadScript = (src) => {
+      return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) {
+          resolve();
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.body.appendChild(s);
+      });
+    };
+
+    try {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+
+      // Capture visible debit note directly at high 2.5x resolution
+      const canvas = await window.html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const margin = 8;
+      const printableWidth = pageWidth - (margin * 2); // 194mm
+      const printableHeight = (canvas.height * printableWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, printableHeight);
+      pdf.save(`${debitNote.vch_no || 'Debit_Note'}.pdf`);
+    } catch (err) {
+      console.error('Direct PDF generation failed, falling back to window.print():', err);
+      window.print();
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const qtyVal = parseFloat(debitNote.rejected_qty || 0);
@@ -18,6 +73,15 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
   const sgstVal = parseFloat(debitNote.sgst_amount || (subtotalVal * 0.09));
   const roundOffVal = parseFloat(debitNote.round_off || 0);
   const totalVal = parseFloat(debitNote.total_amount || (subtotalVal + cartageVal + cgstVal + sgstVal));
+
+  const itemList = debitNote.items && debitNote.items.length > 0 ? debitNote.items : [{
+    description: debitNote.item_description || 'Furniture Item',
+    hsn_sac: debitNote.hsn_sac || '9403',
+    rejected_qty: qtyVal,
+    unit: debitNote.unit || 'pcs',
+    rate: rateVal,
+    amount: subtotalVal
+  }];
 
   return (
     <div style={{
@@ -34,21 +98,34 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
     }}>
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 5mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+          }
           body * {
-            visibility: hidden;
+            visibility: hidden !important;
           }
           #debit-note-printable, #debit-note-printable * {
-            visibility: visible;
+            visibility: visible !important;
           }
           #debit-note-printable {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 0;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 1.5px solid #000 !important;
             box-shadow: none !important;
-            border: 1px solid #000 !important;
+            background: #ffffff !important;
+            page-break-inside: avoid !important;
           }
           .no-print {
             display: none !important;
@@ -70,28 +147,36 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
         
         {/* Action Header */}
         <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid #e2e8f0' }}>
-          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#1e293b' }}>
-            📄 Tally Debit Note Print Preview
-          </h3>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#1e293b' }}>
+              📄 Tally Debit Note Voucher
+            </h3>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Voucher No: <strong>{debitNote.vch_no}</strong>
+            </span>
+          </div>
+
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
             <button
               type="button"
-              onClick={handlePrint}
+              onClick={handleDownloadPDF}
+              disabled={downloading}
               style={{
-                backgroundColor: '#0284c7',
+                backgroundColor: '#dc2626',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '8px',
                 padding: '0.55rem 1.1rem',
                 fontWeight: 700,
                 fontSize: '0.88rem',
-                cursor: 'pointer',
+                cursor: downloading ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem'
+                gap: '0.4rem',
+                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)'
               }}
             >
-              <Printer size={16} /> Print / Save PDF
+              <Download size={16} /> {downloading ? 'Generating PDF...' : 'Download Combined Debit Note PDF'}
             </button>
             <button
               type="button"
@@ -103,7 +188,7 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
           </div>
         </div>
 
-        {/* ── Debit Note Document Box (Matches Attached Reference Image) ── */}
+        {/* ── Debit Note Document Box ── */}
         <div id="debit-note-printable" style={{
           backgroundColor: '#ffffff',
           border: '1.5px solid #1e293b',
@@ -165,7 +250,7 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
           <div style={{ padding: '8px', borderBottom: '1px solid #000' }}>
             <div style={{ fontSize: '10px', color: '#444' }}>Buyer (Bill to)</div>
             <div style={{ fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase', marginBottom: '2px' }}>
-              {debitNote.supplier_name_str || (debitNote.supplier ? debitNote.supplier.name : 'RUNDLA INDUSTRIES')}
+              {debitNote.supplier_name_str || (debitNote.supplier ? debitNote.supplier.name : 'SUPPLIER')}
             </div>
             <div style={{ fontSize: '11px', lineHeight: 1.3 }}>
               <div>H-1012 Road No. 14, V.K.I. Area, Jaipur</div>
@@ -188,21 +273,41 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
               </tr>
             </thead>
             <tbody>
-              <tr style={{ minHeight: '180px', verticalAlign: 'top' }}>
-                <td style={{ padding: '8px 4px', borderRight: '1px solid #000', textAlign: 'center' }}>1</td>
+              {itemList.map((it, idx) => {
+                const iQty = parseFloat(it.rejected_qty || 0);
+                const iRate = parseFloat(it.rate || 0);
+                const iAmt = parseFloat(it.amount || (iQty * iRate));
+
+                return (
+                  <tr key={it.id || idx} style={{ verticalAlign: 'top', borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '8px 4px', borderRight: '1px solid #000', textAlign: 'center' }}>{idx + 1}</td>
+                    <td style={{ padding: '8px 8px', borderRight: '1px solid #000' }}>
+                      <div style={{ fontWeight: 'bold' }}>{it.description}</div>
+                      {it.reason && <div style={{ fontSize: '10px', color: '#64748b', fontStyle: 'italic', marginTop: '2px' }}>Reason: {it.reason}</div>}
+                    </td>
+                    <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'center' }}>{it.hsn_sac || '9403'}</td>
+                    <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'right', fontWeight: 'bold' }}>{iQty} {it.unit || 'pcs'}</td>
+                    <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'right' }}>{iRate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '8px 4px', borderRight: '1px solid #000', textAlign: 'center' }}>{it.unit || 'pcs'}</td>
+                    <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 'bold' }}>{iAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
+
+              {/* GST Taxes & Calculations Summary Block */}
+              <tr style={{ verticalAlign: 'top' }}>
+                <td style={{ borderRight: '1px solid #000' }}></td>
                 <td style={{ padding: '8px 8px', borderRight: '1px solid #000' }}>
-                  <div style={{ fontWeight: 'bold' }}>{debitNote.item_description || '2504-129-62 - Walnut Small Mirror, 51x76x6cm, Mango / MDF / Mirror'}</div>
-                  
-                  <div style={{ marginTop: '20px', paddingLeft: '40px', fontSize: '10.5px', fontStyle: 'italic' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <div style={{ paddingLeft: '20px', fontSize: '10.5px', fontStyle: 'italic' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                       <span>PUR. CARTAGE GST @ 18%</span>
                       <span>3 %</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                       <span>INPUT CGST 9%</span>
                       <span>9 %</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                       <span>INPUT SGST 9%</span>
                       <span>9 %</span>
                     </div>
@@ -212,18 +317,15 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'center' }}>{debitNote.hsn_sac || '70099200'}</td>
-                <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'right', fontWeight: 'bold' }}>{qtyVal} {debitNote.unit || 'No.'}</td>
-                <td style={{ padding: '8px 6px', borderRight: '1px solid #000', textAlign: 'right' }}>{rateVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                <td style={{ padding: '8px 4px', borderRight: '1px solid #000', textAlign: 'center' }}>{debitNote.unit || 'No.'}</td>
-                <td style={{ padding: '8px 8px', textAlign: 'right' }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '20px' }}>{subtotalVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                  <div style={{ fontSize: '10.5px', lineHeight: 1.4, fontStyle: 'italic' }}>
-                    <div>{cartageVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                    <div>{cgstVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                    <div>{sgstVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                    <div>({roundOffVal >= 0 ? '-' : '+'}){Math.abs(roundOffVal).toFixed(2)}</div>
-                  </div>
+                <td style={{ borderRight: '1px solid #000' }}></td>
+                <td style={{ borderRight: '1px solid #000' }}></td>
+                <td style={{ borderRight: '1px solid #000' }}></td>
+                <td style={{ borderRight: '1px solid #000' }}></td>
+                <td style={{ padding: '8px 8px', textAlign: 'right', fontSize: '10.5px', fontStyle: 'italic', lineHeight: 1.5 }}>
+                  <div>{cartageVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  <div>{cgstVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  <div>{sgstVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                  <div>({roundOffVal >= 0 ? '-' : '+'}){Math.abs(roundOffVal).toFixed(2)}</div>
                 </td>
               </tr>
 
@@ -241,12 +343,12 @@ export default function DebitNotePrintout({ debitNote, onClose }) {
           <div style={{ padding: '8px', borderBottom: '1px solid #000' }}>
             <div style={{ fontSize: '10px', color: '#444' }}>Amount Chargeable (in words)</div>
             <div style={{ fontWeight: 'bold', fontSize: '11px', marginBottom: '8px' }}>
-              {debitNote.amount_in_words || 'INR Four Thousand Three Hundred Seventy Five Only'}
+              {debitNote.amount_in_words || 'INR Only'}
             </div>
 
             <div style={{ fontSize: '10px', color: '#444' }}>Remarks:</div>
             <div style={{ fontStyle: 'italic', fontSize: '10.5px', fontWeight: 'bold' }}>
-              {debitNote.remarks || `BEING AMOUNT DEBITED GOODS RETURN FURNITURE ITEM AS PER BILL NO. ${debitNote.original_inv_no || '163'} DATE 10-06-2026`}
+              {debitNote.remarks || `BEING AMOUNT DEBITED GOODS RETURN FURNITURE ITEM AS PER BILL NO. ${debitNote.original_inv_no || 'N/A'}`}
             </div>
           </div>
 

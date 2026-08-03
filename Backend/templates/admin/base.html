@@ -1,0 +1,750 @@
+{% load i18n static jazzmin admin_urls %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_current_language_bidi as LANGUAGE_BIDI %}
+{% get_jazzmin_settings request as jazzmin_settings %}
+{% get_jazzmin_ui_tweaks as jazzmin_ui %}
+
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE|default:"en-us" }}" {% if LANGUAGE_BIDI %}dir="rtl"{% endif %}>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <!--  Prevent admin panel being crawled by search engines -->
+    <meta name="robots" content="none, noarchive">
+    <script>
+        (function() {
+            var mode = localStorage.getItem('jazzmin-theme-mode') || '{{ jazzmin_ui.default_theme_mode|default:"light" }}';
+            if (mode === 'auto') {
+                mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-bs-theme', mode);
+        })();
+    </script>
+
+    <title>{% block title %}{{ title }} | {{ jazzmin_settings.site_title }}{% endblock %}</title>
+
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="{% static "vendor/fontawesome-free/css/all.min.css" %}">
+
+    <!-- Bootstrap and adminLTE -->
+    <link rel="stylesheet" href="{% static "vendor/adminlte/css/adminlte.min.css" %}" id="adminlte-css">
+
+    <!-- Bootswatch theme -->
+    <link rel="stylesheet" {% if jazzmin_ui.theme.name != 'default' %}href="{{ jazzmin_ui.theme.src }}"{% endif %} id="jazzmin-theme" data-theme-base="{% static 'vendor/bootswatch' %}" />
+    {% if jazzmin_settings.show_theme_chooser %}
+    <script>
+        (function() {
+            var savedTheme = localStorage.getItem('jazzmin-theme');
+            if (savedTheme && savedTheme !== 'default') {
+                var link = document.getElementById('jazzmin-theme');
+                link.setAttribute('href', link.getAttribute('data-theme-base') + '/' + savedTheme + '/bootstrap.min.css');
+            }
+        })();
+    </script>
+    {% endif %}
+
+    <!-- Custom fixes for django -->
+    <link rel="stylesheet" href="{% static "jazzmin/css/main.css" %}">
+
+    {% if jazzmin_settings.custom_css %}
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static jazzmin_settings.custom_css %}">
+    {% endif %}
+
+    <!-- favicons -->
+    <link rel="shortcut icon" href="{% static jazzmin_settings.site_icon %}" type="image/png">
+    <link rel="icon" href="{% static jazzmin_settings.site_icon %}" sizes="32x32" type="image/png">
+
+    <!-- Google Font: Outfit for Furniture ERP -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+      /* ═════════════════════════════════════════════════════════════════════
+         FURNITURE ERP ADMIN PANEL THEME (Beige / Warm Wood / Mahogany / Teak)
+         ═════════════════════════════════════════════════════════════════════ */
+      :root {
+        --font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --bg-main: #fcf9f2;            /* Soft Cream Beige Main Background */
+        --bg-sidebar: #1c100a;         /* Deep Warm Espresso Dark Sidebar */
+        --sidebar-hover: #3d2314;      /* Rich Mahogany Hover State */
+        --color-gold: #d97706;         /* Warm Teak Gold / Amber */
+        --color-gold-bright: #fbbf24;  /* Bright Amber Gold for Active Links */
+        --text-dark: #1c1917;          /* Dark Espresso Text */
+        --text-muted: #78350f;        /* Warm Timber Brown Muted Text */
+        --border-warm: #e7e0d3;        /* Soft Sand Border */
+        --card-bg: #ffffff;            /* Pure Cream Card Background */
+      }
+
+      body, html, input, button, select, textarea {
+        font-family: var(--font-family-base) !important;
+      }
+
+      body {
+        background-color: var(--bg-main) !important;
+        color: var(--text-dark) !important;
+      }
+
+      /* Top Header Navbar (Walnut & Gold) */
+      .app-header.navbar {
+        background-color: #2a1810 !important;
+        border-bottom: 2px solid #3d2314 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+      }
+
+      .app-header.navbar .nav-link, 
+      .app-header.navbar .brand-link {
+        color: #f5efe6 !important;
+      }
+
+      .app-header.navbar .nav-link:hover {
+        color: var(--color-gold-bright) !important;
+      }
+
+      /* Sidebar (Deep Espresso & Warm Mahogany) */
+      aside.app-sidebar, #jazzy-sidebar, .main-sidebar, .sidebar {
+        background-color: var(--bg-sidebar) !important;
+        border-right: 1px solid #2d1a0e !important;
+      }
+
+      .sidebar-brand {
+        background-color: #150b07 !important;
+        border-bottom: 1px solid #2a1810 !important;
+      }
+
+      .sidebar-brand .brand-text {
+        color: var(--color-gold-bright) !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.01em !important;
+      }
+
+      /* User Panel in Sidebar */
+      .user-panel {
+        border-bottom: 1px solid #2d1a0e !important;
+        padding-bottom: 10px !important;
+        margin-bottom: 6px !important;
+      }
+
+      .user-panel .info a, .user-panel .info span {
+        color: #f5efe6 !important;
+        font-weight: 700 !important;
+      }
+
+      /* Sidebar Search Box */
+      #jazzmin-sidebar-search {
+        background-color: #2d1a0e !important;
+        border: 1.5px solid #4a2e1b !important;
+        color: #fdfbf7 !important;
+        border-radius: 8px 0 0 8px !important;
+      }
+
+      #jazzmin-sidebar-search:focus {
+        border-color: var(--color-gold) !important;
+        box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.25) !important;
+      }
+
+      #jazzmin-sidebar-search::placeholder {
+        color: #a89f91 !important;
+      }
+
+      /* Sidebar Navigation Links */
+      #jazzy-navigation .nav-link,
+      .sidebar-menu .nav-link {
+        color: #e7e0d3 !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 0.85rem !important;
+        border-radius: 8px !important;
+        transition: all 0.15s ease-in-out !important;
+      }
+
+      #jazzy-navigation .nav-link:hover,
+      #jazzy-navigation .nav-item.menu-open > .nav-link,
+      .sidebar-menu .nav-link:hover {
+        background-color: var(--sidebar-hover) !important;
+        color: var(--color-gold-bright) !important;
+      }
+
+      #jazzy-navigation .nav-link.active,
+      .sidebar-menu .nav-link.active {
+        background-color: var(--color-gold) !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3) !important;
+      }
+
+      #jazzy-navigation .nav-header,
+      .sidebar-menu .nav-header {
+        color: var(--color-gold) !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
+        font-size: 0.72rem !important;
+      }
+
+      /* Main Content & Cards */
+      .app-main, .content-wrapper, #content-start, #content {
+        background-color: var(--bg-main) !important;
+      }
+
+      .card, .module {
+        background-color: var(--card-bg) !important;
+        border: 1px solid var(--border-warm) !important;
+        border-radius: 16px !important;
+        box-shadow: 0 4px 16px -2px rgba(69, 26, 3, 0.04) !important;
+      }
+
+      .card-header, .module caption, legend {
+        background-color: #f5efe6 !important;
+        border-bottom: 1px solid var(--border-warm) !important;
+        color: var(--text-dark) !important;
+        font-weight: 800 !important;
+      }
+
+      /* Buttons (Mahogany, Amber, Forest Timber, Terracotta) */
+      .btn-primary, input[type=submit].default, .submit-row input.default {
+        background-color: #78350f !important;
+        border-color: #78350f !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 3px 10px rgba(120, 53, 15, 0.2) !important;
+      }
+
+      .btn-primary:hover, input[type=submit].default:hover {
+        background-color: #451a03 !important;
+        border-color: #451a03 !important;
+      }
+
+      .btn-success, .addlink {
+        background-color: #15803d !important;
+        border-color: #15803d !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+      }
+
+      .btn-info {
+        background-color: #d97706 !important;
+        border-color: #d97706 !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+      }
+
+      .btn-danger, .deletelink {
+        background-color: #b91c1c !important;
+        border-color: #b91c1c !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+      }
+
+      .btn-secondary {
+        background-color: #78716c !important;
+        border-color: #78716c !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+      }
+
+      /* Tables & Change Lists */
+      table.table, #result_list {
+        background-color: #ffffff !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        border-radius: 12px !important;
+        overflow: hidden !important;
+      }
+
+      table.table th, #result_list th {
+        background-color: #f5efe6 !important;
+        color: #451a03 !important;
+        font-weight: 800 !important;
+        text-transform: uppercase !important;
+        font-size: 0.76rem !important;
+        letter-spacing: 0.04em !important;
+        border-bottom: 2px solid var(--border-warm) !important;
+      }
+
+      table.table tbody tr:hover, #result_list tbody tr:hover {
+        background-color: #fef8ee !important;
+      }
+
+      /* Form Control Inputs */
+      .form-control, input[type=text], input[type=password], input[type=email], select, textarea {
+        border: 1.5px solid #d6cebe !important;
+        border-radius: 8px !important;
+        background-color: #ffffff !important;
+        color: var(--text-dark) !important;
+      }
+
+      .form-control:focus, input:focus, select:focus, textarea:focus {
+        border-color: var(--color-gold) !important;
+        box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.2) !important;
+      }
+    </style>
+
+    {% block extrastyle %} {% endblock %}
+    {% block extrahead %} {% endblock %}
+</head>
+<body class="layout-fixed{% if jazzmin_settings.show_sidebar %} sidebar-expand-lg sidebar-open{% else %} no-sidebar{% endif %} bg-body-tertiary {% sidebar_status request %} {% if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %} {{ jazzmin_ui.body_classes }}" data-admin-utc-offset="{% now "Z" %}">
+
+    <div class="app-wrapper">
+
+    {% if not is_popup %}
+        <nav class="app-header navbar navbar-expand bg-body {{ jazzmin_ui.navbar_classes }}" id="jazzy-navbar">
+        <div class="container-fluid">
+            <ul class="navbar-nav">
+
+                {% if jazzmin_settings.show_sidebar %}
+                    <li class="nav-item">
+                        <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button"><i class="fas fa-bars"></i></a>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a href="{% url 'admin:index' %}" class="brand-link">
+                            <img src="{% static jazzmin_settings.site_logo %}" alt="{{ jazzmin_settings.site_header }} Logo" class="{{ jazzmin_settings.site_logo_classes }} brand-image" style="opacity: .8; margin: 0 0 0 5px;">
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% get_top_menu user request.current_app|default:"admin" as top_menu %}
+                {% for link in top_menu %}
+                    <li class="nav-item d-none d-sm-inline-block{% if link.children %} dropdown{% endif %}">
+                        {% if link.children %}
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                {{ link.name }}
+                            </a>
+                            <div class="dropdown-menu">
+                                {% for child in link.children %}
+                                    <a class="dropdown-item" href="{{ child.url }}" {% if link.new_window %}target="_blank"{% endif %}>{{ child.name }}</a>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <a href="{{ link.url }}" class="nav-link" {% if link.new_window %}target="_blank"{% endif %}>{{ link.name }}</a>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+
+            {% if jazzmin_settings.search_model %}
+                {% for search_model in jazzmin_settings.search_models_parsed %}
+                    <form action="{{ search_model.search_url }}" method="GET" class="d-flex ms-2">
+                        <div class="input-group input-group-sm">
+                            <input class="form-control form-control-navbar" name="q" type="search" placeholder="{% trans 'Search' %} {{ search_model.search_name }}..." aria-label="{% trans 'Search' %} {{ search_model.search_name }}...">
+                            <button class="btn btn-navbar" type="submit">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </form>
+                {% endfor %}
+            {% endif %}
+
+            <ul class="navbar-nav ms-auto">
+
+                {% if jazzmin_settings.show_ui_builder %}
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="control-sidebar" data-slide="true" href="#" role="button">
+                        <i class="fas fa-th-large"></i>
+                    </a>
+                </li>
+                {% endif %}
+                {% if 'django.contrib.admindocs'|app_is_installed %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'django-admindocs-docroot' %}" role="button">
+                        <i class="fas fa-book"></i>
+                    </a>
+                </li>
+                {% endif %}
+
+                {% if jazzmin_settings.show_theme_chooser %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link btn" data-bs-toggle="dropdown" href="#" title="{% trans 'Theme' %}">
+                        <i class="fas fa-palette"></i>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end" id="jazzy-theme-chooser">
+                        <span class="dropdown-header">{% trans 'Theme' %}</span>
+                        <div class="dropdown-divider"></div>
+                        <div class="px-3 pb-2">
+                            <select class="form-select form-select-sm" id="jazzmin-theme-select">
+                                {% for theme_name in jazzmin_ui.theme_list %}
+                                    <option value="{{ theme_name }}" {% if theme_name == jazzmin_ui.theme.name %}selected{% endif %}>
+                                        {{ theme_name|title }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <span class="dropdown-header">{% trans 'Color Scheme' %}</span>
+                        <div class="dropdown-divider"></div>
+                        <div class="px-3 pb-2">
+                            <select class="form-select form-select-sm" id="jazzmin-mode-select">
+                                <option value="light">{% trans 'Light' %}</option>
+                                <option value="dark">{% trans 'Dark' %}</option>
+                                <option value="auto">{% trans 'Auto' %}</option>
+                            </select>
+                        </div>
+                    </div>
+                </li>
+                {% endif %}
+
+                {% if jazzmin_settings.language_chooser %}
+                    {% get_available_languages as LANGUAGES %}
+                    {% get_language_info_list for LANGUAGES as languages %}
+
+                    <li class="nav-item dropdown">
+                        <a class="nav-link btn" data-bs-toggle="dropdown" href="#" title="Choose language">
+                            <i class="fas fa-globe" aria-hidden="true"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end" id="jazzy-languagemenu">
+                            <form action="{% url 'set_language' %}" method="post">
+                                {% csrf_token %}
+                                <input name="next" type="hidden" value="{{ request.get_full_path|remove_lang:LANGUAGE_CODE }}" />
+                                {% for language in languages %}
+                                    <button
+                                        type="submit"
+                                        name="language"
+                                        value="{{ language.code }}"
+                                        class="dropdown-item {% if language.code == LANGUAGE_CODE %}active{% endif %}"
+                                        lang="{{ language.code }}"
+                                    >
+                                        {{ language.name_local|title }}
+                                    </button>
+                                {% endfor %}
+                            </form>
+                        </div>
+                    </li>
+                {% endif %}
+
+                <li class="nav-item dropdown">
+                    <a class="nav-link btn" data-bs-toggle="dropdown" href="#" title="{{ request.user }}">
+                        <i class="far fa-user" aria-hidden="true"></i>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end" id="jazzy-usermenu">
+                        <span class="dropdown-header">{% trans 'Account' %}</span>
+                        <div class="dropdown-divider"></div>
+                        <a href="{% url 'admin:password_change' %}" class="dropdown-item">
+                            <i class="fas fa-key me-2"></i> {% trans 'Change password' %}
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item"><i class="fas fa-users me-2"></i> {% translate 'Log out' %}</button>
+                        </form>
+                        {% get_user_menu user request.current_app|default:"admin" as user_menu %}
+                        {% for link in user_menu %}
+                            <div class="dropdown-divider"></div>
+                            <a href="{{ link.url }}" class="dropdown-item" {% if link.new_window %}target="_blank"{% endif %}>
+                                <i class="{{ link.icon }} me-2"></i> {% trans link.name %}
+                            </a>
+                        {% endfor %}
+                        <div class="dropdown-divider"></div>
+                        {% if perms|can_view_self %}
+                            <a href="{% jazzy_admin_url request.user request.current_app|default:"admin" %}" class="dropdown-item dropdown-footer">{% trans 'See Profile' %}</a>
+                        {% endif %}
+                    </div>
+                </li>
+            </ul>
+        </div>
+        </nav>
+        {% block sidebar %}
+        {% if jazzmin_settings.show_sidebar %}
+            {% get_side_menu as side_menu_list %}
+
+            <aside class="app-sidebar bg-body-secondary shadow {{ jazzmin_ui.sidebar_classes }}" id="jazzy-sidebar" data-bs-theme="dark">
+                <div class="sidebar-brand">
+                    <a href="{% url 'admin:index' %}" class="brand-link {{ jazzmin_ui.brand_classes }}" id="jazzy-logo">
+                        <img src="{% static jazzmin_settings.site_logo %}" alt="{{ jazzmin_settings.site_header }} Logo" class="{{ jazzmin_settings.site_logo_classes }} brand-image opacity-75 shadow">
+                        <span class="brand-text fw-light">{{ jazzmin_settings.site_brand }}</span>
+                    </a>
+                </div>
+
+                <div class="sidebar-wrapper">
+                    <div class="user-panel d-flex">
+                        <div class="image">
+                            {% if jazzmin_settings|has_jazzmin_setting:"user_avatar" %}
+                                <img src="{% get_user_avatar request.user %}" width="160px" class="img-circle elevation-2" alt="User Image">
+                            {% else %}
+                                <i class="fas fa-inverse user-profile fa-user-circle"></i>
+                            {% endif %}
+                        </div>
+                        <div class="info">
+                            {% if perms|can_view_self %}
+                                <a href="{% jazzy_admin_url request.user request.current_app|default:"admin" %}" class="d-block">{{ request.user }}</a>
+                            {% else %}
+                                <span class="d-block opacity-75">{{ request.user }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Sidebar Live Search Option Box -->
+                    <div class="px-2 pt-2 pb-1" style="position: sticky; top: 0; z-index: 99; background: inherit; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                      <div class="input-group input-group-sm">
+                        <input 
+                          type="text" 
+                          id="jazzmin-sidebar-search" 
+                          class="form-control form-control-sidebar" 
+                          placeholder="Search sidebar options & fields..." 
+                          aria-label="Search sidebar"
+                          style="background-color: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px 0 0 6px; font-size: 13px;"
+                        >
+                        <div class="input-group-append">
+                          <button class="btn btn-sidebar" type="button" style="background-color: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-left: none; color: #a0aec0; border-radius: 0 6px 6px 0;" onclick="document.getElementById('jazzmin-sidebar-search').value=''; document.getElementById('jazzmin-sidebar-search').dispatchEvent(new Event('input'));">
+                            <i class="fas fa-times" id="jazzmin-clear-icon" style="display:none; color: #f87171;"></i>
+                            <i class="fas fa-search" id="jazzmin-search-icon"></i>
+                          </button>
+                        </div>
+                      </div>
+                      <div id="jazzmin-search-count" class="font-weight-bold pt-1" style="display:none; font-size: 11px; color: #38bdf8; padding-left: 2px;"></div>
+                    </div>
+
+                    <nav class="mt-2">
+                        <ul class="nav sidebar-menu flex-column {{ jazzmin_ui.sidebar_list_classes }}" data-lte-toggle="treeview" role="navigation" aria-label="Main navigation" data-accordion="false" id="jazzy-navigation">
+
+                            <li class="nav-item">
+                                <a href="{% url 'admin:index' %}" class="nav-link">
+                                    <i class="nav-icon fas fa-th-large"></i>
+                                    <p>{% trans 'Dashboard' %}</p>
+                                </a>
+                            </li>
+
+                            {% if jazzmin_settings.navigation_expanded %}
+                                {% for app in side_menu_list %}
+                                    <li class="nav-header">{{ app.name }}</li>
+                                    {% for model in app.models %}
+                                        <li class="nav-item">
+                                            {% if model.url %}
+                                            <a href="{{ model.url }}" class="nav-link">
+                                                <i class="nav-icon {{ model.icon }}"></i> <p>{{ model.name }}</p>
+                                            </a>
+                                        {% else %}
+                                            <span class="nav-link disabled">
+                                                <i class="nav-icon {{ model.icon }}"></i> <p>{{ model.name }}</p>
+                                            </span>
+                                        {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                {% endfor %}
+                            {% else %}
+                                {% for app in side_menu_list %}
+                                    <li class="nav-item has-treeview">
+                                        <a href="#" class="nav-link">
+                                            <i class="nav-icon {{ app.icon }}"></i>
+                                            <p>{{ app.name|truncatechars:21 }} <i class="nav-arrow fas fa-chevron-right" aria-hidden="true"></i></p>
+                                        </a>
+                                        <ul class="nav nav-treeview">
+                                            {% for model in app.models %}
+                                                <li class="nav-item">
+                                                    <a href="{% if model.url %}{{ model.url }}{% else %}javascript:void(0){% endif %}" class="nav-link">
+                                                        <i class="nav-icon {{ model.icon }}"></i>
+                                                        <p>{{ model.name }}</p>
+                                                    </a>
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </li>
+                                {% endfor %}
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            </aside>
+        {% endif %}
+        {% endblock %}
+    {% endif %}
+
+    <main class="app-main" {% if is_popup %}style="margin-left:0; padding-top: 20px;"{% endif %}>
+        {% block page_content %}
+            {% if not is_popup %}
+            <div class="app-content-header">
+                <div class="container-fluid">
+                    <div class="row">
+                        <div class="col-sm-6">
+                            <h3 class="mb-0">{% block content_title %}{% endblock %}</h3>
+                        </div>
+                        <div class="col-sm-6">
+                            {% block breadcrumbs %}
+                                <ol class="breadcrumb float-sm-end">
+                                    <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+                                    <li class="breadcrumb-item active" aria-current="page">{% block content_subtitle %}{% endblock %}</li>
+                                </ol>
+                            {% endblock %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="app-content">
+                <div class="container-fluid">
+                    {% block messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-dismissible fade show aria-level-alert alert-{{ message.tags }}" role="alert">
+                                {{ message|capfirst }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endblock messages %}
+
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        {% endblock %}
+    </main>
+
+    {% block footer %}
+        {% if not is_popup %}
+            <footer class="app-footer">
+                <div class="float-end d-none d-sm-inline">
+                    <b>{% trans 'Jazzmin version' %}</b> {% get_jazzmin_version %}
+                </div>
+                {% autoescape off %}
+                    <strong>{% trans 'Copyright' %} &copy; {% now "Y" %} {{ jazzmin_settings.copyright }}.</strong> {% trans 'All rights reserved.' %}
+                {% endautoescape %}
+            </footer>
+        {% endif %}
+    {% endblock %}
+
+</div>
+
+{% if jazzmin_settings.show_ui_builder %}
+    <aside class="control-sidebar control-sidebar-dark">
+        <div class="p-3">
+            <h5>{% trans 'UI Builder' %}</h5>
+            <hr class="mb-2"/>
+            {% comment %}{% render_ui_builder jazzmin_ui %}{% endcomment %}
+        </div>
+    </aside>
+{% endif %}
+
+<!-- jQuery -->
+<script src="{% static "vendor/jquery/jquery.min.js" %}"></script>
+<!-- Bootstrap 4 -->
+<script src="{% static "vendor/bootstrap/js/bootstrap.bundle.min.js" %}"></script>
+<!-- AdminLTE App -->
+<script src="{% static "vendor/adminlte/js/adminlte.min.js" %}"></script>
+
+{% if jazzmin_settings.custom_js %}
+<!-- Custom JS -->
+<script src="{% static jazzmin_settings.custom_js %}"></script>
+{% endif %}
+
+<!-- Dynamic Sidebar Keyword Search Script -->
+<script>
+  (function() {
+    const KEYWORD_MAP = {
+      'po': ['purchase order', 'supplier po', 'order', 'items', 'defects', 'po supplier'],
+      'so': ['sale order', 'buyer pi', 'pi', 'proforma', 'invoice'],
+      'buyer': ['customer', 'client', 'buyer masters', 'buyer master finishing', 'buyer unit allocations', 'buyer pis', 'buyer pi items'],
+      'supplier': ['vendor', 'po supplier historys', 'supplier pos', 'supplier tax invoices', 'supplier debit notes', 'gate inward receipts'],
+      'grn': ['gate inward receipts', 'receipt', 'delivery', 'round', 'installment', 'inspection'],
+      'debit': ['supplier debit notes', 'dn', 'return', 'rejection', 'tally', 'credit'],
+      'invoice': ['supplier tax invoices', 'performa invoices', 'performa invoice items', 'bill', 'gst'],
+      'defect': ['po item defects', 'rejection', 'qc', 'quality', 'return', 'image'],
+      'unit': ['buyer unit allocations', 'production units'],
+      'user': ['account', 'login', 'contractor', 'permission', 'groups', 'auth', 'user sessions']
+    };
+
+    function initSidebarSearch() {
+      const searchInput = document.getElementById('jazzmin-sidebar-search');
+      const searchIcon = document.getElementById('jazzmin-search-icon');
+      const clearIcon = document.getElementById('jazzmin-clear-icon');
+      const countBadge = document.getElementById('jazzmin-search-count');
+      const nav = document.getElementById('jazzy-navigation');
+
+      if (!searchInput || !nav) return;
+
+      const navLinks = nav.querySelectorAll('li.nav-item a.nav-link');
+      
+      navLinks.forEach(function(link) {
+        const text = link.innerText.trim().toLowerCase();
+        let searchTerms = [text];
+        
+        Object.keys(KEYWORD_MAP).forEach(function(key) {
+          if (text.includes(key)) {
+            searchTerms = searchTerms.concat(KEYWORD_MAP[key]);
+          }
+        });
+
+        link.setAttribute('data-search-terms', searchTerms.join(' '));
+      });
+
+      searchInput.addEventListener('input', function() {
+        const query = this.value.trim().toLowerCase();
+
+        if (query.length > 0) {
+          if (searchIcon) searchIcon.style.display = 'none';
+          if (clearIcon) clearIcon.style.display = 'inline-block';
+        } else {
+          if (searchIcon) searchIcon.style.display = 'inline-block';
+          if (clearIcon) clearIcon.style.display = 'none';
+          if (countBadge) countBadge.style.display = 'none';
+        }
+
+        let count = 0;
+
+        const navItems = nav.querySelectorAll('li.nav-item');
+        navItems.forEach(function(item) {
+          const link = item.querySelector('a.nav-link');
+          if (!link) return;
+
+          const text = link.innerText.trim().toLowerCase();
+          if (!link.getAttribute('data-search-terms')) {
+            link.setAttribute('data-search-terms', text);
+          }
+
+          const terms = (link.getAttribute('data-search-terms') || text).toLowerCase();
+
+          if (query === '' || terms.includes(query)) {
+            item.style.display = '';
+            
+            // If item is inside a treeview sub-menu, open parent
+            const parentTree = item.closest('ul.nav-treeview');
+            if (parentTree && query !== '') {
+              parentTree.style.display = 'block';
+              const parentHeader = item.closest('li.has-treeview');
+              if (parentHeader) {
+                parentHeader.style.display = '';
+                parentHeader.classList.add('menu-open', 'active');
+              }
+            }
+            if (link.getAttribute('href') !== '#' && !link.classList.contains('disabled') && text !== 'dashboard') {
+              count++;
+            }
+          } else {
+            if (!item.classList.contains('has-treeview')) {
+              item.style.display = 'none';
+            }
+          }
+        });
+
+        // Hide App headers with 0 visible model items
+        const treeviews = nav.querySelectorAll('li.has-treeview');
+        treeviews.forEach(function(tree) {
+          const visibleChildren = tree.querySelectorAll('ul.nav-treeview li.nav-item:not([style*="display: none"])');
+          if (query !== '' && visibleChildren.length === 0) {
+            tree.style.display = 'none';
+          } else {
+            tree.style.display = '';
+          }
+        });
+
+        if (query.length > 0) {
+          if (countBadge) {
+            countBadge.innerText = count + ' option(s) found';
+            countBadge.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSidebarSearch);
+    } else {
+      initSidebarSearch();
+    }
+  })();
+</script>
+
+{% block extrajs %}{% endblock %}
+
+</body>
+</html>

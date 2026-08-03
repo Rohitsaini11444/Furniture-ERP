@@ -16,7 +16,7 @@ from .views import (
     NotificationViewSet,
     StockItemViewSet,
     GeneratePresentationView, ScanLookupView,
-    GateInwardReceiptViewSet, SupplierDebitNoteViewSet, StockOriginBreakdownView,
+    GateInwardReceiptViewSet, SupplierDebitNoteViewSet, SupplierTaxInvoiceViewSet, StockOriginBreakdownView,
     DashboardStatsView,
     ProductionUnitViewSet, BuyerUnitAllocationViewSet, UnitWorkReallocationViewSet, WorkloadReallocationView,
     SampleExcelExportView, FinishExcelExportView, FinishExcelImportView,
@@ -44,6 +44,7 @@ router.register(r'suppliers', SupplierViewSet, basename='supplier')
 router.register(r'supplier-pos', SupplierPOViewSet, basename='supplier-po')
 router.register(r'supplier-po-items', SupplierPOItemViewSet, basename='supplier-po-item')
 router.register(r'supplier-po-defects', SupplierPOItemDefectViewSet, basename='supplier-po-defect')
+router.register(r'supplier-tax-invoices', SupplierTaxInvoiceViewSet, basename='supplier-tax-invoice')
 router.register(r'gate-inward-receipts', GateInwardReceiptViewSet, basename='gate-inward-receipt')
 router.register(r'supplier-debit-notes', SupplierDebitNoteViewSet, basename='supplier-debit-note')
 

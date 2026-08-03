@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
-  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight
+  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight, Box, Clock, Hourglass, Check, Truck, Download
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -10,6 +10,8 @@ import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
 import QRScannerModal from '../components/QRScannerModal';
 import DebitNotePrintout from '../components/DebitNotePrintout';
+import GRNPrintoutModal from '../components/GRNPrintoutModal';
+import RecordInstallmentModal from '../components/RecordInstallmentModal';
 
 
 
@@ -363,6 +365,8 @@ function RejectItemModal({ item, remaining, onClose, onSaved }) {
 // ─── Pass Item Modal ────────────────────────────────────────────────────────
 function PassItemModal({ item, remaining, onClose, onSaved }) {
   const [quantity, setQuantity] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [vehicleNo, setVehicleNo] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -370,8 +374,12 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
     setSaving(true);
     try {
       const addedQty = parseFloat(quantity);
-      await api.post(`/supplier-po-items/${item.id}/receive-qc/`, { passed_qty: addedQty });
-      onSaved();
+      const res = await api.post(`/supplier-po-items/${item.id}/receive-qc/`, { 
+        passed_qty: addedQty,
+        supplier_invoice_no: invoiceNo,
+        vehicle_no: vehicleNo
+      });
+      onSaved(res.data?.receipt);
     } catch (err) {
       console.error(err);
       alert('Failed to save passed quantity.');
@@ -382,9 +390,9 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#16a34a' }}>Pass Pieces</h2>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#16a34a' }}>Pass Pieces (Gate QC)</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -394,10 +402,20 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
               <input required type="number" min="0.01" step="0.01" max={remaining} className="form-input"
                 value={quantity} onChange={e => setQuantity(e.target.value)} />
             </div>
+            <div className="form-group">
+              <label className="form-label">Supplier Invoice / Challan No. (Optional)</label>
+              <input type="text" placeholder="e.g. INV-2026-101" className="form-input"
+                value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Truck / Vehicle No. (Optional)</label>
+              <input type="text" placeholder="e.g. RJ-14-GB-9900" className="form-input"
+                value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
               <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn-primary" style={{ background: '#16a34a' }} disabled={saving}>
-                {saving ? 'Saving…' : 'Confirm Pass'}
+                {saving ? 'Saving…' : 'Confirm Pass & Generate GRN'}
               </button>
             </div>
           </form>
@@ -410,19 +428,27 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
 // ─── QC Form (Gate Entry Check) ───────────────────────────────────────────────
 function QCForm({ poId, onBack }) {
   const [po, setPo] = useState(null);
+  const [poReceipts, setPoReceipts] = useState([]);
+  const [poDebitNotes, setPoDebitNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [rejectItemData, setRejectItemData] = useState(null);
-  const [passItemData, setPassItemData] = useState(null);
+  const [showRecordInstallmentModal, setShowRecordInstallmentModal] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState({});
   const [selectedDebitNote, setSelectedDebitNote] = useState(null);
+  const [selectedGRN, setSelectedGRN] = useState(null);
 
   const toggleLogs = (itemId) => setExpandedLogs(prev => ({ ...prev, [itemId]: !prev[itemId] }));
 
   const loadPO = useCallback(() => {
     setLoading(true);
-    api.get(`/supplier-pos/${poId}/`)
-      .then(res => setPo(res.data))
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get(`/supplier-pos/${poId}/`),
+      api.get('/gate-inward-receipts/', { params: { supplier_po: poId } }),
+      api.get('/supplier-debit-notes/', { params: { supplier_po: poId } })
+    ]).then(([poRes, rcptRes, dnRes]) => {
+      setPo(poRes.data);
+      setPoReceipts(rcptRes.data?.results || rcptRes.data || []);
+      setPoDebitNotes(dnRes.data?.results || dnRes.data || []);
+    }).finally(() => setLoading(false));
   }, [poId]);
 
   useEffect(() => { loadPO(); }, [loadPO]);
@@ -430,148 +456,423 @@ function QCForm({ poId, onBack }) {
   if (loading) return <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading PO details…</div>;
   if (!po) return null;
 
+  const items = po.items || [];
+  const totalItemsCount = items.length;
+
+  let passedItemsCount = 0;
+  let rejectedItemsCount = 0;
+  let outstandingItemsCount = 0;
+
+  items.forEach(item => {
+    const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
+    const passedTotal = parseFloat(item.passed_quantity || 0);
+    const ordered = parseFloat(item.quantity || 0);
+    const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
+
+    if (passedTotal > 0) passedItemsCount++;
+    if (rejectedTotal > 0) rejectedItemsCount++;
+    if (remaining > 0) outstandingItemsCount++;
+  });
+
+  const grnGroupMap = {};
+  poReceipts.forEach(rcpt => {
+    const key = rcpt.grn_number || `GRN-${rcpt.round_number || 1}`;
+    if (!grnGroupMap[key]) {
+      const matchingDN = poDebitNotes.find(dn => 
+        (dn.item_description && dn.item_description.includes(key)) || 
+        (dn.remarks && dn.remarks.includes(key)) ||
+        (rcpt.supplier_invoice_no && dn.original_inv_no === rcpt.supplier_invoice_no)
+      );
+
+      grnGroupMap[key] = {
+        grn_number: key,
+        round_number: rcpt.round_number || 1,
+        receipt_date: rcpt.receipt_date,
+        supplier_invoice_no: rcpt.supplier_invoice_no || rcpt.challan_no,
+        supplier_invoice_date: rcpt.supplier_invoice_date,
+        vehicle_no: rcpt.vehicle_no,
+        inspected_by_name: rcpt.inspected_by_name,
+        notes: rcpt.notes,
+        debit_note: matchingDN || null,
+        items: []
+      };
+    }
+    grnGroupMap[key].items.push(rcpt);
+  });
+  const grnRoundsList = Object.values(grnGroupMap).sort((a, b) => (b.round_number || 0) - (a.round_number || 0));
+
   return (
-    <div className="new-page-form" style={{ padding: '1rem 0' }}>
+    <div className="new-page-form" style={{ padding: '0.5rem 0 2rem' }}>
       <DebitNotePrintout
         debitNote={selectedDebitNote}
         onClose={() => setSelectedDebitNote(null)}
       />
 
-      {rejectItemData && (
-        <RejectItemModal 
-          item={rejectItemData.item}
-          remaining={rejectItemData.remaining}
-          onClose={() => setRejectItemData(null)} 
-          onSaved={() => { setRejectItemData(null); loadPO(); }}
-        />
-      )}
-      {passItemData && (
-        <PassItemModal 
-          item={passItemData.item} 
-          remaining={passItemData.remaining}
-          onClose={() => setPassItemData(null)} 
-          onSaved={() => { setPassItemData(null); loadPO(); }}
-        />
-      )}
+      <GRNPrintoutModal
+        receipt={selectedGRN}
+        onClose={() => setSelectedGRN(null)}
+      />
 
-      <button onClick={onBack}
-        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: '#14b8a6', fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem', padding: 0, fontSize: '1rem' }}>
-        <ArrowLeft size={18} /> Back to Gate Entry List
+      {showRecordInstallmentModal && (
+        <RecordInstallmentModal
+          po={po}
+          onClose={() => setShowRecordInstallmentModal(false)}
+          onSaved={(resData) => {
+            setShowRecordInstallmentModal(false);
+            if (resData?.receipts?.length > 0) {
+              setSelectedGRN({
+                grn_number: resData.grn_number,
+                round_number: resData.round_number,
+                supplier_po: po,
+                batch_items: resData.receipts
+              });
+            }
+            loadPO();
+          }}
+        />
+      )}
+      {/* Top Back Navigation Link */}
+      <button 
+        onClick={onBack}
+        style={{ 
+          display: 'inline-flex', 
+          alignItems: 'center', 
+          gap: '0.5rem', 
+          background: 'none', 
+          border: 'none', 
+          color: '#059669', 
+          fontWeight: 700, 
+          cursor: 'pointer', 
+          marginBottom: '1.25rem', 
+          padding: 0, 
+          fontSize: '0.95rem' 
+        }}
+      >
+        <ArrowLeft size={18} strokeWidth={2.5} />
+        <span>Back to Gate Entry List</span>
       </button>
 
-      <div className="pi-form-container" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ClipboardCheck size={22} color="#0284c7"/>
+      {/* Header Card */}
+      <div className="po-header-card">
+        <div className="po-header-left">
+          <div style={{
+            width: '56px',
+            height: '56px',
+            borderRadius: '16px',
+            backgroundColor: '#d1fae5',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '12px',
+              backgroundColor: '#059669',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ffffff'
+            }}>
+              <ClipboardCheck size={22} strokeWidth={2.2} />
             </div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#1e293b' }}>
+          </div>
+
+          <div>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 0.6rem 0', color: '#1e293b', letterSpacing: '-0.02em' }}>
               Gate Entry / Quality Check
             </h2>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem 2rem', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                  PO Number
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#059669' }}>
+                  {po.po_number}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                  Supplier
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>
+                  {po.supplier_detail?.name || 'N/A'}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                  Status
+                </div>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backgroundColor: '#fff7ed',
+                  border: '1px solid #ffedd5',
+                  color: '#ea580c',
+                  padding: '3px 10px',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700
+                }}>
+                  <Clock size={13} strokeWidth={2.5} />
+                  <span>{po.status || 'Pending'}</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <StatusBadge status={po.status} />
         </div>
 
-        <div style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6' }}>
-          <div>PO Number: <strong style={{ color: '#1e293b', fontWeight: 700 }}>{po.po_number}</strong></div>
-          <div>Supplier: <strong style={{ color: '#1e293b', fontWeight: 700 }}>{po.supplier_detail?.name}</strong></div>
+        {/* Vertical Divider */}
+        <div style={{ width: '1px', height: '60px', backgroundColor: '#e2e8f0' }} className="po-header-divider" />
+
+        {/* Summary Metric Cards (2x2 grid on mobile) */}
+        <div className="po-qc-metrics-wrapper">
+          {/* Total Items */}
+          <div className="po-qc-metric-card">
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#eff6ff',
+              color: '#2563eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 0.35rem'
+            }}>
+              <Box size={18} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+              {totalItemsCount}
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
+              Total Items
+            </div>
+          </div>
+
+          {/* Passed */}
+          <div className="po-qc-metric-card">
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#f0fdf4',
+              color: '#16a34a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 0.35rem'
+            }}>
+              <CheckCircle size={18} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+              {passedItemsCount}
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
+              Passed
+            </div>
+          </div>
+
+          {/* Rejected */}
+          <div className="po-qc-metric-card">
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#fef2f2',
+              color: '#dc2626',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 0.35rem'
+            }}>
+              <XCircle size={18} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+              {rejectedItemsCount}
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
+              Rejected
+            </div>
+          </div>
+
+          {/* Outstanding */}
+          <div className="po-qc-metric-card">
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#fff7ed',
+              color: '#ea580c',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 0.35rem'
+            }}>
+              <Hourglass size={18} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+              {outstandingItemsCount}
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
+              Outstanding
+            </div>
+          </div>
         </div>
       </div>
 
-      <div style={{ padding: '0 0.5rem' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginBottom: '1rem', marginTop: '0.5rem' }}>Item Details</h3>
+      {/* Subtitle Section Header & Record Installment Action Button */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingLeft: '0.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
+            <Box size={20} color="#059669" strokeWidth={2.2} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+              Item Details & Cumulative QC Progress
+            </h3>
+          </div>
+          <div style={{ width: '36px', height: '3px', backgroundColor: '#10b981', borderRadius: '2px', marginLeft: '1.85rem' }} />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowRecordInstallmentModal(true)}
+          style={{
+            backgroundColor: '#059669',
+            color: '#ffffff',
+            border: 'none',
+            padding: '0.65rem 1.25rem',
+            borderRadius: '10px',
+            fontSize: '0.9rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)'
+          }}
+        >
+          <Truck size={18} />
+          <span>+ Record Delivery Installment / Inward Shipment</span>
+        </button>
       </div>
 
+      {/* Table Card Container */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '20px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.03)',
+        overflow: 'hidden',
+        marginBottom: '1.5rem'
+      }}>
         <div className="po-desktop-table">
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '950px' }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>#</th>
-                  <th style={{ padding: '10px', textAlign: 'left', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Description of Goods</th>
-                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Ordered Qty</th>
-                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Passed Qty</th>
-                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Rejected Qty</th>
-                  <th style={{ padding: '10px', textAlign: 'center', fontSize: '0.78rem', color: '#b45309' }}>Outstanding Balance Qty</th>
-                  <th style={{ padding: '10px', textAlign: 'right', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Actions</th>
+                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', width: '50px' }}>#</th>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description of Goods</th>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ordered Qty</th>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Passed Qty</th>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rejected Qty</th>
+                  <th style={{ padding: '1rem 1.25rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Outstanding Balance Qty</th>
                 </tr>
               </thead>
               <tbody>
-                {(po.items || []).map((item, idx) => {
+                {items.map((item, idx) => {
                   const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
                   const passedTotal = parseFloat(item.passed_quantity || 0);
                   const ordered = parseFloat(item.quantity || 0);
                   const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
 
+                  let skuCode = item.description || '';
+                  let skuDetail = '';
+                  const match = item.description?.match(/^([^\s(]+)\s*\((.*)\)$/);
+                  if (match) {
+                    skuCode = match[1];
+                    skuDetail = `(${match[2]})`;
+                  } else if (item.description?.includes(' - ')) {
+                    const parts = item.description.split(' - ');
+                    skuCode = parts[0];
+                    skuDetail = `(${parts.slice(1).join(' - ')})`;
+                  }
+
                   return (
                     <React.Fragment key={item.id}>
-                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '12px 10px', color: 'var(--text-muted)', fontWeight: 600 }}>{idx + 1}</td>
-                        <td style={{ padding: '12px 10px' }}>
-                          <strong style={{ color: '#0f172a' }}>{item.description}</strong>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s ease' }}>
+                        <td style={{ padding: '1.1rem 1.25rem', verticalAlign: 'middle' }}>
+                          <div style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            backgroundColor: '#d1fae5',
+                            color: '#059669',
+                            fontWeight: 800,
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            {idx + 1}
+                          </div>
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700 }}>{item.quantity} {item.unit}</td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700, color: '#16a34a' }}>
-                          {passedTotal} {item.unit}
-                        </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
-                          {rejectedTotal} {item.unit}
-                          {rejectedTotal > 0 && (
-                            <div style={{ marginTop: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={() => setSelectedDebitNote({
-                                  vch_type: 'Debit Note',
-                                  vch_no: `DN/26-27/01${idx + 14}`,
-                                  vch_date: new Date().toISOString().split('T')[0],
-                                  original_inv_no: po.po_number,
-                                  original_inv_date: po.po_date,
-                                  supplier_name_str: po.supplier_detail?.name || 'Supplier',
-                                  supplier_gstin_str: po.supplier_detail?.gstin || '08DNKPK3004E1ZB',
-                                  item_description: `${item.description} — Rejected Returns`,
-                                  rejected_qty: rejectedTotal,
-                                  unit: item.unit || 'No.',
-                                  rate: parseFloat(item.rate || 1200),
-                                  subtotal_amount: rejectedTotal * parseFloat(item.rate || 1200),
-                                  company_pan: 'ABXPS4077R'
-                                })}
-                                style={{
-                                  backgroundColor: '#fee2e2',
-                                  border: '1px solid #fca5a5',
-                                  color: '#dc2626',
-                                  borderRadius: '4px',
-                                  padding: '2px 6px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                📄 Tally Debit Note PDF
-                              </button>
+
+                        <td style={{ padding: '1.1rem 1.25rem', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem', marginBottom: skuDetail ? '2px' : 0 }}>
+                            {skuCode}
+                          </div>
+                          {skuDetail && (
+                            <div style={{ color: '#64748b', fontSize: '0.82rem', fontWeight: 500 }}>
+                              {skuDetail}
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'center', fontWeight: 800, color: remaining > 0 ? '#d97706' : '#16a34a' }}>
-                          {remaining} {item.unit}
+
+                        <td style={{ padding: '1.1rem 1.25rem', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>
+                            {item.quantity} {item.unit || 'pcs'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: '2px' }}>
+                            Ordered
+                          </div>
                         </td>
-                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                            <button type="button" onClick={() => setPassItemData({ item, remaining })}
-                              disabled={remaining <= 0}
-                              style={{ background: remaining > 0 ? '#dcfce7' : '#f1f5f9', border: remaining > 0 ? '1px solid #86efac' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#16a34a' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                              Pass Lot
-                            </button>
-                            <button type="button" onClick={() => setRejectItemData({ item, remaining })}
-                              disabled={remaining <= 0}
-                              style={{ background: remaining > 0 ? '#fee2e2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fca5a5' : '1px solid #cbd5e1', borderRadius: '4px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                              Reject Lot
-                            </button>
+
+                        <td style={{ padding: '1.1rem 1.25rem', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: '#059669', fontSize: '0.95rem' }}>
+                            {passedTotal} {item.unit || 'pcs'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: '2px' }}>
+                            Passed
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '1.1rem 1.25rem', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: '#dc2626', fontSize: '0.95rem' }}>
+                            {rejectedTotal} {item.unit || 'pcs'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: '2px' }}>
+                            Rejected
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '1.1rem 1.25rem', textAlign: 'center', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 800, color: remaining > 0 ? '#ea580c' : '#059669', fontSize: '0.95rem' }}>
+                            {remaining} {item.unit || 'pcs'}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginTop: '2px' }}>
+                            Outstanding
                           </div>
                         </td>
                       </tr>
+
                       {expandedLogs[item.id] && (
                         <tr>
-                          <td colSpan={6} style={{ padding: '0 1rem 1rem 1rem', borderBottom: '1px solid #f1f5f9' }}>
+                          <td colSpan={7} style={{ padding: '0 1.25rem 1.25rem 1.25rem', backgroundColor: '#fafafa' }}>
                             <InlineDefectLogs item={item} onClose={() => toggleLogs(item.id)} onReplySaved={loadPO} />
                           </td>
                         </tr>
@@ -584,75 +885,241 @@ function QCForm({ poId, onBack }) {
           </div>
         </div>
 
-        <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
-          {(po.items || []).map((item, idx) => {
+        {/* Mobile View */}
+        <div className="po-mobile-cards" style={{ padding: '0.75rem' }}>
+          {items.map((item, idx) => {
             const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
             const passedTotal = parseFloat(item.passed_quantity || 0);
             const ordered = parseFloat(item.quantity || 0);
-            const remaining = ordered - passedTotal - rejectedTotal;
+            const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
 
             return (
-              <div key={item.id} className="po-mobile-card" style={{ display: 'flex', flexDirection: 'column', padding: '1.25rem', gap: '1.25rem', marginBottom: '1rem' }}>
+              <div key={item.id} className="po-mobile-card" style={{ display: 'flex', flexDirection: 'column', padding: '1.25rem', gap: '1rem', marginBottom: '1rem', border: '1px solid #e2e8f0', borderRadius: '16px', backgroundColor: '#ffffff' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                     <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                       <Package size={24} color="#8b5a2b"/>
+                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                     <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#d1fae5', color: '#059669', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.85rem' }}>
+                       {idx + 1}
                      </div>
                      <div>
-                       <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1rem', marginBottom: '0.2rem' }}>{item.description}</div>
-                       <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit}</div>
+                       <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem', marginBottom: '0.2rem' }}>{item.description}</div>
+                       <div style={{ color: '#64748b', fontSize: '0.82rem' }}>Rem: {remaining > 0 ? remaining : 0} {item.unit || 'pcs'}</div>
                      </div>
                    </div>
-                   <div style={{ background: '#f1f5f9', color: '#334155', fontWeight: 700, fontSize: '0.8rem', padding: '4px 10px', borderRadius: '999px' }}>
-                     #{idx + 1}
+                </div>
+
+                {/* 2x2 Quantities Grid */}
+                <div className="po-mobile-qty-grid">
+                   <div className="po-mobile-qty-item">
+                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase' }}>Ordered</div>
+                     <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#1e293b' }}>{item.quantity} {item.unit || 'pcs'}</div>
+                   </div>
+                   <div className="po-mobile-qty-item">
+                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase' }}>Passed</div>
+                     <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#059669' }}>{passedTotal} {item.unit || 'pcs'}</div>
+                   </div>
+                   <div className="po-mobile-qty-item">
+                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase' }}>Rejected</div>
+                     <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#dc2626' }}>{rejectedTotal} {item.unit || 'pcs'}</div>
+                   </div>
+                   <div className="po-mobile-qty-item">
+                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.2rem', textTransform: 'uppercase' }}>Outstanding</div>
+                     <div style={{ fontSize: '0.92rem', fontWeight: 800, color: remaining > 0 ? '#ea580c' : '#059669' }}>{remaining} {item.unit || 'pcs'}</div>
                    </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #e2e8f0', borderBottom: '1px dashed #e2e8f0', padding: '1rem 0', margin: '0 -0.25rem' }}>
-                   <div style={{ flex: 1, padding: '0 0.5rem', borderRight: '1px solid #e2e8f0' }}>
-                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Ordered</div>
-                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>{item.quantity} {item.unit}</div>
-                   </div>
-                   <div style={{ flex: 1, padding: '0 0.5rem', borderRight: '1px solid #e2e8f0', textAlign: 'center' }}>
-                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Passed</div>
-                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#059669' }}>{passedTotal}</div>
-                   </div>
-                   <div style={{ flex: 1, padding: '0 0.5rem', textAlign: 'center' }}>
-                     <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>Rejected</div>
-                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{rejectedTotal}</div>
-                   </div>
-                   <div style={{ paddingLeft: '0.5rem', display: 'flex', alignItems: 'center' }}>
-                     {item.defects?.length > 0 && (
-                        <div 
-                          style={{ fontSize: '0.75rem', color: '#dc2626', textDecoration: 'underline', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', paddingRight: '0.5rem' }}
-                          onClick={() => toggleLogs(item.id)}
-                        >
-                          <FileText size={14}/> View {item.defects.length} log(s)
-                        </div>
-                      )}
-                   </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => setPassItemData({ item, remaining })}
-                    disabled={remaining <= 0}
-                    style={{ background: remaining > 0 ? '#ecfdf5' : '#f1f5f9', border: remaining > 0 ? '1px solid #a7f3d0' : '1px solid #cbd5e1', borderRadius: '8px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#059669' : '#94a3b8', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <CheckCircle size={16}/> Pass
-                  </button>
-                  <button type="button" onClick={() => setRejectItemData({ item, remaining })}
-                    disabled={remaining <= 0}
-                    style={{ background: remaining > 0 ? '#fef2f2' : '#f1f5f9', border: remaining > 0 ? '1px solid #fecaca' : '1px solid #cbd5e1', borderRadius: '8px', cursor: remaining > 0 ? 'pointer' : 'not-allowed', color: remaining > 0 ? '#dc2626' : '#94a3b8', padding: '8px 16px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <XCircle size={16}/> Reject
-                  </button>
-                </div>
-
-                {expandedLogs[item.id] && (
+                 {expandedLogs[item.id] && (
                   <InlineDefectLogs item={item} onClose={() => toggleLogs(item.id)} onReplySaved={loadPO} />
                 )}
               </div>
             );
           })}
         </div>
+      </div>
+
+      {/* Round-by-Round Delivery History Timeline */}
+      <div style={{ marginTop: '2rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.85rem' }}>
+          <Package size={20} color="#059669" strokeWidth={2.2} />
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+            Inward Delivery Rounds & Goods Received Notes (GRN Audit Trail)
+          </h3>
+        </div>
+
+        {grnRoundsList.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {grnRoundsList.map(grnGroup => (
+              <div
+                key={grnGroup.grn_number}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid #a7f3d0',
+                  borderRadius: '16px',
+                  padding: '1.25rem',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', borderBottom: '1px solid #ecfdf5', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #6ee7b7', padding: '4px 12px', borderRadius: '8px', fontWeight: 800, fontSize: '0.88rem' }}>
+                      Round #{grnGroup.round_number} ({grnGroup.grn_number})
+                    </span>
+                    <span style={{ fontSize: '0.82rem', color: '#475569' }}>
+                      Inv / Challan: <strong>{grnGroup.supplier_invoice_no || 'N/A'}</strong>
+                    </span>
+                    {grnGroup.vehicle_no && (
+                      <span style={{ fontSize: '0.82rem', color: '#475569' }}>
+                        Truck: <strong>{grnGroup.vehicle_no}</strong>
+                      </span>
+                    )}
+                    {grnGroup.receipt_date && (
+                      <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                        Date: {grnGroup.receipt_date}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                    {grnGroup.debit_note && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDebitNote(grnGroup.debit_note)}
+                        style={{
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fecaca',
+                          color: '#dc2626',
+                          borderRadius: '8px',
+                          padding: '5px 12px',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem'
+                        }}
+                      >
+                        <Download size={15} /> Download Combined Debit Note PDF
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setSelectedGRN({
+                        grn_number: grnGroup.grn_number,
+                        round_number: grnGroup.round_number,
+                        receipt_date: grnGroup.receipt_date,
+                        supplier_invoice_no: grnGroup.supplier_invoice_no,
+                        supplier_invoice_date: grnGroup.supplier_invoice_date,
+                        vehicle_no: grnGroup.vehicle_no,
+                        inspected_by_name: grnGroup.inspected_by_name,
+                        supplier_po: po,
+                        batch_items: grnGroup.items
+                      })}
+                      style={{ fontSize: '0.8rem', padding: '5px 12px', color: '#059669', borderColor: '#a7f3d0', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <FileText size={15} /> Print GRN Voucher
+                    </button>
+                  </div>
+                </div>
+
+                <div className="table-responsive">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', borderBottom: '1px solid #f1f5f9', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 8px' }}>#</th>
+                        <th style={{ padding: '6px 8px' }}>Item Description</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Passed Qty</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right' }}>Rejected Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grnGroup.items.map((rcpt, idx) => (
+                        <tr key={rcpt.id || idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                          <td style={{ padding: '8px', fontWeight: 700 }}>{idx + 1}</td>
+                          <td style={{ padding: '8px', fontWeight: 700, color: '#1e293b' }}>
+                            {rcpt.po_item_description || 'Raw Material Item'}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: '#16a34a' }}>
+                            {rcpt.passed_qty} {rcpt.po_item_unit || 'pcs'}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 800, color: rcpt.rejected_qty > 0 ? '#dc2626' : '#64748b' }}>
+                            {rcpt.rejected_qty} {rcpt.po_item_unit || 'pcs'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+            No delivery rounds recorded yet. Click <strong>+ Record Delivery Installment</strong> above to log your first shipment.
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Banner Card */}
+      <div style={{
+        backgroundColor: '#e6f7f2',
+        border: '1px solid #a7f3d0',
+        borderRadius: '20px',
+        padding: '1.25rem 1.75rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem',
+        marginTop: '1.5rem',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            backgroundColor: '#059669',
+            color: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Check size={22} strokeWidth={3} />
+          </div>
+
+          <div>
+            <h4 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 800, color: '#065f46' }}>
+              Quality comes first!
+            </h4>
+            <div style={{ fontSize: '0.88rem', color: '#047857', fontWeight: 500 }}>
+              Please verify each item carefully before passing or rejecting the lot.
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+          <svg width="120" height="60" viewBox="0 0 120 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="10" width="36" height="46" rx="4" fill="#ffffff" stroke="#059669" strokeWidth="2"/>
+            <rect x="14" y="6" width="18" height="7" rx="2" fill="#059669"/>
+            <line x1="12" y1="22" x2="34" y2="22" stroke="#34d399" strokeWidth="2" strokeLinecap="round"/>
+            <line x1="12" y1="30" x2="28" y2="30" stroke="#34d399" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M12 38L16 42L26 34" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+{/*             
+            <rect x="56" y="20" width="34" height="30" rx="3" fill="#d97706"/>
+            <polygon points="56,20 73,10 90,20" fill="#f59e0b"/>
+            <line x1="73" y1="10" x2="73" y2="50" stroke="#b45309" strokeWidth="1.5"/>
+            <line x1="56" y1="20" x2="90" y2="20" stroke="#b45309" strokeWidth="1.5"/>
+            
+            <circle cx="85" cy="42" r="10" fill="#10b981"/>
+            <path d="M80 42L83 45L89 39" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/> */}
+
+            <path d="M48 12L50 16L54 18L50 20L48 24L46 20L42 18L46 16Z" fill="#34d399" opacity="0.7"/>
+          </svg>
+        </div>
+      </div>
     </div>
   );
 }

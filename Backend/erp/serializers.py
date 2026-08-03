@@ -4,11 +4,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
-    Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect, POExtensionLog,
+    Buyer, BuyerMaster, BuyerMasterFinishingImage, Supplier, SupplierPO, SupplierPOItem, SupplierPOItemDefect, POExtensionLog, POSupplierHistory,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
-    GateInwardReceipt, SupplierDebitNote,
+    GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
 )
 
 
@@ -480,6 +480,22 @@ class SupplierPOItemMinimalSerializer(serializers.ModelSerializer):
         fields = ['id', 'description', 'quantity', 'passed_quantity', 'unit', 'rate', 'amount']
 
 
+class POSupplierHistorySerializer(serializers.ModelSerializer):
+    previous_supplier_name = serializers.CharField(source='previous_supplier.name', read_only=True)
+    new_supplier_name = serializers.CharField(source='new_supplier.name', read_only=True)
+    changed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = POSupplierHistory
+        fields = '__all__'
+        read_only_fields = ['id', 'changed_at']
+
+    def get_changed_by_name(self, obj):
+        if obj.changed_by:
+            return obj.changed_by.get_full_name() or obj.changed_by.username
+        return 'System'
+
+
 class SupplierPOListSerializer(serializers.ModelSerializer):
     items = SupplierPOItemMinimalSerializer(many=True, read_only=True)
     supplier_detail = SupplierDropdownSerializer(source='supplier', read_only=True)
@@ -490,15 +506,19 @@ class SupplierPOListSerializer(serializers.ModelSerializer):
     total_ordered_qty = serializers.SerializerMethodField()
     total_received_qty = serializers.SerializerMethodField()
     extension_logs = POExtensionLogSerializer(many=True, read_only=True)
+    supplier_history = POSupplierHistorySerializer(many=True, read_only=True)
+
+    buyer_pi_no = serializers.CharField(source='buyer_pi.pi_no', read_only=True)
 
     class Meta:
         model = SupplierPO
         fields = [
             'id', 'po_number', 'po_date', 'due_date', 'original_due_date',
             'supplier', 'supplier_detail', 'supervisor', 'supervisor_detail',
+            'buyer_pi', 'buyer_pi_no',
             'total_amount', 'status', 'items',
             'days_remaining', 'color_status', 'total_ordered_qty', 'total_received_qty',
-            'extension_logs', 'created_at'
+            'extension_logs', 'supplier_history', 'created_at'
         ]
 
     def get_total_amount(self, obj):
@@ -528,6 +548,8 @@ class SupplierPOSerializer(serializers.ModelSerializer):
     total_ordered_qty = serializers.SerializerMethodField()
     total_received_qty = serializers.SerializerMethodField()
     extension_logs = POExtensionLogSerializer(many=True, read_only=True)
+    supplier_history = POSupplierHistorySerializer(many=True, read_only=True)
+    buyer_pi_no = serializers.CharField(source='buyer_pi.pi_no', read_only=True)
 
     class Meta:
         model = SupplierPO
@@ -539,6 +561,8 @@ class SupplierPOSerializer(serializers.ModelSerializer):
             data = data.copy()
             if data.get('supervisor') == '' or data.get('supervisor') == 'null':
                 data['supervisor'] = None
+            if data.get('buyer_pi') == '' or data.get('buyer_pi') == 'null':
+                data['buyer_pi'] = None
         return super().to_internal_value(data)
 
     def get_total_amount(self, obj):
@@ -613,9 +637,17 @@ class SupplierPOSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        if not validated_data.get('buyer_pi'):
+            for it in items_data:
+                if it.get('buyer_pi'):
+                    validated_data['buyer_pi'] = it.get('buyer_pi')
+                    break
+
         po = SupplierPO.objects.create(**validated_data)
         for item_data in items_data:
             item_data.pop('supplier_po', None)
+            if not item_data.get('buyer_pi') and po.buyer_pi:
+                item_data['buyer_pi'] = po.buyer_pi
             SupplierPOItem.objects.create(supplier_po=po, **item_data)
         return po
 
@@ -624,10 +656,13 @@ class SupplierPOSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
         if items_data is not None:
             instance.items.all().delete()
             for item_data in items_data:
                 item_data.pop('supplier_po', None)
+                if not item_data.get('buyer_pi') and instance.buyer_pi:
+                    item_data['buyer_pi'] = instance.buyer_pi
                 SupplierPOItem.objects.create(supplier_po=instance, **item_data)
         return instance
 
@@ -705,6 +740,9 @@ class PerformaInvoiceSerializer(serializers.ModelSerializer):
 class BuyerPIItemSerializer(serializers.ModelSerializer):
     buyer_master_detail = BuyerMasterSerializer(source='buyer_master', read_only=True)
     image_url = serializers.SerializerMethodField()
+    allocated_quantity = serializers.SerializerMethodField()
+    remaining_quantity = serializers.SerializerMethodField()
+    allocation_status = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerPIItem
@@ -723,11 +761,49 @@ class BuyerPIItemSerializer(serializers.ModelSerializer):
                     return img.image.url
         return None
 
+    def get_allocated_quantity(self, obj):
+        from django.db.models import Sum, Q
+        from .models import SupplierPOItem
+
+        if not obj.buyer_pi:
+            allocations = obj.po_allocations.exclude(supplier_po__status='Cancelled')
+            return float(allocations.aggregate(s=Sum('quantity'))['s'] or 0)
+
+        # Match by buyer_pi_item FK OR by supplier_po.buyer_pi + style_no
+        qs = SupplierPOItem.objects.filter(
+            Q(buyer_pi_item=obj) |
+            (Q(buyer_pi=obj.buyer_pi) & Q(description__icontains=obj.style_no)) |
+            (Q(supplier_po__buyer_pi=obj.buyer_pi) & Q(description__icontains=obj.style_no))
+        ).exclude(supplier_po__status='Cancelled').distinct()
+
+        total_alloc = qs.aggregate(s=Sum('quantity'))['s'] or 0
+        return float(total_alloc)
+
+    def get_remaining_quantity(self, obj):
+        alloc = self.get_allocated_quantity(obj)
+        units = float(obj.units or 0)
+        return max(0.0, units - alloc)
+
+    def get_allocation_status(self, obj):
+        alloc = self.get_allocated_quantity(obj)
+        units = float(obj.units or 0)
+        if alloc <= 0:
+            return 'Unallocated'
+        elif alloc < units:
+            return 'Partially Allocated'
+        else:
+            return 'Fully Allocated'
+
 
 class BuyerPISerializer(serializers.ModelSerializer):
     items = BuyerPIItemSerializer(many=True, required=False)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
     total_usd = serializers.SerializerMethodField()
+    total_units = serializers.SerializerMethodField()
+    allocated_units = serializers.SerializerMethodField()
+    remaining_units = serializers.SerializerMethodField()
+    allocation_status = serializers.SerializerMethodField()
+    supplier_allocations = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerPI
@@ -736,6 +812,60 @@ class BuyerPISerializer(serializers.ModelSerializer):
 
     def get_total_usd(self, obj):
         return sum(float(item.total_amount or 0) for item in obj.items.all())
+
+    def get_total_units(self, obj):
+        return sum(int(item.units or 0) for item in obj.items.all())
+
+    def get_allocated_units(self, obj):
+        item_serializer = BuyerPIItemSerializer(context=self.context)
+        return sum(item_serializer.get_allocated_quantity(item) for item in obj.items.all())
+
+    def get_remaining_units(self, obj):
+        item_serializer = BuyerPIItemSerializer(context=self.context)
+        return sum(item_serializer.get_remaining_quantity(item) for item in obj.items.all())
+
+    def get_allocation_status(self, obj):
+        tot = self.get_total_units(obj)
+        rem = self.get_remaining_units(obj)
+        if rem == tot:
+            return 'Unallocated'
+        elif rem > 0:
+            return 'Partially Allocated'
+        else:
+            return 'Fully Allocated'
+
+    def get_supplier_allocations(self, obj):
+        from .models import SupplierPOItem
+        po_items = SupplierPOItem.objects.filter(
+            supplier_po__buyer_pi=obj
+        ).exclude(
+            supplier_po__status='Cancelled'
+        ).select_related('supplier_po', 'supplier_po__supplier')
+
+        alloc_dict = {}
+        for item in po_items:
+            po = item.supplier_po
+            sup_name = po.supplier.name if po.supplier else 'Unknown Supplier'
+            key = f"{sup_name}_{po.po_number}"
+            if key not in alloc_dict:
+                alloc_dict[key] = {
+                    'supplier_name': sup_name,
+                    'po_number': po.po_number,
+                    'po_date': str(po.po_date),
+                    'status': po.status,
+                    'items': [],
+                    'total_assigned_qty': 0.0,
+                }
+            qty = float(item.quantity or 0)
+            alloc_dict[key]['items'].append({
+                'description': item.description,
+                'quantity': qty,
+                'unit': item.unit,
+                'rate': float(item.rate or 0),
+            })
+            alloc_dict[key]['total_assigned_qty'] += qty
+
+        return list(alloc_dict.values())
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
@@ -761,22 +891,82 @@ class BuyerPISerializer(serializers.ModelSerializer):
 class BuyerPIItemSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = BuyerPIItem
-        fields = ['units', 'total_amount']
+        fields = ['id', 'style_no', 'product_name', 'units', 'total_amount']
 
 class BuyerPIListSerializer(serializers.ModelSerializer):
-    items = BuyerPIItemSummarySerializer(many=True, read_only=True)
+    items = BuyerPIItemSerializer(many=True, read_only=True)
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
     total_usd = serializers.SerializerMethodField()
+    total_units = serializers.SerializerMethodField()
+    allocated_units = serializers.SerializerMethodField()
+    remaining_units = serializers.SerializerMethodField()
+    allocation_status = serializers.SerializerMethodField()
+    supplier_allocations = serializers.SerializerMethodField()
 
     class Meta:
         model = BuyerPI
         fields = [
             'id', 'pi_no', 'pi_date', 'buyer', 'buyer_detail', 
-            'delivered_to_name', 'delivered_to_company', 'ex_factory_date', 'items', 'total_usd'
+            'delivered_to_name', 'delivered_to_company', 'ex_factory_date', 'items', 'total_usd',
+            'total_units', 'allocated_units', 'remaining_units', 'allocation_status', 'supplier_allocations'
         ]
 
     def get_total_usd(self, obj):
         return sum(float(item.total_amount or 0) for item in obj.items.all())
+
+    def get_total_units(self, obj):
+        return sum(int(item.units or 0) for item in obj.items.all())
+
+    def get_allocated_units(self, obj):
+        item_serializer = BuyerPIItemSerializer(context=self.context)
+        return sum(item_serializer.get_allocated_quantity(item) for item in obj.items.all())
+
+    def get_remaining_units(self, obj):
+        item_serializer = BuyerPIItemSerializer(context=self.context)
+        return sum(item_serializer.get_remaining_quantity(item) for item in obj.items.all())
+
+    def get_allocation_status(self, obj):
+        tot = self.get_total_units(obj)
+        rem = self.get_remaining_units(obj)
+        if rem == tot:
+            return 'Unallocated'
+        elif rem > 0:
+            return 'Partially Allocated'
+        else:
+            return 'Fully Allocated'
+
+    def get_supplier_allocations(self, obj):
+        from .models import SupplierPOItem
+        po_items = SupplierPOItem.objects.filter(
+            supplier_po__buyer_pi=obj
+        ).exclude(
+            supplier_po__status='Cancelled'
+        ).select_related('supplier_po', 'supplier_po__supplier')
+
+        alloc_dict = {}
+        for item in po_items:
+            po = item.supplier_po
+            sup_name = po.supplier.name if po.supplier else 'Unknown Supplier'
+            key = f"{sup_name}_{po.po_number}"
+            if key not in alloc_dict:
+                alloc_dict[key] = {
+                    'supplier_name': sup_name,
+                    'po_number': po.po_number,
+                    'po_date': str(po.po_date),
+                    'status': po.status,
+                    'items': [],
+                    'total_assigned_qty': 0.0,
+                }
+            qty = float(item.quantity or 0)
+            alloc_dict[key]['items'].append({
+                'description': item.description,
+                'quantity': qty,
+                'unit': item.unit,
+                'rate': float(item.rate or 0),
+            })
+            alloc_dict[key]['total_assigned_qty'] += qty
+
+        return list(alloc_dict.values())
 
 
     def create(self, validated_data):
@@ -828,6 +1018,9 @@ class StockItemSerializer(serializers.ModelSerializer):
 class GateInwardReceiptSerializer(serializers.ModelSerializer):
     po_number_str = serializers.CharField(source='supplier_po.po_number', read_only=True)
     supplier_name_str = serializers.CharField(source='supplier_po.supplier.name', read_only=True)
+    inspected_by_name = serializers.CharField(source='inspected_by.username', read_only=True)
+    po_item_description = serializers.CharField(source='po_item.description', read_only=True)
+    po_item_unit = serializers.CharField(source='po_item.unit', read_only=True)
 
     class Meta:
         model = GateInwardReceipt
@@ -835,15 +1028,77 @@ class GateInwardReceiptSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+
+
+
+class SupplierTaxInvoiceItemSerializer(serializers.ModelSerializer):
+    po_number_str = serializers.CharField(source='supplier_po.po_number', read_only=True)
+
+    class Meta:
+        model = SupplierTaxInvoiceItem
+        fields = '__all__'
+        read_only_fields = ['id', 'tax_invoice']
+
+
+class SupplierTaxInvoiceSerializer(serializers.ModelSerializer):
+    items = SupplierTaxInvoiceItemSerializer(many=True, required=False)
+    supplier_detail = SupplierSerializer(source='supplier', read_only=True)
+
+    class Meta:
+        model = SupplierTaxInvoice
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        items_data = validated_data.pop('items', [])
+        invoice = SupplierTaxInvoice.objects.create(**validated_data)
+        
+        for item_data in items_data:
+            SupplierTaxInvoiceItem.objects.create(tax_invoice=invoice, **item_data)
+            
+        return invoice
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop('items', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if items_data is not None:
+            instance.items.all().delete()
+            for item_data in items_data:
+                SupplierTaxInvoiceItem.objects.create(tax_invoice=instance, **item_data)
+
+        return instance
+
+
+class SupplierDebitNoteItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplierDebitNoteItem
+        fields = '__all__'
+        read_only_fields = ['id', 'debit_note']
+
+
 class SupplierDebitNoteSerializer(serializers.ModelSerializer):
+    items = SupplierDebitNoteItemSerializer(many=True, read_only=True, required=False)
     supplier_name_str = serializers.CharField(source='supplier.name', read_only=True)
     supplier_gstin_str = serializers.CharField(source='supplier.gstin', read_only=True)
     po_number_str = serializers.CharField(source='supplier_po.po_number', read_only=True)
+    grace_days_remaining = serializers.SerializerMethodField()
 
     class Meta:
         model = SupplierDebitNote
         fields = '__all__'
         read_only_fields = ['id', 'created_at']
+
+    def get_grace_days_remaining(self, obj):
+        if obj.status == 'Grace Period' and obj.holding_until:
+            from django.utils import timezone
+            diff = obj.holding_until - timezone.now()
+            hours_left = diff.total_seconds() / 3600.0
+            return max(0, round(hours_left / 24.0, 1))
+        return 0
+
 
 
 

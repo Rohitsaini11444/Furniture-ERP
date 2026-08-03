@@ -15,17 +15,19 @@ import { CustomDatePicker } from '../components/CustomDatePicker';
 import CustomSelect from '../components/CustomSelect';
 import GateEntry from './GateEntry';
 import VendorManagement from './VendorManagement';
+import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBreakdownModal';
 
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
 const STATUS_STYLES = {
-  Pending:    { bg: '#fef3c7', color: '#d97706', icon: <Clock size={12}/> },
-  Received:   { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
-  Cancelled:  { bg: '#fee2e2', color: '#dc2626', icon: <XCircle size={12}/> },
+  Pending:            { bg: '#fef3c7', color: '#d97706', icon: <Clock size={12}/> },
+  'Partial Received': { bg: '#fff7ed', color: '#ea580c', icon: <Clock size={12}/> },
+  Received:           { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
+  Cancelled:          { bg: '#fee2e2', color: '#dc2626', icon: <XCircle size={12}/> },
 };
 
 function StatusBadge({ status }) {
-  const s = STATUS_STYLES[status] || STATUS_STYLES.Draft;
+  const s = STATUS_STYLES[status] || STATUS_STYLES.Pending;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -71,7 +73,7 @@ function SupplierModal({ onClose, onSaved }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>➕ Add New Supplier</h2>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Add New Supplier</h2>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -82,11 +84,13 @@ function SupplierModal({ onClose, onSaved }) {
                 { key: 'phone', label: 'Phone', req: false },
                 { key: 'gstin', label: 'GSTIN/UIN', req: false },
                 { key: 'state_name', label: 'State Name', req: false },
+                { key: 'cartage_gst_rate', label: 'Cartage GST Rate (%)', req: false, placeholder: '18.00' },
+                { key: 'cartage_ledger_name', label: 'Cartage Ledger Name', req: false, placeholder: 'PUR. CARTAGE GST @ 18% -  3 %' },
               ].map(f => (
                 <div className="form-group" key={f.key}>
                   <label className="form-label">{f.label}</label>
-                  <input required={f.req} type="text" className="form-input"
-                    value={form[f.key]} onChange={e => setForm({...form, [f.key]: e.target.value})} />
+                  <input required={f.req} type="text" className="form-input" placeholder={f.placeholder || ''}
+                    value={form[f.key] !== undefined ? form[f.key] : ''} onChange={e => setForm({...form, [f.key]: e.target.value})} />
                 </div>
               ))}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -181,11 +185,15 @@ function POForm({ poId, onBack, onSaved }) {
     });
   }, []);
 
+  const [selectedPiData, setSelectedPiData] = useState(null);
+  const [showBreakdownModal, setShowBreakdownModal] = useState(false);
+
   const [header, setHeader] = useState({
     po_number: '',
     po_date: new Date().toISOString().slice(0, 10),
     due_date: '',
     supplier: '',
+    buyer_pi: '',
     mode_of_payment: '',
     terms_of_delivery: '',
     supervisor: '',
@@ -202,12 +210,51 @@ function POForm({ poId, onBack, onSaved }) {
       api.get('/suppliers/'),
       api.get('/buyers/'),
       api.get('/buyer-pis/'),
-    ]).then(([s, b, p]) => {
+      api.get('/users/supervisors/'),
+    ]).then(([s, b, p, u]) => {
       setSuppliers(s.data.results || s.data);
       setBuyers(b.data.results || b.data);
       setBuyerPIs(p.data.results || p.data);
+      setSupervisors(u.data.results || u.data || []);
+    }).catch(err => {
+      console.error('Error loading reference data:', err);
     });
   }, []);
+
+  const handleSelectHeaderPI = async (piId) => {
+    setHeader(h => ({ ...h, buyer_pi: piId }));
+    if (!piId) {
+      setSelectedPiData(null);
+      return;
+    }
+
+    try {
+      const res = await api.get(`/buyer-pis/${piId}/`);
+      const piData = res.data;
+      setSelectedPiData(piData);
+
+      if (piData && piData.items && piData.items.length > 0) {
+        const newItems = piData.items.map(piItem => {
+          const remQty = piItem.remaining_quantity !== undefined ? piItem.remaining_quantity : (parseFloat(piItem.units) || 0);
+          return {
+            id: undefined,
+            buyer: piData.buyer || '',
+            buyer_pi: piId,
+            buyer_pi_item: piItem.id,
+            description: `${piItem.style_no} (${piItem.product_name || piItem.style_no})`,
+            quantity: String(remQty),
+            unit: 'pcs',
+            rate: '',
+            amount: '',
+            remark: '',
+          };
+        });
+        setItems(newItems);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Load existing PO for edit
   useEffect(() => {
@@ -221,17 +268,23 @@ function POForm({ poId, onBack, onSaved }) {
             po_date: d.po_date,
             due_date: d.due_date || '',
             supplier: d.supplier,
+            buyer_pi: d.buyer_pi || '',
             mode_of_payment: d.mode_of_payment || '',
             terms_of_delivery: d.terms_of_delivery || '',
             supervisor: d.supervisor || '',
             nku_refs: d.nku_refs || '',
             remarks: d.remarks || '',
             status: d.status || 'Pending',
+            supplier_history: d.supplier_history || [],
           });
+          if (d.buyer_pi) {
+            api.get(`/buyer-pis/${d.buyer_pi}/`).then(resPi => setSelectedPiData(resPi.data)).catch(() => {});
+          }
           const loadedItems = (d.items || []).map(it => ({
             id: it.id,
             buyer: it.buyer || '',
-            buyer_pi: it.buyer_pi || '',
+            buyer_pi: it.buyer_pi || d.buyer_pi || '',
+            buyer_pi_item: it.buyer_pi_item || '',
             description: it.description,
             quantity: it.quantity,
             unit: it.unit,
@@ -251,34 +304,32 @@ function POForm({ poId, onBack, onSaved }) {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
 
-      // When buyer_pi changes, auto-fill description & suggested quantity if empty
-      if (key === 'buyer_pi' && val) {
-        const selectedPi = buyerPIs.find(p => p.id === val);
-        if (selectedPi) {
-          if (!next[idx].buyer && selectedPi.buyer) {
-            next[idx].buyer = selectedPi.buyer;
-          }
-          api.get(`/buyer-pis/${val}/`).then(res => {
-            const piData = res.data;
-            if (piData && piData.items && piData.items.length > 0) {
-              const piItemsSummary = piData.items.map(piItem => `${piItem.style_no} (${piItem.units} pcs)`).join(', ');
-              const totalPiUnits = piData.items.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
-              
-              setItems(curr => {
-                const updated = [...curr];
-                if (!updated[idx].description || updated[idx].description === '') {
-                  updated[idx].description = piItemsSummary;
-                }
-                if (!updated[idx].quantity || parseFloat(updated[idx].quantity) <= 0) {
-                  updated[idx].quantity = totalPiUnits > 0 ? String(totalPiUnits) : '1';
-                }
-                const q = parseFloat(updated[idx].quantity) || 0;
-                const r = parseFloat(updated[idx].rate) || 0;
-                updated[idx].amount = q && r ? (q * r).toFixed(2) : '';
-                return updated;
-              });
+      // When buyer_pi changes, auto-fill/replace description & suggested quantity
+      if (key === 'buyer_pi') {
+        if (val) {
+          const selectedPi = buyerPIs.find(p => p.id === val);
+          if (selectedPi) {
+            if (!next[idx].buyer && selectedPi.buyer) {
+              next[idx].buyer = selectedPi.buyer;
             }
-          }).catch(err => console.error(err));
+            api.get(`/buyer-pis/${val}/`).then(res => {
+              const piData = res.data;
+              if (piData && piData.items && piData.items.length > 0) {
+                const piItemsSummary = piData.items.map(piItem => `${piItem.style_no} (${piItem.units} pcs)`).join(', ');
+                const totalPiUnits = piData.items.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
+                
+                setItems(curr => {
+                  const updated = [...curr];
+                  updated[idx].description = piItemsSummary;
+                  updated[idx].quantity = totalPiUnits > 0 ? String(totalPiUnits) : '1';
+                  const q = parseFloat(updated[idx].quantity) || 0;
+                  const r = parseFloat(updated[idx].rate) || 0;
+                  updated[idx].amount = q && r ? (q * r).toFixed(2) : '';
+                  return updated;
+                });
+              }
+            }).catch(err => console.error(err));
+          }
         }
       }
 
@@ -350,7 +401,8 @@ function POForm({ poId, onBack, onSaved }) {
       items: items.map(it => ({
         ...(it.id ? { id: it.id } : {}),
         buyer: it.buyer || null,
-        buyer_pi: it.buyer_pi || null,
+        buyer_pi: it.buyer_pi || header.buyer_pi || null,
+        buyer_pi_item: it.buyer_pi_item || null,
         description: it.description,
         quantity: it.quantity,
         unit: it.unit,
@@ -492,6 +544,19 @@ function POForm({ poId, onBack, onSaved }) {
                   ]}
                 />
               </div>
+              <div className="form-group">
+                <label className="form-label">Linked Buyer PI (Optional)</label>
+                <SearchableSelect
+                  options={buyerPIs}
+                  value={header.buyer_pi}
+                  onChange={val => handleSelectHeaderPI(val)}
+                  placeholder="-- Select Buyer PI to Auto-Fill --"
+                  searchPlaceholder="Search PI Number..."
+                  codeKey="pi_no"
+                  titleKey="buyer_name"
+                  icon={FileText}
+                />
+              </div>
               <div className="form-group full-width">
                 <label className="form-label">Terms of Delivery</label>
                 <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
@@ -525,16 +590,10 @@ function POForm({ poId, onBack, onSaved }) {
                   codeKey=""
                   titleKey="name"
                   icon={Building2}
-                  onAddNew={() => setShowSupplierModal(true)}
-                  addNewText="Add New Supplier"
                   footerIcon={Building2}
                   footerText={(count) => ` ${count} supplier${count !== 1 ? 's' : ''} found`}
                 />
               </div>
-              <button type="button" className="btn-secondary" onClick={() => setShowSupplierModal(true)}
-                style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap', height: '44px', border: '1px dashed #d6c7b2', backgroundColor: '#faf8f5', color: '#8b5a2b', borderRadius: '10px', fontWeight: 700 }}>
-                + New Supplier
-              </button>
             </div>
 
             {header.supplier && (() => {
@@ -555,11 +614,29 @@ function POForm({ poId, onBack, onSaved }) {
                 </div>
               );
             })()}
+
+            {/* Supplier Transfer History Audit Trail */}
+            {header.supplier_history && header.supplier_history.length > 0 && (
+              <div style={{ marginTop: '1rem', background: '#fffbe6', borderRadius: '12px', padding: '1rem', border: '1px solid #ffe58f' }}>
+                <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#d48806', margin: '0 0 0.5rem 0' }}>
+                  📜 Supplier Transfer History Log ({header.supplier_history.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {header.supplier_history.map((hist, i) => (
+                    <div key={i} style={{ fontSize: '0.78rem', color: '#8c6b00', backgroundColor: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #ffe58f' }}>
+                      Transferred from <strong>{hist.previous_supplier_name || 'Previous Supplier'}</strong> to <strong>{hist.new_supplier_name || 'New Supplier'}</strong> by <strong>{hist.changed_by_name}</strong> on {new Date(hist.changed_at).toLocaleDateString('en-IN')}:
+                      {hist.reason && <div style={{ fontStyle: 'italic', marginTop: '2px', color: '#595959' }}>"{hist.reason}"</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* ── Line Items ── */}
         <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
             <h3 className="form-section-title" style={{ margin: 0 }}>📦 Line Items</h3>
             <button type="button" className="btn-secondary" onClick={addItem}
@@ -569,10 +646,10 @@ function POForm({ poId, onBack, onSaved }) {
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)',''].map(h => (
+                  {(header.buyer_pi ? ['#','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)',''] : ['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)','']).map(h => (
                     <th key={h} style={{ padding: '10px 10px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -581,37 +658,41 @@ function POForm({ poId, onBack, onSaved }) {
                 {items.map((item, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{idx + 1}</td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <CustomSelect
-                        value={item.buyer}
-                        onChange={e => {
-                          const val = e.target ? e.target.value : e;
-                          updateItem(idx, 'buyer', val);
-                        }}
-                        options={[
-                          { value: '', label: 'No buyer ref' },
-                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
-                        ]}
-                        placeholder="No buyer ref"
-                        style={{ minWidth: '140px' }}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <CustomSelect
-                        value={item.buyer_pi}
-                        onChange={e => {
-                          const val = e.target ? e.target.value : e;
-                          updateItem(idx, 'buyer_pi', val);
-                        }}
-                        disabled={!item.buyer}
-                        options={[
-                          { value: '', label: 'None' },
-                          ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
-                        ]}
-                        placeholder="None"
-                        style={{ minWidth: '130px' }}
-                      />
-                    </td>
+                    {!header.buyer_pi && (
+                      <>
+                        <td style={{ padding: '6px 8px' }}>
+                          <CustomSelect
+                            value={item.buyer}
+                            onChange={e => {
+                              const val = e.target ? e.target.value : e;
+                              updateItem(idx, 'buyer', val);
+                            }}
+                            options={[
+                              { value: '', label: 'No buyer ref' },
+                              ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                            ]}
+                            placeholder="No buyer ref"
+                            style={{ minWidth: '140px' }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <CustomSelect
+                            value={item.buyer_pi}
+                            onChange={e => {
+                              const val = e.target ? e.target.value : e;
+                              updateItem(idx, 'buyer_pi', val);
+                            }}
+                            disabled={!item.buyer}
+                            options={[
+                              { value: '', label: 'None' },
+                              ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
+                            ]}
+                            placeholder="None"
+                            style={{ minWidth: '130px' }}
+                          />
+                        </td>
+                      </>
+                    )}
                     <td style={{ padding: '6px 8px' }}>
                       <textarea rows={2} required className="form-input"
                         style={{ minWidth: '220px', fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }}
@@ -718,17 +799,25 @@ function POForm({ poId, onBack, onSaved }) {
                 )}
               </div>
             )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+              <button type="button" className="btn-secondary" onClick={onBack} style={{ padding: '0.65rem 1.6rem', borderRadius: '10px', fontWeight: 600 }}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={saving}
+                style={{ padding: '0.65rem 2.2rem', borderRadius: '10px', fontWeight: 800, backgroundColor: '#8b5a2b', borderColor: '#8b5a2b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {saving ? 'Saving…' : isNew ? 'Create PO' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-          <button type="button" className="btn-secondary" onClick={onBack} style={{ flex: 1, margin: 0, justifyContent: 'center' }}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={saving}
-            style={{ flex: 1, margin: 0, justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {saving ? 'Saving…' : isNew ? 'Create PO' : 'Save Changes'}
-          </button>
-        </div>
+        <SupplierAllocationBreakdownModal
+          isOpen={showBreakdownModal}
+          onClose={() => setShowBreakdownModal(false)}
+          piData={selectedPiData}
+        />
       </form>
     </div>
   );

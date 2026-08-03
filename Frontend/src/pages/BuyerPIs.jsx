@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import SearchableSelect from '../components/SearchableSelect';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
 import { CustomDatePicker } from '../components/CustomDatePicker';
+import CustomSelect from '../components/CustomSelect';
+import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBreakdownModal';
 
 
 
@@ -67,6 +69,11 @@ function BuyerPIs() {
   const [loading, setLoading] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
   const [styleSearchTerm, setStyleSearchTerm] = useState('');
+  const [breakdownModalPi, setBreakdownModalPi] = useState(null);
+  const [piSubTab, setPiSubTab] = useState('directory');
+  const [filterAllocationStatus, setFilterAllocationStatus] = useState('ALL');
+  const [expandedPiIds, setExpandedPiIds] = useState(new Set());
+  const [expandedInnerTab, setExpandedInnerTab] = useState({});
 
   
   // Pagination & Ordering
@@ -375,11 +382,26 @@ function BuyerPIs() {
   const totalAmt = formData.items.reduce((acc, item) => acc + (parseFloat(item.total_amount) || 0), 0);
   const wordsRepresentation = num2words(totalAmt);
 
-  const filteredPIs = pis.filter(p =>
-    (p.pi_no && p.pi_no.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.buyer_detail && p.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.delivered_to_name && p.delivered_to_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredPIs = pis.filter(p => {
+    const matchesSearch = !searchTerm || (
+      (p.pi_no && p.pi_no.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.buyer_detail && p.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.delivered_to_name && p.delivered_to_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+    if (!matchesSearch) return false;
+
+    if (filterAllocationStatus && filterAllocationStatus !== 'ALL') {
+      const pItems = p.items || [];
+      const pUnits = p.total_units !== undefined ? p.total_units : pItems.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
+      const pAlloc = p.allocated_units !== undefined ? p.allocated_units : 0;
+      const pRem = p.remaining_units !== undefined ? p.remaining_units : Math.max(0, pUnits - pAlloc);
+
+      if (filterAllocationStatus === 'UNALLOCATED' && (pAlloc > 0 || pRem < pUnits)) return false;
+      if (filterAllocationStatus === 'PARTIAL' && (pAlloc === 0 || pRem <= 0)) return false;
+      if (filterAllocationStatus === 'FULLY_ALLOCATED' && pRem > 0) return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -728,10 +750,10 @@ function BuyerPIs() {
             <button onClick={() => navigate('/performa-invoices/new')} className="btn-primary">+ Create New PI</button>
           </div>
 
-          {/* Search & Filter Bar */}
-          <div className="filter-bar">
-            <div className="bm-filter-container">
-              <div className="bm-search">
+          {/* Universal Search & Filter Bar */}
+          <div className="filter-bar" style={{ marginBottom: '1.25rem' }}>
+            <div className="bm-filter-container" style={{ flexWrap: 'wrap', gap: '0.85rem' }}>
+              <div className="bm-search" style={{ flex: '1 1 240px' }}>
                 <Search size={16} className="filter-icon" />
                 <span className="filter-label">Search:</span>
                 <input
@@ -759,6 +781,22 @@ function BuyerPIs() {
                 />
               </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>PO STATUS:</span>
+                <CustomSelect
+                  value={filterAllocationStatus}
+                  onChange={val => setFilterAllocationStatus(val?.target ? val.target.value : val)}
+                  placeholder="All Statuses"
+                  options={[
+                    { value: 'ALL', label: 'All Statuses' },
+                    { value: 'UNALLOCATED', label: 'Unassigned Only' },
+                    { value: 'PARTIAL', label: 'Partially Allocated Only' },
+                    { value: 'FULLY_ALLOCATED', label: 'Fully Allocated Only' },
+                  ]}
+                  style={{ minWidth: '190px' }}
+                />
+              </div>
+
               <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
                 <OrderBySelect
@@ -767,11 +805,278 @@ function BuyerPIs() {
                   onChange={setOrdering}
                 />
               </div>
-
             </div>
           </div>
 
-          <div className="table-container desktop-only">
+          {/* Module Navigation Sub-Tabs */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', borderBottom: '2px solid #e2e8f0' }}>
+            <button
+              onClick={() => setPiSubTab('directory')}
+              style={{
+                padding: '0.65rem 1.2rem',
+                fontWeight: 800,
+                fontSize: '0.88rem',
+                color: piSubTab === 'directory' ? '#8b5a2b' : '#64748b',
+                borderBottom: piSubTab === 'directory' ? '3px solid #8b5a2b' : '3px solid transparent',
+                background: 'none',
+                borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                marginBottom: '-2px'
+              }}
+            >
+              <FileSpreadsheet size={18} />Performa Invoices Directory ({filteredPIs.length})
+            </button>
+            <button
+              onClick={() => setPiSubTab('allocation_tracker')}
+              style={{
+                padding: '0.65rem 1.2rem',
+                fontWeight: 800,
+                fontSize: '0.88rem',
+                color: piSubTab === 'allocation_tracker' ? '#8b5a2b' : '#64748b',
+                borderBottom: piSubTab === 'allocation_tracker' ? '3px solid #8b5a2b' : '3px solid transparent',
+                background: 'none',
+                borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                marginBottom: '-2px'
+              }}
+            >
+              <Layers size={18} />PO Allocation & Supplier Assignment Tracker ({filteredPIs.length})
+            </button>
+          </div>
+
+          {piSubTab === 'allocation_tracker' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {filteredPIs.map(p => {
+                const pItems = p.items || [];
+                const pUnits = p.total_units !== undefined ? p.total_units : pItems.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
+                const pAlloc = p.allocated_units !== undefined ? p.allocated_units : 0;
+                const pRem = p.remaining_units !== undefined ? p.remaining_units : Math.max(0, pUnits - pAlloc);
+                const supAllocations = p.supplier_allocations || [];
+                const isExpanded = expandedPiIds.has(p.id);
+                const innerTab = expandedInnerTab[p.id] || 'items';
+
+                const toggleExpand = () => {
+                  setExpandedPiIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(p.id)) next.delete(p.id);
+                    else next.add(p.id);
+                    return next;
+                  });
+                };
+
+                return (
+                  <div key={p.id} style={{ backgroundColor: '#ffffff', border: isExpanded ? '2px solid #8b5a2b' : '1.5px solid #e2e8f0', borderRadius: '16px', padding: '1.25rem', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', transition: 'all 0.2s ease' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <FileText color="#8b5a2b" size={22}/> Linked Buyer PI: {p.pi_no} ({p.buyer_detail?.name || 'Buyer'})
+                        </h3>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                          PI Date: <strong>{p.pi_date || '—'}</strong> | Ex-Factory: <strong>{p.ex_factory_date || '—'}</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: pRem <= 0 ? '#dc2626' : '#0369a1', backgroundColor: pRem <= 0 ? '#fef2f2' : '#e0f2fe', border: pRem <= 0 ? '1px solid #fecaca' : '1px solid #bae6fd', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
+                          {pRem <= 0 ? '🔒 Fully Allocated (0 pcs remaining)' : `✨ ${pRem} of ${pUnits} pcs Unassigned Remaining`}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={toggleExpand}
+                          className="btn-secondary"
+                          style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: 700, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.3rem', borderColor: isExpanded ? '#8b5a2b' : '#cbd5e1', color: isExpanded ? '#8b5a2b' : '#475569' }}
+                        >
+                        {isExpanded ? 'Collapse Breakdown ▲' : 'Breakdown ▼'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/pos/new?pi=${p.id}`)}
+                          className="btn-primary"
+                          style={{ backgroundColor: '#8b5a2b', borderColor: '#8b5a2b', padding: '0.45rem 1rem', fontSize: '0.85rem', fontWeight: 700, borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                        >
+                          <ShoppingBag size={15}/> +PO
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* KPI Cards Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: isExpanded ? '1.25rem' : '0' }}>
+                      <div style={{ background: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Ordered in PI</div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>{pUnits} pcs</div>
+                      </div>
+
+                      <div
+                        onClick={toggleExpand}
+                        style={{ background: '#fffbe6', padding: '0.85rem 1rem', borderRadius: '12px', border: '1.5px solid #ffe58f', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                        title="Click to expand supplier breakdown"
+                      >
+                        <div style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: 700, textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Assigned to Other Suppliers</span>
+                          <span style={{ fontSize: '0.72rem', color: '#b45309' }}>{isExpanded ? '▼' : 'Expand 🔍'}</span>
+                        </div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>{pAlloc} pcs</div>
+                      </div>
+
+                      <div style={{ background: pRem <= 0 ? '#fef2f2' : '#f0fdf4', padding: '0.85rem 1rem', borderRadius: '12px', border: pRem <= 0 ? '1px solid #fecaca' : '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '0.75rem', color: pRem <= 0 ? '#dc2626' : '#16a34a', fontWeight: 700, textTransform: 'uppercase' }}>Auto-Filled Unassigned</div>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: pRem <= 0 ? '#dc2626' : '#16a34a', marginTop: '2px' }}>{pRem} pcs</div>
+                      </div>
+                    </div>
+
+                    {/* Inline Expandable Breakdown Panel */}
+                    {isExpanded && (
+                      <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '2px dashed #e2e8f0', backgroundColor: '#fafafa', borderRadius: '12px', padding: '1rem' }}>
+                        
+                        {/* Inline Inner Sub-Tabs */}
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0' }}>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedInnerTab(prev => ({ ...prev, [p.id]: 'items' }))}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              color: innerTab === 'items' ? '#8b5a2b' : '#64748b',
+                              borderBottom: innerTab === 'items' ? '3px solid #8b5a2b' : '3px solid transparent',
+                              background: 'none',
+                              borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '0.35rem'
+                            }}
+                          >
+                            <Layers size={15}/> 📦 Per-Item Remaining Balance ({pItems.length})
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedInnerTab(prev => ({ ...prev, [p.id]: 'suppliers' }))}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              fontSize: '0.82rem',
+                              fontWeight: 700,
+                              color: innerTab === 'suppliers' ? '#8b5a2b' : '#64748b',
+                              borderBottom: innerTab === 'suppliers' ? '3px solid #8b5a2b' : '3px solid transparent',
+                              background: 'none',
+                              borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '0.35rem'
+                            }}
+                          >
+                            <Building2 size={15}/> 🏢 Supplier PO Assignments ({supAllocations.length})
+                          </button>
+                        </div>
+
+                        {innerTab === 'items' ? (
+                          <div style={{ overflowX: 'auto', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <table style={{ width: '100%', fontSize: '0.84rem', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ background: '#f8fafc', color: '#64748b', textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                                  <th style={{ padding: '8px 12px' }}>STYLE NO / PRODUCT NAME</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>TOTAL ORDERED</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>ASSIGNED</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'right' }}>REMAINING UNASSIGNED</th>
+                                  <th style={{ padding: '8px 12px', textAlign: 'center' }}>STATUS</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pItems.map((it, i) => {
+                                  const reqQty = parseFloat(it.units) || 0;
+                                  const allocQty = it.allocated_quantity !== undefined ? it.allocated_quantity : 0;
+                                  const remQty = it.remaining_quantity !== undefined ? it.remaining_quantity : Math.max(0, reqQty - allocQty);
+
+                                  return (
+                                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '8px 12px', fontWeight: 700, color: '#1e293b' }}>
+                                        {it.style_no}
+                                        {it.product_name && <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>{it.product_name}</div>}
+                                      </td>
+                                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700 }}>{reqQty} pcs</td>
+                                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#d97706' }}>{allocQty} pcs</td>
+                                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 800, color: remQty <= 0 ? '#dc2626' : '#16a34a' }}>
+                                        {remQty} pcs
+                                      </td>
+                                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                        {remQty <= 0 ? (
+                                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '2px 8px', borderRadius: '4px' }}>
+                                            Fully Assigned
+                                          </span>
+                                        ) : allocQty > 0 ? (
+                                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#d97706', backgroundColor: '#fffbe6', border: '1px solid #ffe58f', padding: '2px 8px', borderRadius: '4px' }}>
+                                            Partial
+                                          </span>
+                                        ) : (
+                                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#16a34a', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '4px' }}>
+                                            Unassigned
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          supAllocations.length === 0 ? (
+                            <div style={{ fontSize: '0.82rem', color: '#94a3b8', fontStyle: 'italic', backgroundColor: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                              No Supplier POs assigned yet. All {pUnits} pieces are unassigned.
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                              {supAllocations.map((sal, sIdx) => (
+                                <div key={sIdx} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
+                                    <div>
+                                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1e293b' }}>🏢 {sal.supplier_name}</span>
+                                      <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', backgroundColor: '#fffcf7', border: '1px solid #f3e8d5', padding: '2px 8px', borderRadius: '6px' }}>
+                                        PO #{sal.po_number}
+                                      </span>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#d97706' }}>
+                                        {sal.total_assigned_qty} pcs Assigned
+                                      </span>
+                                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date: {sal.po_date}</div>
+                                    </div>
+                                  </div>
+
+                                  <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                      <tr style={{ color: '#64748b', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                                        <th style={{ padding: '4px 6px' }}>ITEM / STYLE DESCRIPTION</th>
+                                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>ASSIGNED QTY</th>
+                                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>UNIT RATE (₹)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {sal.items.map((it, i) => (
+                                        <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                          <td style={{ padding: '6px 6px', fontWeight: 600, color: '#334155' }}>{it.description}</td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{it.quantity} {it.unit}</td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right', color: '#64748b' }}>₹{it.rate?.toFixed(2)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              <div className="table-container desktop-only">
             <table className="data-table">
               <thead>
                 <tr>
@@ -791,14 +1096,17 @@ function BuyerPIs() {
                   <th>Items Count</th>
                   <th>Total Units</th>
                   <th>Total Amount</th>
+                  <th>PO Allocation Status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredPIs.map(p => {
                   const pItems = p.items || [];
-                  const pUnits = pItems.reduce((acc, it) => acc + (it.units || 0), 0);
+                  const pUnits = p.total_units !== undefined ? p.total_units : pItems.reduce((acc, it) => acc + (it.units || 0), 0);
                   const pAmt = pItems.reduce((acc, it) => acc + (parseFloat(it.total_amount) || 0), 0);
+                  const pRem = p.remaining_units !== undefined ? p.remaining_units : pUnits;
+                  const pAlloc = p.allocated_units !== undefined ? p.allocated_units : 0;
 
                   return (
                     <tr
@@ -833,6 +1141,21 @@ function BuyerPIs() {
                       <td><span className="navbar-role-badge admin-badge">{pItems.length} Items</span></td>
                       <td><strong>{pUnits}</strong></td>
                       <td><strong style={{ color: '#16a34a' }}>${pAmt.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td>
+                      <td onClick={e => { e.stopPropagation(); setBreakdownModalPi(p); }}>
+                        {pRem <= 0 && pUnits > 0 ? (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }} title="Click to view supplier breakdown">
+                            🔍 Fully Allocated ({pUnits} pcs)
+                          </span>
+                        ) : pAlloc > 0 ? (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d97706', backgroundColor: '#fffbe6', border: '1px solid #ffe58f', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }} title="Click to view supplier breakdown">
+                            🔍 Partial ({pRem} pcs left)
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#16a34a', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer' }} title="Click to view supplier breakdown">
+                            🔍 Unassigned ({pRem} pcs)
+                          </span>
+                        )}
+                      </td>
                       <td onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                           <button
@@ -914,8 +1237,16 @@ function BuyerPIs() {
             totalPages={totalPages} 
             onPageChange={setCurrentPage} 
           />
+            </>
+          )}
         </>
       )}
+
+      <SupplierAllocationBreakdownModal
+        isOpen={Boolean(breakdownModalPi)}
+        onClose={() => setBreakdownModalPi(null)}
+        piData={breakdownModalPi}
+      />
     </div>
   );
 }

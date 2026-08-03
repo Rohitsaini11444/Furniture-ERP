@@ -4,9 +4,9 @@ from .models import (
     User, ProductionUnit, Finish, Sample, SampleImage,
     Buyer, BuyerUnitAllocation, UnitWorkReallocation,
     BuyerMaster, BuyerMasterFinishingImage,
-    Supplier, SupplierPO, SupplierPOItem,
+    Supplier, SupplierPO, SupplierPOItem, POExtensionLog, POSupplierHistory,
     SupplierPOItemDefect, SupplierPOItemDefectImage,
-    GateInwardReceipt, SupplierDebitNote,
+    GateInwardReceipt, SupplierDebitNote, SupplierDebitNoteItem, SupplierTaxInvoice, SupplierTaxInvoiceItem,
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     StockItem, ProductionJob, ProductionQCLog,
@@ -112,8 +112,23 @@ class SupplierPOItemInline(admin.TabularInline):
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ['name', 'phone', 'gstin', 'state_name', 'created_at']
-    search_fields = ['name', 'phone', 'gstin', 'state_name', 'address']
+    list_display = ['name', 'phone', 'gstin', 'state_name', 'cartage_gst_rate', 'cartage_ledger_name', 'created_at']
+    search_fields = ['name', 'phone', 'gstin', 'state_name', 'address', 'cartage_ledger_name']
+
+
+@admin.register(POExtensionLog)
+class POExtensionLogAdmin(admin.ModelAdmin):
+    list_display = ['supplier_po', 'previous_due_date', 'new_due_date', 'days_added', 'extended_by', 'created_at']
+    list_filter = ['created_at', 'extended_by']
+    search_fields = ['supplier_po__po_number', 'reason', 'extended_by__username']
+
+
+@admin.register(POSupplierHistory)
+class POSupplierHistoryAdmin(admin.ModelAdmin):
+    list_display = ['supplier_po', 'previous_supplier', 'new_supplier', 'changed_by', 'changed_at']
+    list_filter = ['changed_at', 'previous_supplier', 'new_supplier']
+    search_fields = ['supplier_po__po_number', 'previous_supplier__name', 'new_supplier__name', 'reason', 'changed_by__username']
+
 
 @admin.register(SupplierPO)
 class SupplierPOAdmin(admin.ModelAdmin):
@@ -139,15 +154,45 @@ class SupplierPOItemDefectImageAdmin(admin.ModelAdmin):
 
 @admin.register(GateInwardReceipt)
 class GateInwardReceiptAdmin(admin.ModelAdmin):
-    list_display = ['challan_no', 'supplier_po', 'po_item', 'receipt_date', 'received_qty', 'passed_qty', 'rejected_qty', 'inspected_by', 'created_at']
-    list_filter = ['receipt_date', 'inspected_by']
-    search_fields = ['challan_no', 'supplier_po__po_number', 'notes']
+    list_display = ['grn_number', 'round_number', 'supplier_invoice_no', 'supplier_po', 'po_item', 'receipt_date', 'passed_qty', 'rejected_qty', 'vehicle_no', 'driver_contact', 'inspected_by', 'created_at']
+    list_filter = ['round_number', 'receipt_date', 'inspected_by', 'supplier_po__supplier']
+    search_fields = ['grn_number', 'supplier_invoice_no', 'challan_no', 'vehicle_no', 'driver_contact', 'supplier_po__po_number', 'notes']
+
+
+class SupplierTaxInvoiceItemInline(admin.TabularInline):
+    model = SupplierTaxInvoiceItem
+    extra = 1
+
+@admin.register(SupplierTaxInvoice)
+class SupplierTaxInvoiceAdmin(admin.ModelAdmin):
+    list_display = ['invoice_no', 'invoice_date', 'supplier', 'delivery_note', 'despatched_through', 'total_amount', 'created_at']
+    list_filter = ['invoice_date', 'supplier']
+    search_fields = ['invoice_no', 'supplier__name', 'delivery_note', 'despatch_document_no', 'despatched_through', 'destination']
+    inlines = [SupplierTaxInvoiceItemInline]
+
+@admin.register(SupplierTaxInvoiceItem)
+class SupplierTaxInvoiceItemAdmin(admin.ModelAdmin):
+    list_display = ['tax_invoice', 'supplier_po', 'description', 'quantity', 'passed_quantity', 'rejected_quantity', 'unit', 'rate', 'amount']
+    list_filter = ['unit', 'tax_invoice__supplier']
+    search_fields = ['tax_invoice__invoice_no', 'supplier_po__po_number', 'description', 'hsn_sac']
+
+
+class SupplierDebitNoteItemInline(admin.TabularInline):
+    model = SupplierDebitNoteItem
+    extra = 1
 
 @admin.register(SupplierDebitNote)
 class SupplierDebitNoteAdmin(admin.ModelAdmin):
-    list_display = ['vch_no', 'vch_date', 'supplier', 'item_description', 'rejected_qty', 'total_amount', 'tally_synced', 'created_at']
-    list_filter = ['tally_synced', 'vch_date']
-    search_fields = ['vch_no', 'supplier__name', 'original_inv_no', 'item_description']
+    list_display = ['vch_no', 'vch_date', 'supplier', 'status', 'holding_until', 'item_description', 'rejected_qty', 'total_amount', 'tally_synced', 'created_at']
+    list_filter = ['status', 'tally_synced', 'vch_date']
+    search_fields = ['vch_no', 'supplier__name', 'original_inv_no', 'item_description', 'remarks']
+    inlines = [SupplierDebitNoteItemInline]
+
+@admin.register(SupplierDebitNoteItem)
+class SupplierDebitNoteItemAdmin(admin.ModelAdmin):
+    list_display = ['debit_note', 'description', 'hsn_sac', 'rejected_qty', 'unit', 'rate', 'amount', 'reason']
+    list_filter = ['unit', 'debit_note__status']
+    search_fields = ['debit_note__vch_no', 'description', 'reason']
 
 
 # ── Performa Invoices ───────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
   Truck, Search, Phone, Calendar, Clock, AlertTriangle, CheckCircle2,
@@ -7,13 +8,20 @@ import {
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
+import TaxInvoiceEntryModal from '../components/TaxInvoiceEntryModal';
+import SupplierManagerModal from '../components/SupplierManagerModal';
+import GRNPrintoutModal from '../components/GRNPrintoutModal';
+import { fmtQty } from '../utils/formatters';
 
 function fmtINR(val) {
   if (!val && val !== 0) return '—';
   return `₹${parseFloat(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 }
 
+const floatVal = (val) => parseFloat(val || 0);
+
 export default function VendorManagement() {
+  const navigate = useNavigate();
   const [pos, setPos] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +29,24 @@ export default function VendorManagement() {
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [filterTab, setFilterTab] = useState('all'); // 'all', 'red', 'yellow', 'green'
   const [expandedPoId, setExpandedPoId] = useState(null);
+  const [selectedGRN, setSelectedGRN] = useState(null);
+  const [poReceiptsMap, setPoReceiptsMap] = useState({});
+
+  const handleToggleExpandPo = async (poId) => {
+    if (expandedPoId === poId) {
+      setExpandedPoId(null);
+    } else {
+      setExpandedPoId(poId);
+      if (!poReceiptsMap[poId]) {
+        try {
+          const res = await api.get('/gate-inward-receipts/', { params: { supplier_po: poId } });
+          setPoReceiptsMap(prev => ({ ...prev, [poId]: res.data.results || res.data }));
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
+  };
 
   // Modal State for Date Extension
   const [extensionModalPo, setExtensionModalPo] = useState(null);
@@ -29,22 +55,57 @@ export default function VendorManagement() {
   const [extensionReason, setExtensionReason] = useState('');
   const [savingExtension, setSavingExtension] = useState(false);
 
-  // Fetch Suppliers and POs
+  const [showTaxInvoiceModal, setShowTaxInvoiceModal] = useState(false);
+  const [showSupplierManagerModal, setShowSupplierManagerModal] = useState(false);
+  const [debitNotes, setDebitNotes] = useState([]);
+
+  // Fetch Suppliers, POs, and Debit Notes
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [posRes, suppRes] = await Promise.all([
+      const [posRes, suppRes, dnRes] = await Promise.all([
         api.get('/supplier-pos/', { params: { nopage: true } }),
-        api.get('/suppliers/', { params: { nopage: true } })
+        api.get('/suppliers/', { params: { nopage: true } }),
+        api.get('/supplier-debit-notes/', { params: { nopage: true } })
       ]);
       setPos(posRes.data.results || posRes.data || []);
       setSuppliers(suppRes.data.results || suppRes.data || []);
+      setDebitNotes(dnRes.data.results || dnRes.data || []);
     } catch (err) {
       console.error('Error loading vendor management data:', err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleResolveRepaired = async (dnId) => {
+    if (window.confirm('Mark this rejection as Repaired & Accepted? The passed quantity will be updated without issuing a financial Debit Note.')) {
+      try {
+        await api.post(`/supplier-debit-notes/${dnId}/resolve-repaired/`);
+        fetchData();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to resolve debit note.');
+      }
+    }
+  };
+
+  const handleDownloadDebitNotePDF = async (dn) => {
+    try {
+      const res = await api.get(`/supplier-debit-notes/${dn.id}/pdf/`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DebitNote_${dn.vch_no}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to download Debit Note PDF.');
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -245,14 +306,73 @@ export default function VendorManagement() {
             </p>
           </div>
 
-          <button
-            className="btn-secondary"
-            onClick={fetchData}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
-          >
-            <RefreshCw size={15} /> Refresh Status
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <button
+              className="btn-primary"
+              onClick={() => navigate('/suppliers')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#ffffff', color: '#8b5a2b', border: '1.5px solid #8b5a2b' }}
+            >
+              <Building2 size={16} /> Manage Suppliers
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => navigate('/record-tax-invoice')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#8b5a2b', color: '#fff' }}
+            >
+              <FileText size={16} />Record Tax Invoice Inward (Multi-PO)
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={fetchData}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+            >
+              <RefreshCw size={15} /> Refresh Status
+            </button>
+          </div>
         </div>
+
+        {/* ── 2-Day Supplier Repair Grace Period Alerts Section ── */}
+        {debitNotes.filter(dn => dn.status === 'Grace Period').length > 0 && (
+          <div style={{ backgroundColor: '#fffbe6', border: '1.5px solid #ffe58f', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#d48806', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clock size={18} color="#d48806"/>Pending 2-Day Supplier Repair Grace Period Rejections ({debitNotes.filter(dn => dn.status === 'Grace Period').length})
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: '#8c6b00', margin: '0 0 0.75rem 0' }}>
+              Supplier has requested 2 days to repair/bring back these rejected pieces before a financial Debit Note is issued.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {debitNotes.filter(dn => dn.status === 'Grace Period').map(dn => (
+                <div key={dn.id} style={{ backgroundColor: '#ffffff', border: '1px solid #ffe58f', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
+                      {dn.supplier_name_str || 'Supplier'} — {dn.item_description || 'Rejected Items'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                      Inv Ref: {dn.original_inv_no || 'N/A'} | Rejected Qty: <strong style={{ color: '#dc2626' }}>{dn.rejected_qty} {dn.unit}</strong> | Total: <strong>₹{floatVal(dn.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d48806', backgroundColor: '#fff1b8', padding: '3px 8px', borderRadius: '6px' }}>
+                      ⏳ {dn.grace_days_remaining} Days Grace Remaining
+                    </span>
+                    <button
+                      onClick={() => handleResolveRepaired(dn.id)}
+                      style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', color: '#389e0d', padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      ✓ Repaired & Accepted
+                    </button>
+                    <button
+                      onClick={() => handleDownloadDebitNotePDF(dn)}
+                      style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      📄 Download A4 PDF Debit Note
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Desktop KPI Summary Cards */}
         <div style={{
@@ -658,7 +778,7 @@ export default function VendorManagement() {
                       <button
                         type="button"
                         className="btn-secondary"
-                        onClick={() => setExpandedPoId(isExpanded ? null : po.id)}
+                        onClick={() => handleToggleExpandPo(po.id)}
                         style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -710,6 +830,57 @@ export default function VendorManagement() {
                         </div>
                       ) : (
                         <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No items listed for this PO.</p>
+                      )}
+
+                      {/* Partial Delivery Rounds (GRN History) */}
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', marginTop: '1.25rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Package size={16} color="#059669" /> Partial Delivery Rounds & Goods Received Notes (GRN)
+                      </h4>
+
+                      {poReceiptsMap[po.id] && poReceiptsMap[po.id].length > 0 ? (
+                        <div className="table-responsive" style={{ marginBottom: '1.25rem' }}>
+                          <table className="data-table" style={{ fontSize: '0.82rem' }}>
+                            <thead>
+                              <tr style={{ backgroundColor: '#ecfdf5', color: '#047857' }}>
+                                <th>GRN #</th>
+                                <th>Round #</th>
+                                <th>Date</th>
+                                <th>Supplier Inv / Challan #</th>
+                                <th>Vehicle #</th>
+                                <th style={{ textAlign: 'right' }}>Passed Qty</th>
+                                <th style={{ textAlign: 'right' }}>Rejected Qty</th>
+                                <th style={{ textAlign: 'center' }}>Voucher</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {poReceiptsMap[po.id].map(rcpt => (
+                                <tr key={rcpt.id}>
+                                  <td style={{ fontWeight: 800, color: '#059669' }}>{rcpt.grn_number || 'GRN-PARTIAL'}</td>
+                                  <td style={{ fontWeight: 700 }}>Round #{rcpt.round_number || 1}</td>
+                                  <td>{rcpt.receipt_date}</td>
+                                  <td style={{ fontWeight: 600 }}>{rcpt.supplier_invoice_no || rcpt.challan_no || '—'}</td>
+                                  <td>{rcpt.vehicle_no || '—'}</td>
+                                  <td style={{ textAlign: 'right', fontWeight: 800, color: '#16a34a' }}>{rcpt.passed_qty} {rcpt.po_item_unit || 'pcs'}</td>
+                                  <td style={{ textAlign: 'right', fontWeight: 800, color: rcpt.rejected_qty > 0 ? '#dc2626' : '#64748b' }}>
+                                    {rcpt.rejected_qty} {rcpt.po_item_unit || 'pcs'}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className="btn-secondary"
+                                      onClick={() => setSelectedGRN(rcpt)}
+                                      style={{ fontSize: '0.74rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#059669', borderColor: '#a7f3d0' }}
+                                    >
+                                      <FileText size={13} /> View GRN
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1.25rem' }}>No inward delivery rounds recorded yet for this PO.</p>
                       )}
 
                       <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1246,6 +1417,26 @@ export default function VendorManagement() {
           </div>
         </div>
       )}
+
+      {/* ── Tax Invoice Entry Modal ── */}
+      <TaxInvoiceEntryModal
+        isOpen={showTaxInvoiceModal}
+        onClose={() => setShowTaxInvoiceModal(false)}
+        onSaved={fetchData}
+      />
+
+      {/* ── Supplier Manager CRUD Modal ── */}
+      <SupplierManagerModal
+        isOpen={showSupplierManagerModal}
+        onClose={() => setShowSupplierManagerModal(false)}
+        onUpdated={fetchData}
+      />
+
+      {/* ── GRN Voucher Printout Modal ── */}
+      <GRNPrintoutModal
+        receipt={selectedGRN}
+        onClose={() => setSelectedGRN(null)}
+      />
     </div>
   );
 }

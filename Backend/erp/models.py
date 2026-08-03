@@ -301,6 +301,8 @@ class Supplier(models.Model):
     phone = models.CharField(max_length=50, blank=True, null=True, verbose_name='Phone')
     gstin = models.CharField(max_length=50, blank=True, null=True, verbose_name='GSTIN/UIN')
     state_name = models.CharField(max_length=100, blank=True, null=True, verbose_name='State Name')
+    cartage_gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18.00, verbose_name='Cartage GST Rate (%)')
+    cartage_ledger_name = models.CharField(max_length=200, default='PUR. CARTAGE GST @ 18% -  3 %', verbose_name='Cartage Ledger Name')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -354,6 +356,14 @@ class SupplierPO(models.Model):
         verbose_name='Assigned Supervisor'
     )
     nku_refs = models.CharField(max_length=300, blank=True, null=True, verbose_name='NKU Reference Numbers')
+    buyer_pi = models.ForeignKey(
+        'BuyerPI',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='supplier_pos',
+        verbose_name='Linked Buyer PI Reference',
+    )
     remarks = models.TextField(blank=True, null=True, verbose_name='Remarks')
     status = models.CharField(
         max_length=20,
@@ -441,6 +451,14 @@ class SupplierPOItem(models.Model):
         blank=True,
         related_name='supplier_po_items',
         verbose_name='Buyer PI Reference',
+    )
+    buyer_pi_item = models.ForeignKey(
+        'BuyerPIItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='po_allocations',
+        verbose_name='Buyer PI Item Reference',
     )
     description = models.TextField(verbose_name='Description of Goods')
     quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Quantity')
@@ -630,12 +648,20 @@ class SupplierPOItemDefectImage(models.Model):
 class GateInwardReceipt(models.Model):
     """
     Tracks individual partial inward shipments for a Supplier PO Item.
+    Generates Goods Received Note (GRN) for each round.
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    grn_number = models.CharField(max_length=100, blank=True, null=True, verbose_name='GRN Number')
+    round_number = models.IntegerField(default=1, verbose_name='Delivery Round Number')
     supplier_po = models.ForeignKey(SupplierPO, on_delete=models.CASCADE, related_name='gate_receipts')
     po_item = models.ForeignKey(SupplierPOItem, on_delete=models.CASCADE, related_name='inward_receipts')
     receipt_date = models.DateField(default=timezone.now, verbose_name='Receipt Date')
     challan_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Supplier Challan / Invoice No.')
+    supplier_invoice_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Supplier Invoice No.')
+    supplier_invoice_date = models.DateField(null=True, blank=True, verbose_name='Supplier Invoice Date')
+    supplier_invoice_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Supplier Invoice Amount')
+    vehicle_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Vehicle / Truck No.')
+    driver_contact = models.CharField(max_length=100, blank=True, null=True, verbose_name='Driver Contact')
     received_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Received Qty')
     passed_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Passed Qty')
     rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rejected Qty')
@@ -647,7 +673,7 @@ class GateInwardReceipt(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Receipt #{self.challan_no or self.id.hex[:6]} — Passed: {self.passed_qty}, Rejected: {self.rejected_qty}"
+        return f"GRN #{self.grn_number or self.id.hex[:6]} (Round #{self.round_number}) — Passed: {self.passed_qty}, Rejected: {self.rejected_qty}"
 
 
 class SupplierDebitNote(models.Model):
@@ -655,6 +681,12 @@ class SupplierDebitNote(models.Model):
     Tally-compatible Debit Note Voucher for rejected goods return.
     Strictly enforced to be <= INR 2,00,000 to comply with E-Way Bill threshold limits.
     """
+    DEBIT_NOTE_STATUS = [
+        ('Grace Period', 'Grace Period (Pending Supplier Repair)'),
+        ('Issued', 'Issued'),
+        ('Resolved (Repaired)', 'Resolved (Repaired & Accepted)'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     vch_type = models.CharField(max_length=50, default='Debit Note', verbose_name='Vch Type')
     vch_no = models.CharField(max_length=100, unique=True, verbose_name='Debit Note No.')
@@ -665,11 +697,15 @@ class SupplierDebitNote(models.Model):
     supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='debit_notes')
     supplier_po = models.ForeignKey(SupplierPO, on_delete=models.SET_NULL, null=True, blank=True, related_name='debit_notes')
     po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='debit_notes')
+    tax_invoice = models.ForeignKey('SupplierTaxInvoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='debit_notes')
+    
+    status = models.CharField(max_length=30, choices=DEBIT_NOTE_STATUS, default='Issued', verbose_name='Status')
+    holding_until = models.DateTimeField(null=True, blank=True, verbose_name='Grace Period End Time (2 Days)')
     
     hsn_sac = models.CharField(max_length=50, default='70099200', verbose_name='HSN/SAC Code')
     item_description = models.TextField(verbose_name='Description of Goods and Services')
-    rejected_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rejected Quantity')
-    unit = models.CharField(max_length=30, default='No.', verbose_name='Unit (No./pcs)')
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=3, default=0, verbose_name='Rejected Quantity')
+    unit = models.CharField(max_length=30, default='pcs', verbose_name='Unit (pcs/ft/kg)')
     rate = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Rate (INR)')
     subtotal_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0, verbose_name='Subtotal Amount')
     
@@ -695,6 +731,22 @@ class SupplierDebitNote(models.Model):
 
     def __str__(self):
         return f"{self.vch_no} ({self.supplier.name}) — ₹{self.total_amount}"
+
+
+class SupplierDebitNoteItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    debit_note = models.ForeignKey(SupplierDebitNote, on_delete=models.CASCADE, related_name='items')
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True)
+    description = models.CharField(max_length=300)
+    hsn_sac = models.CharField(max_length=50, default='9403')
+    rejected_qty = models.DecimalField(max_digits=12, decimal_places=3)
+    unit = models.CharField(max_length=30, default='pcs')
+    rate = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.description} - Rejected: {self.rejected_qty} {self.unit}"
 
 
 class StockTypeChoices(models.TextChoices):
@@ -835,4 +887,86 @@ class UserSession(models.Model):
 
     def __str__(self):
         return f"Session for {self.user.username} from {self.ip_address}"
+
+
+# ─── PO Supplier Transfer Audit History ───────────────────────────────────────
+
+class POSupplierHistory(models.Model):
+    """Logs when a Purchase Order is transferred from one supplier to another."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplier_po = models.ForeignKey(SupplierPO, on_delete=models.CASCADE, related_name='supplier_history')
+    previous_supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    new_supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    reason = models.TextField(blank=True, null=True, verbose_name='Reason for Transfer')
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        return f"PO {self.supplier_po.po_number} transferred from {self.previous_supplier} to {self.new_supplier}"
+
+
+# ─── Supplier Tax Invoice (Multi-PO Dispatch Inward) ──────────────────────────
+
+class SupplierTaxInvoice(models.Model):
+    """
+    Tax Invoice issued by a Supplier accompanying a truck shipment.
+    Fulfills line items across single or multiple Purchase Orders.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice_no = models.CharField(max_length=100, verbose_name='Invoice No.')
+    invoice_date = models.DateField(verbose_name='Invoice Date')
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name='tax_invoices')
+    
+    delivery_note = models.CharField(max_length=100, blank=True, null=True, verbose_name='Delivery Note')
+    despatch_document_no = models.CharField(max_length=100, blank=True, null=True, verbose_name='Despatch Document No.')
+    despatched_through = models.CharField(max_length=100, blank=True, null=True, verbose_name='Despatched Through')
+    destination = models.CharField(max_length=100, blank=True, null=True, verbose_name='Destination')
+    
+    cartage_ledger_name = models.CharField(max_length=200, blank=True, null=True, verbose_name='Cartage Ledger Name')
+    cartage_gst_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18.00, verbose_name='Cartage GST Rate (%)')
+    cartage_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name='Cartage Amount')
+    
+    subtotal_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    
+    remarks = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Invoice #{self.invoice_no} - {self.supplier.name}"
+
+
+class SupplierTaxInvoiceItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tax_invoice = models.ForeignKey(SupplierTaxInvoice, on_delete=models.CASCADE, related_name='items')
+    supplier_po = models.ForeignKey(SupplierPO, on_delete=models.CASCADE, related_name='invoice_items')
+    po_item = models.ForeignKey(SupplierPOItem, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_items')
+    
+    hsn_sac = models.CharField(max_length=50, default='9403', verbose_name='HSN/SAC Code')
+    description = models.CharField(max_length=300, verbose_name='Description of Goods')
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, verbose_name='Quantity')
+    unit = models.CharField(max_length=30, default='pcs', verbose_name='Unit')
+    rate = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Rate per Unit')
+    discount_pct = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, verbose_name='Disc %')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Amount')
+    
+    passed_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0.00)
+    rejected_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0.00)
+
+    def __str__(self):
+        return f"{self.description} ({self.quantity} {self.unit})"
+
+
+
+
 

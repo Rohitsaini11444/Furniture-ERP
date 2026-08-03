@@ -1,0 +1,256 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<!-- Google Font: Outfit -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     FURNITURE ERP ADMIN PANEL THEME (Beige / Warm Wood / Mahogany / Teak)
+     ═════════════════════════════════════════════════════════════════════ */
+
+  :root {
+    --font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --bg-main: #fcf9f2;            /* Soft Cream Beige Main Background */
+    --bg-sidebar: #1c100a;         /* Deep Warm Espresso Dark Sidebar */
+    --sidebar-hover: #3d2314;      /* Rich Mahogany Hover State */
+    --color-gold: #d97706;         /* Warm Teak Gold / Amber */
+    --color-gold-bright: #fbbf24;  /* Bright Amber Gold for Active Links */
+    --text-dark: #1c1917;          /* Dark Espresso Text */
+    --text-muted: #78350f;        /* Warm Timber Brown Muted Text */
+    --border-warm: #e7e0d3;        /* Soft Sand Border */
+    --card-bg: #ffffff;            /* Pure Cream Card Background */
+  }
+
+  body, html, input, button, select, textarea {
+    font-family: var(--font-family-base) !important;
+  }
+
+  body {
+    background-color: var(--bg-main) !important;
+    color: var(--text-dark) !important;
+  }
+
+  /* ── 1. Top Header Navbar (Walnut & Gold) ── */
+  .app-header.navbar {
+    background-color: #2a1810 !important;
+    border-bottom: 2px solid #3d2314 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  .app-header.navbar .nav-link, 
+  .app-header.navbar .brand-link {
+    color: #f5efe6 !important;
+  }
+
+  .app-header.navbar .nav-link:hover {
+    color: var(--color-gold-bright) !important;
+  }
+
+  /* ── 2. Sidebar (Deep Espresso & Warm Mahogany) ── */
+  aside.app-sidebar, #jazzy-sidebar {
+    background-color: var(--bg-sidebar) !important;
+    border-right: 1px solid #2d1a0e !important;
+  }
+
+  .sidebar-brand {
+    background-color: #150b07 !important;
+    border-bottom: 1px solid #2a1810 !important;
+  }
+
+  .sidebar-brand .brand-text {
+    color: var(--color-gold-bright) !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  /* User Panel in Sidebar */
+  .user-panel {
+    border-bottom: 1px solid #2d1a0e !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .user-panel .info a, .user-panel .info span {
+    color: #f5efe6 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Sidebar Search Box */
+  #jazzmin-sidebar-search {
+    background-color: #2d1a0e !important;
+    border: 1.5px solid #4a2e1b !important;
+    color: #fdfbf7 !important;
+    border-radius: 8px 0 0 8px !important;
+  }
+
+  #jazzmin-sidebar-search:focus {
+    border-color: var(--color-gold) !important;
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.25) !important;
+  }
+
+  #jazzmin-sidebar-search::placeholder {
+    color: #a89f91 !important;
+  }
+
+  /* Sidebar Links & Hover */
+  #jazzy-navigation .nav-link {
+    color: #e7e0d3 !important;
+    font-weight: 500 !important;
+    padding: 0.5rem 0.85rem !important;
+    border-radius: 8px !important;
+    transition: all 0.15s ease-in-out !important;
+  }
+
+  #jazzy-navigation .nav-link:hover,
+  #jazzy-navigation .nav-item.menu-open > .nav-link {
+    background-color: var(--sidebar-hover) !important;
+    color: var(--color-gold-bright) !important;
+  }
+
+  #jazzy-navigation .nav-link.active {
+    background-color: var(--color-gold) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3) !important;
+  }
+
+  #jazzy-navigation .nav-header {
+    color: var(--color-gold) !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    font-size: 0.72rem !important;
+  }
+
+  /* ── 3. Main Content & Cards (Warm Cream & Sand) ── */
+  .app-main {
+    background-color: var(--bg-main) !important;
+  }
+
+  .card, .module {
+    background-color: var(--card-bg) !important;
+    border: 1px solid var(--border-warm) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 16px -2px rgba(69, 26, 3, 0.04) !important;
+  }
+
+  .card-header, .module caption, legend {
+    background-color: #faf6f0 !important;
+    border-bottom: 1px solid var(--border-warm) !important;
+    color: var(--text-dark) !important;
+    font-weight: 800 !important;
+  }
+
+  /* ── 4. Buttons (Mahogany, Amber, Forest Timber, Terracotta) ── */
+  .btn-primary, input[type=submit].default {
+    background-color: #78350f !important;
+    border-color: #78350f !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 3px 10px rgba(120, 53, 15, 0.2) !important;
+  }
+
+  .btn-primary:hover, input[type=submit].default:hover {
+    background-color: #451a03 !important;
+    border-color: #451a03 !important;
+  }
+
+  .btn-success {
+    background-color: #15803d !important;
+    border-color: #15803d !important;
+    border-radius: 8px !important;
+  }
+
+  .btn-info {
+    background-color: #d97706 !important;
+    border-color: #d97706 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+  }
+
+  .btn-danger, .deletelink {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+    border-radius: 8px !important;
+  }
+
+  .btn-secondary {
+    background-color: #78716c !important;
+    border-color: #78716c !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+  }
+
+  /* ── 5. Tables & Change Lists (Beige & Wood Highlights) ── */
+  table.table, #result_list {
+    background-color: #ffffff !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+  }
+
+  table.table th, #result_list th {
+    background-color: #f5efe6 !important;
+    color: #451a03 !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    font-size: 0.76rem !important;
+    letter-spacing: 0.04em !important;
+    border-bottom: 2px solid var(--border-warm) !important;
+  }
+
+  table.table tbody tr:hover, #result_list tbody tr:hover {
+    background-color: #fef8ee !important;
+  }
+
+  /* ── 6. Form Control Inputs ── */
+  .form-control, input[type=text], input[type=password], input[type=email], select, textarea {
+    border: 1.5px solid #d6cebe !important;
+    border-radius: 8px !important;
+    background-color: #ffffff !important;
+    color: var(--text-dark) !important;
+  }
+
+  .form-control:focus, input:focus, select:focus, textarea:focus {
+    border-color: var(--color-gold) !important;
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.2) !important;
+  }
+
+  /* ── 7. Badges & Indicators ── */
+  .badge-primary {
+    background-color: #78350f !important;
+    color: #ffffff !important;
+  }
+
+  .badge-info {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border: 1px solid #fde68a !important;
+  }
+
+  .badge-success {
+    background-color: #d1fae5 !important;
+    color: #065f46 !important;
+    border: 1px solid #a7f3d0 !important;
+  }
+
+  .badge-warning {
+    background-color: #ffedd5 !important;
+    color: #9a3412 !important;
+    border: 1px solid #fed7aa !important;
+  }
+
+  .badge-danger {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+    border: 1px solid #fca5a5 !important;
+  }
+</style>
+{% endblock %}
