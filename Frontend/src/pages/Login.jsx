@@ -24,17 +24,6 @@ function Login() {
     }
   };
 
-  const roleCards = [
-    { role: 'Admin', username: 'admin', password: 'admin123', color: '#8b5a2b', desc: 'Full system access' },
-    { role: 'Supervisor', username: 'supervisor_sanding', password: 'super123', color: '#a855f7', desc: 'Sanding batch management' },
-    { role: 'Contractor', username: 'contractor_ravi', password: 'ravi123', color: '#22c55e', desc: 'View assigned work' },
-  ];
-
-  const fillCredentials = (username, password) => {
-    setForm({ username, password });
-    setError(null);
-  };
-
   return (
     <div className="login-page">
       {/* Left Panel — Branding */}
@@ -56,20 +45,6 @@ function Login() {
               </div>
             ))}
           </div>
-          <div className="login-quick-access">
-            <p className="login-quick-label">Quick Access (Dev)</p>
-            {roleCards.map((card) => (
-              <button
-                key={card.role}
-                className="login-quick-btn"
-                style={{ borderColor: card.color }}
-                onClick={() => fillCredentials(card.username, card.password)}
-              >
-                <span className="login-quick-role" style={{ color: card.color }}>{card.role}</span>
-                <span className="login-quick-desc">{card.desc}</span>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -88,7 +63,7 @@ function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="login-form">
+          <form onSubmit={handleSubmit} className="login-form" autoComplete="off">
             <div className="login-field">
               <label htmlFor="username" className="login-label">Username</label>
               <div className="login-input-wrapper">
@@ -102,7 +77,7 @@ function Login() {
                   className="login-input"
                   placeholder="Enter your username"
                   required
-                  autoComplete="username"
+                  autoComplete="off"
                   autoFocus
                 />
               </div>
@@ -121,7 +96,7 @@ function Login() {
                   className="login-input"
                   placeholder="Enter your password"
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"

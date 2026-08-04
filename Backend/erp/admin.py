@@ -265,3 +265,45 @@ class UserSessionAdmin(admin.ModelAdmin):
     list_display = ['user', 'ip_address', 'is_active', 'last_activity', 'created_at']
     list_filter = ['is_active']
     search_fields = ['user__username', 'ip_address', 'user_agent']
+
+
+# ── Store Management Admin Registration ─────────────────────────────────────
+from .models import (
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson,
+    StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue
+)
+
+@admin.register(StoreItemCategory)
+class StoreItemCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'created_at']
+    search_fields = ['name', 'code']
+
+@admin.register(StoreItem)
+class StoreItemAdmin(admin.ModelAdmin):
+    list_display = ['item_code', 'item_name', 'category', 'unit', 'base_rate', 'current_rate', 'default_status', 'reorder_level']
+    list_filter = ['category', 'default_status', 'is_active']
+    search_fields = ['item_code', 'item_name']
+
+@admin.register(StoreItemRateHistory)
+class StoreItemRateHistoryAdmin(admin.ModelAdmin):
+    list_display = ['item', 'old_rate', 'new_rate', 'rate_difference', 'percentage_change', 'supplier_name', 'effective_date']
+    search_fields = ['item__item_name', 'supplier_name', 'po_reference']
+
+@admin.register(ContractorPerson)
+class ContractorPersonAdmin(admin.ModelAdmin):
+    list_display = ['person_name', 'contractor', 'phone', 'is_active', 'created_at']
+    list_filter = ['contractor', 'is_active']
+    search_fields = ['person_name', 'contractor__username']
+
+@admin.register(StoreMaterialIn)
+class StoreMaterialInAdmin(admin.ModelAdmin):
+    list_display = ['voucher_no', 'inward_date', 'bill_no', 'supplier', 'item', 'qty', 'unit', 'bill_rate', 'total_amount']
+    list_filter = ['supplier', 'inward_date']
+    search_fields = ['voucher_no', 'bill_no', 'item__item_name']
+
+@admin.register(StoreDailyIssue)
+class StoreDailyIssueAdmin(admin.ModelAdmin):
+    list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'qty', 'rate', 'status', 'total_amount']
+    list_filter = ['contractor', 'status', 'production_unit']
+    search_fields = ['voucher_no', 'contractor_person_name', 'item__item_name']
+

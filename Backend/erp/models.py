@@ -967,6 +967,247 @@ class SupplierTaxInvoiceItem(models.Model):
         return f"{self.description} ({self.quantity} {self.unit})"
 
 
+# ─── Store Management Module Models ───────────────────────────────────────────
+
+class StoreItemCategory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True, verbose_name="Category Name")
+    code = models.CharField(max_length=50, unique=True, verbose_name="Category Code")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Store Item Category"
+        verbose_name_plural = "Store Item Categories"
+
+    def __str__(self):
+        return self.name
+
+
+class StoreItemStatus(models.TextChoices):
+    CHARGE = 'charge', 'Chargeable'
+    NON_CHARGE = 'non-charge', 'Non-Chargeable'
+
+
+class StoreItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    item_code = models.CharField(max_length=50, unique=True, verbose_name="Item Code")
+    item_name = models.CharField(max_length=200, verbose_name="Item Name")
+    category = models.ForeignKey(StoreItemCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="items")
+    unit = models.CharField(max_length=30, default="pcs", verbose_name="Unit")
+    base_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Master Base Rate (₹)")
+    current_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Current Effective Rate (₹)")
+    weight = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True, verbose_name="Weight per unit")
+    image = models.ImageField(upload_to="store_items/", null=True, blank=True, verbose_name="Item Image")
+    default_status = models.CharField(
+        max_length=20,
+        choices=StoreItemStatus.choices,
+        default=StoreItemStatus.CHARGE,
+        verbose_name="Default Chargeability Status"
+    )
+    reorder_level = models.DecimalField(max_digits=12, decimal_places=2, default=10.00, verbose_name="Reorder / Min Level")
+    remark = models.TextField(blank=True, null=True, verbose_name="Remark / Description")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['item_code']
+        verbose_name = "Store Item"
+        verbose_name_plural = "Store Items"
+
+    def __str__(self):
+        return f"{self.item_code} - {self.item_name}"
+
+    @property
+    def total_stock_qty(self):
+        from django.db.models import Sum
+        inward = self.inward_entries.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        return inward
+
+    @property
+    def total_issued_qty(self):
+        from django.db.models import Sum
+        issued = self.daily_issues.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        return issued
+
+    @property
+    def balance_stock_qty(self):
+        return self.total_stock_qty - self.total_issued_qty
+
+    @property
+    def total_stock_value(self):
+        return self.balance_stock_qty * (self.current_rate or self.base_rate)
+
+
+class StoreItemRateHistory(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="rate_history")
+    old_rate = models.DecimalField(max_digits=12, decimal_places=2)
+    new_rate = models.DecimalField(max_digits=12, decimal_places=2)
+    rate_difference = models.DecimalField(max_digits=12, decimal_places=2)
+    percentage_change = models.DecimalField(max_digits=8, decimal_places=2)
+    supplier_name = models.CharField(max_length=200, blank=True, null=True)
+    po_reference = models.CharField(max_length=100, blank=True, null=True)
+    revision_reason = models.TextField(blank=True, null=True)
+    effective_date = models.DateField(default=timezone.now)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-effective_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.item.item_name}: {self.old_rate} → {self.new_rate}"
+
+
+class ContractorPerson(models.Model):
+    """
+    Contractor worker / person delegate authorized to receive materials from store.
+    E.g., Pappu - Person 'Raju'
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contractor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="persons", limit_choices_to={'role': RoleChoices.CONTRACTOR})
+    person_name = models.CharField(max_length=150, verbose_name="Worker / Delegate Name")
+    phone = models.CharField(max_length=50, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    remark = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['person_name']
+        verbose_name = "Contractor Person / Worker"
+        verbose_name_plural = "Contractor Persons / Workers"
+
+    def __str__(self):
+        return f"{self.contractor.get_full_name() or self.contractor.username}'s Person: {self.person_name}"
+
+
+class StorePurchaseOrder(models.Model):
+    class StatusChoices(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        ISSUED = 'issued', 'Issued to Supplier'
+        RECEIVED = 'received', 'Material Received'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    po_number = models.CharField(max_length=100, unique=True, verbose_name="Store PO Number")
+    supplier = models.ForeignKey('Supplier', on_delete=models.CASCADE, related_name="store_pos")
+    order_date = models.DateField(default=timezone.now)
+    expected_delivery_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.DRAFT)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    remarks = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-order_date', '-created_at']
+
+    def __str__(self):
+        return f"PO #{self.po_number} - {self.supplier.name}"
+
+
+class StorePurchaseOrderItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    po = models.ForeignKey(StorePurchaseOrder, on_delete=models.CASCADE, related_name="items")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="po_items")
+    ordered_qty = models.DecimalField(max_digits=12, decimal_places=3)
+    unit = models.CharField(max_length=30, default="pcs")
+    unit_rate = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.item.item_name} ({self.ordered_qty} {self.unit})"
+
+
+class StoreMaterialIn(models.Model):
+    """
+    Store Receipt / Goods Received Note (GRN) / Inward Stock Entry
+    Matching Excel Sheet 4: Material In
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    voucher_no = models.CharField(max_length=100, unique=True, verbose_name="Inward Voucher No.")
+    inward_date = models.DateField(default=timezone.now)
+    month_year = models.CharField(max_length=30, blank=True, null=True, help_text="e.g. Jul-26")
+    bill_no = models.CharField(max_length=100, verbose_name="Supplier Bill / Invoice #")
+    supplier = models.ForeignKey('Supplier', on_delete=models.CASCADE, related_name="store_inwards")
+    po = models.ForeignKey(StorePurchaseOrder, on_delete=models.SET_NULL, null=True, blank=True, related_name="inward_receipts")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="inward_entries")
+    qty = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Received Qty")
+    unit = models.CharField(max_length=30, default="pcs", verbose_name="Unit")
+    bill_rate = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Bill Rate (₹)")
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Total Amount (₹)")
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name="store_inwards")
+    received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    remark = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-inward_date', '-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.month_year and self.inward_date:
+            self.month_year = self.inward_date.strftime('%b-%y')
+        if not self.total_amount:
+            self.total_amount = self.qty * self.bill_rate
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Inward #{self.voucher_no} - {self.item.item_name} ({self.qty})"
+
+
+class StoreDailyIssue(models.Model):
+    """
+    Outward store issue entry to contractors / supervisors / contractor workers.
+    Matching Excel Sheet 2: Daily Issue Entry
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    voucher_no = models.CharField(max_length=100, verbose_name="Voucher No.")
+    issue_date = models.DateField(default=timezone.now)
+    month_year = models.CharField(max_length=30, blank=True, null=True, help_text="e.g. Jul-26")
+    contractor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="store_issues", help_text="Target Contractor / Supervisor")
+    contractor_person = models.ForeignKey(ContractorPerson, on_delete=models.SET_NULL, null=True, blank=True, related_name="issues")
+    contractor_person_name = models.CharField(max_length=150, blank=True, null=True, help_text="Contractor's worker name e.g. Pappu - worker Raju")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="daily_issues")
+    qty = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Issued Qty")
+    unit = models.CharField(max_length=30, default="pcs", verbose_name="Unit")
+    rate = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Issue Rate (₹)")
+    status = models.CharField(
+        max_length=20,
+        choices=StoreItemStatus.choices,
+        default=StoreItemStatus.CHARGE,
+        verbose_name="Charge Status"
+    )
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Total Value (₹)")
+    chargeable_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Chargeable Total (₹)")
+    non_chargeable_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Non-Chargeable Total (₹)")
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name="store_issues", verbose_name="Unit # / Factory")
+    issued_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="issued_store_items")
+    remark = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-issue_date', '-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.month_year and self.issue_date:
+            self.month_year = self.issue_date.strftime('%b-%y')
+        self.total_amount = self.qty * self.rate
+        if self.status == StoreItemStatus.CHARGE:
+            self.chargeable_total = self.total_amount
+            self.non_chargeable_total = Decimal('0.00')
+        else:
+            self.chargeable_total = Decimal('0.00')
+            self.non_chargeable_total = self.total_amount
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Issue #{self.voucher_no} - {self.contractor.username} - {self.item.item_name} ({self.qty})"
+
+
+
 
 
 

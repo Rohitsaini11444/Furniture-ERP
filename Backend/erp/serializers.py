@@ -9,6 +9,7 @@ from .models import (
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
     GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus
 )
 
 
@@ -1098,6 +1099,94 @@ class SupplierDebitNoteSerializer(serializers.ModelSerializer):
             hours_left = diff.total_seconds() / 3600.0
             return max(0, round(hours_left / 24.0, 1))
         return 0
+
+
+# ─── Store Management Serializers ─────────────────────────────────────────────
+
+class StoreItemCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreItemCategory
+        fields = '__all__'
+
+
+class StoreItemRateHistorySerializer(serializers.ModelSerializer):
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = StoreItemRateHistory
+        fields = '__all__'
+
+
+class StoreItemSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    total_stock_qty = serializers.ReadOnlyField()
+    total_issued_qty = serializers.ReadOnlyField()
+    balance_stock_qty = serializers.ReadOnlyField()
+    total_stock_value = serializers.ReadOnlyField()
+    rate_history = StoreItemRateHistorySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StoreItem
+        fields = '__all__'
+
+
+class ContractorPersonSerializer(serializers.ModelSerializer):
+    contractor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContractorPerson
+        fields = '__all__'
+
+    def get_contractor_name(self, obj):
+        if obj.contractor:
+            return obj.contractor.get_full_name() or obj.contractor.username
+        return ""
+
+
+class StorePurchaseOrderItemSerializer(serializers.ModelSerializer):
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+
+    class Meta:
+        model = StorePurchaseOrderItem
+        fields = '__all__'
+
+
+class StorePurchaseOrderSerializer(serializers.ModelSerializer):
+    items = StorePurchaseOrderItemSerializer(many=True, read_only=True)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+
+    class Meta:
+        model = StorePurchaseOrder
+        fields = '__all__'
+
+
+class StoreMaterialInSerializer(serializers.ModelSerializer):
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+
+    class Meta:
+        model = StoreMaterialIn
+        fields = '__all__'
+
+
+class StoreDailyIssueSerializer(serializers.ModelSerializer):
+    contractor_name = serializers.SerializerMethodField()
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+
+    class Meta:
+        model = StoreDailyIssue
+        fields = '__all__'
+
+    def get_contractor_name(self, obj):
+        if obj.contractor:
+            return obj.contractor.get_full_name() or obj.contractor.username
+        return ""
+
 
 
 

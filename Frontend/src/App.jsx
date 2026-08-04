@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -26,6 +26,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import VendorManagement from './pages/VendorManagement';
 import RecordTaxInvoice from './pages/RecordTaxInvoice';
 import SupplierManagement from './pages/SupplierManagement';
+import StoreManagement from './pages/StoreManagement';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
 
@@ -910,7 +911,7 @@ function Navbar() {
             <div className="navbar-action-icons">
               {/* Desktop Notification Bell */}
               {renderBell(notifRefDesktop, "desktop-only")}
-              <Clock size={20} color="#64748b" className="navbar-action-icon" />
+              {/* <Clock size={20} color="#64748b" className="navbar-action-icon" /> */}
             </div>
 
             {user && (
@@ -942,6 +943,12 @@ function Navbar() {
                    )}
                    <span className="navbar-username">{user.full_name || user.username}</span>
                 </div>
+
+                {/* Store Management link */}
+                <Link to="/store-management" className="navbar-icon-btn" title="Store Management" onClick={() => setMobileMenuOpen(false)}>
+                  <Warehouse size={18} color="#ea580c" />
+                  <span className="navbar-mobile-label">Store Management</span>
+                </Link>
 
                 {/* Admin link */}
                 {isAdmin && (
@@ -1363,7 +1370,8 @@ function AppLayout() {
             <Route path="/record-tax-invoice" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><RecordTaxInvoice /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><SupplierManagement /></ProtectedRoute>} />
             
-            {/* Gate Entry & Stock */}
+            {/* Gate Entry, Store & Stock */}
+            <Route path="/store-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreManagement /></ProtectedRoute>} />
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />

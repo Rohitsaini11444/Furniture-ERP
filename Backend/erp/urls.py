@@ -21,9 +21,19 @@ from .views import (
     ProductionUnitViewSet, BuyerUnitAllocationViewSet, UnitWorkReallocationViewSet, WorkloadReallocationView,
     SampleExcelExportView, FinishExcelExportView, FinishExcelImportView,
     SampleBulkDeleteView, FinishBulkDeleteView,
+    StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet,
+    StoreStockSummaryView, MonthlyContractorBillingView,
 )
 
 router = DefaultRouter()
+
+# Store Management Routes
+router.register(r'store/categories', StoreItemCategoryViewSet, basename='store-category')
+router.register(r'store/items', StoreItemViewSet, basename='store-item')
+router.register(r'store/contractor-persons', ContractorPersonViewSet, basename='contractor-person')
+router.register(r'store/purchase-orders', StorePurchaseOrderViewSet, basename='store-po')
+router.register(r'store/material-in', StoreMaterialInViewSet, basename='store-material-in')
+router.register(r'store/daily-issues', StoreDailyIssueViewSet, basename='store-daily-issue')
 
 # Production Units & Work Allocation
 router.register(r'production-units', ProductionUnitViewSet, basename='production-unit')
@@ -78,6 +88,10 @@ urlpatterns = [
     path('finishes/import-excel/', FinishExcelImportView.as_view(), name='finishes-import-excel'),
     path('samples/bulk-delete/', SampleBulkDeleteView.as_view(), name='samples-bulk-delete'),
     path('finishes/bulk-delete/', FinishBulkDeleteView.as_view(), name='finishes-bulk-delete'),
+
+    # Store Custom Analytics Endpoints
+    path('store/stock-summary/', StoreStockSummaryView.as_view(), name='store-stock-summary'),
+    path('store/monthly-contractor-bill/', MonthlyContractorBillingView.as_view(), name='store-contractor-bill'),
 
     # Router URLs
     path('', include(router.urls)),

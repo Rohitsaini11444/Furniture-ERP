@@ -27,6 +27,7 @@ from .models import (
     BuyerPI, BuyerPIItem,
     UserSession, Notification, StockItem, ProductionJob, ProductionQCLog,
     GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus
 )
 from .serializers import (
     LoginSerializer, UserSerializer, UserMinimalSerializer,
@@ -40,6 +41,8 @@ from .serializers import (
     PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
     BuyerPISerializer, BuyerPIItemSerializer, StockItemSerializer,
     GateInwardReceiptSerializer, SupplierDebitNoteSerializer, SupplierTaxInvoiceSerializer, SupplierTaxInvoiceItemSerializer, SupplierDebitNoteItemSerializer,
+    StoreItemCategorySerializer, StoreItemRateHistorySerializer, StoreItemSerializer, ContractorPersonSerializer,
+    StorePurchaseOrderItemSerializer, StorePurchaseOrderSerializer, StoreMaterialInSerializer, StoreDailyIssueSerializer,
 )
 from .permissions import (
     IsAdmin, IsSupervisor, IsContractor,
@@ -4736,6 +4739,311 @@ class FinishBulkDeleteView(APIView):
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': f'Failed to delete finishes: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ─── Store Management ViewSets & APIs ─────────────────────────────────────────
+
+class StoreItemCategoryViewSet(viewsets.ModelViewSet):
+    queryset = StoreItemCategory.objects.all()
+    serializer_class = StoreItemCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+
+class StoreItemViewSet(viewsets.ModelViewSet):
+    queryset = StoreItem.objects.all()
+    serializer_class = StoreItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StoreItem.objects.all()
+        category = self.request.query_params.get('category')
+        search = self.request.query_params.get('search')
+        status_param = self.request.query_params.get('default_status')
+        low_stock = self.request.query_params.get('low_stock')
+
+        if category:
+            qs = qs.filter(category_id=category)
+        if search:
+            qs = qs.filter(Q(item_code__icontains=search) | Q(item_name__icontains=search))
+        if status_param:
+            qs = qs.filter(default_status=status_param)
+        
+        if low_stock == 'true':
+            low_ids = [item.id for item in qs if item.balance_stock_qty <= item.reorder_level]
+            qs = qs.filter(id__in=low_ids)
+
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='revise-rate')
+    def revise_rate(self, request, pk=None):
+        """
+        Action to revise item rate & log comparison metrics.
+        Body: { "new_rate": 22.00, "supplier_name": "basawa ent", "po_reference": "PO-102", "revision_reason": "Price hike" }
+        """
+        item = self.get_object()
+        new_rate = Decimal(str(request.data.get('new_rate', '0.00')))
+        supplier_name = request.data.get('supplier_name', '')
+        po_reference = request.data.get('po_reference', '')
+        revision_reason = request.data.get('revision_reason', 'Rate Revision')
+
+        if new_rate <= Decimal('0.00'):
+            return Response({'error': 'New rate must be greater than zero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_rate = item.current_rate or item.base_rate
+        diff = new_rate - item.base_rate
+        pct_change = round((diff / item.base_rate * 100), 2) if item.base_rate > 0 else Decimal('0.00')
+
+        # Create history record
+        rate_log = StoreItemRateHistory.objects.create(
+            item=item,
+            old_rate=old_rate,
+            new_rate=new_rate,
+            rate_difference=diff,
+            percentage_change=pct_change,
+            supplier_name=supplier_name,
+            po_reference=po_reference,
+            revision_reason=revision_reason,
+            updated_by=request.user if request.user.is_authenticated else None
+        )
+
+        item.current_rate = new_rate
+        item.save()
+
+        return Response({
+            'message': f'Rate revised from ₹{old_rate} to ₹{new_rate} successfully.',
+            'item': StoreItemSerializer(item, context={'request': request}).data,
+            'rate_log': StoreItemRateHistorySerializer(rate_log).data
+        })
+
+    @action(detail=False, methods=['get'], url_path='rate-comparison')
+    def rate_comparison(self, request):
+        """
+        Returns comparison matrix of Base Master Rate vs Current Effective Rate across all store items.
+        """
+        items = StoreItem.objects.all()
+        comparison = []
+        for item in items:
+            diff = item.current_rate - item.base_rate
+            pct = round((diff / item.base_rate * 100), 2) if item.base_rate > 0 else Decimal('0.00')
+            latest_history = item.rate_history.first()
+
+            comparison.append({
+                'id': str(item.id),
+                'item_code': item.item_code,
+                'item_name': item.item_name,
+                'unit': item.unit,
+                'base_rate': float(item.base_rate),
+                'current_rate': float(item.current_rate),
+                'difference': float(diff),
+                'percentage_change': float(pct),
+                'latest_supplier': latest_history.supplier_name if latest_history else "",
+                'latest_po': latest_history.po_reference if latest_history else "",
+                'last_updated': latest_history.effective_date.strftime('%Y-%m-%d') if latest_history else item.updated_at.strftime('%Y-%m-%d'),
+            })
+
+        return Response(comparison)
+
+
+class ContractorPersonViewSet(viewsets.ModelViewSet):
+    queryset = ContractorPerson.objects.all()
+    serializer_class = ContractorPersonSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ContractorPerson.objects.all()
+        contractor_id = self.request.query_params.get('contractor')
+        if contractor_id:
+            qs = qs.filter(contractor_id=contractor_id)
+        return qs
+
+
+class StorePurchaseOrderViewSet(viewsets.ModelViewSet):
+    queryset = StorePurchaseOrder.objects.all()
+    serializer_class = StorePurchaseOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+class StoreMaterialInViewSet(viewsets.ModelViewSet):
+    queryset = StoreMaterialIn.objects.all()
+    serializer_class = StoreMaterialInSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StoreMaterialIn.objects.all()
+        supplier_id = self.request.query_params.get('supplier')
+        month = self.request.query_params.get('month')
+        item_id = self.request.query_params.get('item')
+
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        if month:
+            qs = qs.filter(month_year__icontains=month)
+        if item_id:
+            qs = qs.filter(item_id=item_id)
+        return qs
+
+    def perform_create(self, serializer):
+        instance = serializer.save(received_by=self.request.user)
+        # Update item's current rate if bill rate is updated
+        item = instance.item
+        if instance.bill_rate > Decimal('0.00') and instance.bill_rate != item.current_rate:
+            old_rate = item.current_rate or item.base_rate
+            diff = instance.bill_rate - item.base_rate
+            pct_change = round((diff / item.base_rate * 100), 2) if item.base_rate > 0 else Decimal('0.00')
+            
+            StoreItemRateHistory.objects.create(
+                item=item,
+                old_rate=old_rate,
+                new_rate=instance.bill_rate,
+                rate_difference=diff,
+                percentage_change=pct_change,
+                supplier_name=instance.supplier.name if instance.supplier else "",
+                po_reference=instance.bill_no,
+                revision_reason=f"Auto-updated from Material Inward #{instance.voucher_no}",
+                updated_by=self.request.user
+            )
+            item.current_rate = instance.bill_rate
+            item.save()
+
+
+class StoreDailyIssueViewSet(viewsets.ModelViewSet):
+    queryset = StoreDailyIssue.objects.all()
+    serializer_class = StoreDailyIssueSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StoreDailyIssue.objects.all()
+        contractor_id = self.request.query_params.get('contractor')
+        month = self.request.query_params.get('month')
+        status_param = self.request.query_params.get('status')
+        unit_id = self.request.query_params.get('production_unit')
+
+        if contractor_id:
+            qs = qs.filter(contractor_id=contractor_id)
+        if month:
+            qs = qs.filter(month_year__icontains=month)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if unit_id:
+            qs = qs.filter(production_unit_id=unit_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(issued_by=self.request.user)
+
+
+class StoreStockSummaryView(APIView):
+    """
+    GET /api/store/stock-summary/
+    Returns real-time aggregated inventory stats for Store Items matching Excel Sheet 1:
+    - Total Items Count
+    - Total Inward Stock Qty
+    - Total Issued Stock Qty
+    - Net Available Stock Qty
+    - Total Inventory Valuation (₹)
+    - Detailed list of item inventory records
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        items = StoreItem.objects.all()
+        
+        summary_list = []
+        tot_stock = Decimal('0.00')
+        tot_issued = Decimal('0.00')
+        tot_balance = Decimal('0.00')
+        tot_valuation = Decimal('0.00')
+
+        for item in items:
+            stk_qty = item.total_stock_qty
+            iss_qty = item.total_issued_qty
+            bal_qty = item.balance_stock_qty
+            rate = item.current_rate or item.base_rate
+            val = bal_qty * rate
+
+            tot_stock += stk_qty
+            tot_issued += iss_qty
+            tot_balance += bal_qty
+            tot_valuation += val
+
+            summary_list.append({
+                'id': str(item.id),
+                'item_code': item.item_code,
+                'item_name': item.item_name,
+                'category_name': item.category.name if item.category else 'General',
+                'stock_qty': float(stk_qty),
+                'issued_qty': float(iss_qty),
+                'balance_qty': float(bal_qty),
+                'rate': float(rate),
+                'unit': item.unit,
+                'total_value': float(val),
+                'default_status': item.default_status,
+                'reorder_level': float(item.reorder_level),
+                'is_low_stock': bal_qty <= item.reorder_level
+            })
+
+        return Response({
+            'total_items_count': len(items),
+            'total_stock_qty': float(tot_stock),
+            'total_issued_qty': float(tot_issued),
+            'total_balance_qty': float(tot_balance),
+            'total_inventory_valuation': float(tot_valuation),
+            'items': summary_list
+        })
+
+
+class MonthlyContractorBillingView(APIView):
+    """
+    GET /api/store/monthly-contractor-bill/?contractor=<id>&month=Jul-26
+    Generates monthly store billing summary for a specific contractor:
+    - Lists all Chargeable StoreDailyIssue records for that contractor in that month.
+    - Aggregates Total Chargeable Amount, Total Items, and Non-chargeable summary.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        contractor_id = request.query_params.get('contractor')
+        month = request.query_params.get('month')
+
+        if not contractor_id:
+            return Response({'error': 'contractor parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            contractor = User.objects.get(id=contractor_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Contractor not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = StoreDailyIssue.objects.filter(contractor=contractor)
+        if month:
+            qs = qs.filter(month_year__icontains=month)
+
+        chargeable_qs = qs.filter(status=StoreItemStatus.CHARGE)
+        non_chargeable_qs = qs.filter(status=StoreItemStatus.NON_CHARGE)
+
+        chargeable_items = StoreDailyIssueSerializer(chargeable_qs, many=True).data
+        non_chargeable_items = StoreDailyIssueSerializer(non_chargeable_qs, many=True).data
+
+        total_chargeable_amt = sum(float(item['chargeable_total'] or 0) for item in chargeable_items)
+        total_non_chargeable_amt = sum(float(item['non_chargeable_total'] or 0) for item in non_chargeable_items)
+
+        return Response({
+            'contractor': {
+                'id': str(contractor.id),
+                'username': contractor.username,
+                'full_name': contractor.get_full_name() or contractor.username,
+                'phone': contractor.phone,
+            },
+            'month_year': month or 'All Time',
+            'chargeable_items': chargeable_items,
+            'non_chargeable_items': non_chargeable_items,
+            'total_chargeable_amount': total_chargeable_amt,
+            'total_non_chargeable_amount': total_non_chargeable_amt,
+            'total_issue_entries_count': len(chargeable_items) + len(non_chargeable_items)
+        })
+
 
 
 

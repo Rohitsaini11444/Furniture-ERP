@@ -19,6 +19,7 @@ const ALL_TILES = [
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={28} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },
   { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={28} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
   { name: 'Production Pipeline',     icon: <Boxes size={28} />,         color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
+  { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor'] },
   { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
 ];
 
