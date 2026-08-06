@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import SearchableSelect from '../components/SearchableSelect';
@@ -125,6 +125,21 @@ function BuyerMasters() {
   const [importError, setImportError] = useState('');
   const [importErrorType, setImportErrorType] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusText, setImportStatusText] = useState('');
+  const [importTimeRemaining, setImportTimeRemaining] = useState('');
+
+  // Delete Buyer Master group progress state
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    buyerName: '',
+    totalStyles: 0,
+    currentIdx: 0,
+    currentStyleNo: '',
+    progress: 0,
+    statusText: '',
+    timeRemaining: '',
+  });
 
   const handleDownloadTemplate = async (withDetailsOpt) => {
     const isDetailed = typeof withDetailsOpt === 'boolean' ? withDetailsOpt : Boolean(importWithDetails);
@@ -156,9 +171,14 @@ function BuyerMasters() {
     e.preventDefault();
     if (!importFile) return;
     setImporting(true);
+    setImportProgress(5);
+    setImportStatusText('Uploading Excel file to server...');
+    setImportTimeRemaining('Calculating time...');
     setImportError('');
     setImportErrorType('');
     setImportSuccess('');
+
+    let progressInterval = null;
 
     const formData = new FormData();
     formData.append('file', importFile);
@@ -167,11 +187,43 @@ function BuyerMasters() {
     try {
       const res = await api.post('/buyer-masters/import-excel/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const uploadPct = Math.round((progressEvent.loaded * 35) / progressEvent.total);
+            setImportProgress(Math.min(35, Math.max(5, uploadPct)));
+            if (progressEvent.loaded === progressEvent.total && !progressInterval) {
+              let currentP = 35;
+              progressInterval = setInterval(() => {
+                currentP += (95 - currentP) * 0.08;
+                const rounded = Math.round(currentP);
+                setImportProgress(rounded);
+
+                if (rounded < 55) {
+                  setImportStatusText('Parsing rows & validating Buyer Master schema...');
+                  setImportTimeRemaining(`~${Math.max(1, Math.round((95 - rounded) / 8))}s remaining`);
+                } else if (rounded < 80) {
+                  setImportStatusText('Auto-creating Buyers & registering Samples in catalog...');
+                  setImportTimeRemaining(`~${Math.max(1, Math.round((95 - rounded) / 8))}s remaining`);
+                } else {
+                  setImportStatusText('Extracting cell photos & saving records to database...');
+                  setImportTimeRemaining('Almost done...');
+                }
+              }, 250);
+            }
+          }
+        }
       });
+
+      if (progressInterval) clearInterval(progressInterval);
+      setImportProgress(100);
+      setImportStatusText('Import complete!');
+      setImportTimeRemaining('Completed');
+
       setImportSuccess(res.data.detail || 'Buyer Master data imported successfully!');
       setImportFile(null);
       fetchData();
     } catch (err) {
+      if (progressInterval) clearInterval(progressInterval);
       console.error('Buyer Master import error:', err);
       const errData = err.response?.data;
       const errMsg = errData?.detail || 'Invalid file format or missing required column headers. Please download the expected template below.';
@@ -179,7 +231,13 @@ function BuyerMasters() {
       setImportError(errMsg);
       setImportErrorType(errType);
     } finally {
+      if (progressInterval) clearInterval(progressInterval);
       setImporting(false);
+      setTimeout(() => {
+        setImportProgress(0);
+        setImportStatusText('');
+        setImportTimeRemaining('');
+      }, 1500);
     }
   };
 
@@ -840,13 +898,57 @@ function BuyerMasters() {
     if (!window.confirm(`Are you sure you want to delete all ${group.totalStyles} registered style(s) for buyer "${group.buyerName}"?`)) {
       return;
     }
-    try {
-      await Promise.all(group.styles.map(s => api.delete(`/buyer-masters/${s.id}/`)));
-      fetchData();
-    } catch (err) {
-      console.error('Failed to delete buyer master group', err);
-      alert('Failed to delete some items. Please try again.');
+
+    const total = group.styles.length;
+    setDeleteModal({
+      isOpen: true,
+      buyerName: group.buyerName,
+      totalStyles: total,
+      currentIdx: 0,
+      currentStyleNo: group.styles[0]?.style_no || 'Style 1',
+      progress: 0,
+      statusText: `Preparing to delete ${total} style(s)...`,
+      timeRemaining: 'Calculating time...',
+    });
+
+    const startTime = Date.now();
+
+    for (let i = 0; i < total; i++) {
+      const s = group.styles[i];
+      const styleNo = s.style_no || `Style ${i + 1}`;
+      
+      const pct = Math.round(((i + 1) / total) * 100);
+      const elapsedSec = (Date.now() - startTime) / 1000;
+      const itemsPerSec = (i + 1) / (elapsedSec || 0.1);
+      const remainingSecs = Math.max(0, Math.round((total - (i + 1)) / (itemsPerSec || 1)));
+
+      setDeleteModal(prev => ({
+        ...prev,
+        currentIdx: i + 1,
+        currentStyleNo: styleNo,
+        progress: pct,
+        statusText: `Deleting style ${i + 1} of ${total} ("${styleNo}")...`,
+        timeRemaining: remainingSecs > 0 ? `~${remainingSecs}s remaining` : 'Finalizing...',
+      }));
+
+      try {
+        await api.delete(`/buyer-masters/${s.id}/`);
+      } catch (err) {
+        console.error(`Failed to delete style ${s.id}`, err);
+      }
     }
+
+    setDeleteModal(prev => ({
+      ...prev,
+      progress: 100,
+      statusText: `Successfully deleted all ${total} style(s) for ${group.buyerName}!`,
+      timeRemaining: 'Completed',
+    }));
+
+    setTimeout(() => {
+      setDeleteModal({ isOpen: false, buyerName: '', totalStyles: 0, currentIdx: 0, currentStyleNo: '', progress: 0, statusText: '', timeRemaining: '' });
+      fetchData();
+    }, 1200);
   };
 
   const openCreateModal = () => {
@@ -2046,13 +2148,117 @@ function BuyerMasters() {
                   />
                 </div>
 
+                {/* Green Progress Line & Status for Excel Import */}
+                {(importing || importProgress > 0) && (
+                  <div style={{ marginTop: '1.25rem', backgroundColor: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '12px', padding: '1rem 1.1rem', boxShadow: '0 4px 12px rgba(22, 163, 74, 0.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        <span style={{ width: '12px', height: '12px', border: '2px solid #16a34a', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }} />
+                        {importStatusText || 'Uploading & Processing...'}
+                      </span>
+                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#166534' }}>{importProgress}%</span>
+                    </div>
+
+                    <div style={{ width: '100%', height: '8px', backgroundColor: '#dcfce7', borderRadius: '10px', overflow: 'hidden', border: '1px solid #bbf7d0' }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${importProgress}%`,
+                        background: 'linear-gradient(90deg, #16a34a, #22c55e, #4ade80)',
+                        borderRadius: '10px',
+                        transition: 'width 0.3s ease'
+                      }} />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.45rem', fontSize: '0.78rem', color: '#166534', fontWeight: 500 }}>
+                      <span>Status: Processing Excel & Photos</span>
+                      <span style={{ fontWeight: 700 }}>{importTimeRemaining}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={() => setIsImportModalOpen(false)}>Close</button>
+                  <button type="button" className="btn-secondary" onClick={() => setIsImportModalOpen(false)} disabled={importing}>Close</button>
                   <button type="submit" className="btn-primary" disabled={!importFile || importing} style={{ backgroundColor: '#7c3aed', borderColor: '#7c3aed' }}>
-                    {importing ? 'Processing & Importing...' : 'Upload & Import Data'}
+                    {importing ? `Importing (${importProgress}%)...` : 'Upload & Import Data'}
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Buyer Master Progress Modal Overlay ── */}
+      {deleteModal.isOpen && (
+        <div 
+          className="modal-overlay" 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10005,
+            padding: '1rem'
+          }}
+        >
+          <div 
+            className="modal-content" 
+            style={{ 
+              maxWidth: '480px', 
+              width: '95vw',
+              backgroundColor: '#ffffff', 
+              borderRadius: '16px',
+              padding: '1.5rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '1.25rem' }}>
+              <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', padding: '0.65rem', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Trash2 size={24} color="#dc2626" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 700, color: '#1e293b' }}>
+                  Deleting Buyer Master Records
+                </h3>
+                <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                  Buyer: <strong style={{ color: '#1e293b' }}>{deleteModal.buyerName}</strong> ({deleteModal.totalStyles} style{deleteModal.totalStyles > 1 ? 's' : ''})
+                </div>
+              </div>
+            </div>
+
+            {/* Green Progress Box */}
+            <div style={{ backgroundColor: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '14px', padding: '1.1rem 1.25rem', boxShadow: '0 4px 12px rgba(22, 163, 74, 0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <span style={{ width: '12px', height: '12px', border: '2px solid #16a34a', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }} />
+                  {deleteModal.statusText}
+                </span>
+                <span style={{ fontWeight: 800, fontSize: '0.92rem', color: '#166534' }}>
+                  {deleteModal.progress}%
+                </span>
+              </div>
+
+              {/* Green Progress Bar Line */}
+              <div style={{ width: '100%', height: '8px', backgroundColor: '#dcfce7', borderRadius: '10px', overflow: 'hidden', border: '1px solid #bbf7d0' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${deleteModal.progress}%`,
+                  background: 'linear-gradient(90deg, #16a34a, #22c55e, #4ade80)',
+                  borderRadius: '10px',
+                  transition: 'width 0.25s ease'
+                }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.55rem', fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>
+                <span>Deleted {deleteModal.currentIdx} of {deleteModal.totalStyles} style(s)</span>
+                <span style={{ fontWeight: 700 }}>{deleteModal.timeRemaining}</span>
+              </div>
             </div>
           </div>
         </div>
