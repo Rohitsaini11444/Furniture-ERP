@@ -531,8 +531,8 @@ class SampleViewSet(viewsets.ModelViewSet):
         updated_count = 0
         images_extracted = 0
 
-        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
-        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.all()}
+        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.all()}
 
         for excel_row_num, row_cells in enumerate(ws.iter_rows(min_row=2), start=2):
             cells = [cell.value for cell in row_cells]
@@ -1039,8 +1039,8 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         samples_created = 0
         images_extracted = 0
 
-        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
-        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
+        buyers_by_code = {b.code.lower(): b for b in Buyer.objects.all()}
+        buyers_by_name = {b.name.lower(): b for b in Buyer.objects.all()}
 
         def parse_dec(val):
             if val is None or val == '': return None
@@ -1077,11 +1077,27 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
             buyer_obj = buyers_by_code.get(b_code_val.lower()) or buyers_by_name.get(b_name_val.lower())
             
-            if not buyer_obj:
-                buyer_obj = Buyer.objects.create(code=b_code_val, name=b_name_val)
+            if buyer_obj:
+                if buyer_obj.is_deleted:
+                    buyer_obj.is_deleted = False
+                    buyer_obj.save()
+            else:
+                try:
+                    buyer_obj = Buyer.objects.create(code=b_code_val, name=b_name_val)
+                    buyers_created += 1
+                except Exception:
+                    buyer_obj = Buyer.objects.filter(code__iexact=b_code_val).first()
+                    if buyer_obj:
+                        if buyer_obj.is_deleted:
+                            buyer_obj.is_deleted = False
+                            buyer_obj.save()
+                    else:
+                        unique_code = f"{b_code_val}_{uuid.uuid4().hex[:4]}"
+                        buyer_obj = Buyer.objects.create(code=unique_code, name=b_name_val)
+                        buyers_created += 1
+
                 buyers_by_code[b_code_val.lower()] = buyer_obj
                 buyers_by_name[b_name_val.lower()] = buyer_obj
-                buyers_created += 1
 
             wood_val = str(cells[wood_idx]).strip() if wood_idx is not None and wood_idx < len(cells) and cells[wood_idx] is not None else ''
             finish_val = str(cells[finish_idx]).strip() if finish_idx is not None and finish_idx < len(cells) and cells[finish_idx] is not None else ''
