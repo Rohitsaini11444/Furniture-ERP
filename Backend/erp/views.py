@@ -5199,6 +5199,34 @@ class MonthlyContractorBillingView(APIView):
         })
 
 
+from django.http import HttpResponse
+from .db_diagram_pdf import generate_db_relationships_pdf
+
+
+class DatabaseRelationshipsPDFView(APIView):
+    """
+    GET /api/tools/database-relationships-pdf/
+    Returns a single landscape A3 PDF file displaying all ERP database tables,
+    their Primary Keys, Foreign Keys, and directional connector lines.
+    Automatically inspects Django models dynamically.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            pdf_bytes = generate_db_relationships_pdf()
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = 'attachment; filename="Database_Relationships.pdf"'
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+            return response
+        except Exception as err:
+            print("Error generating Database Relationships PDF:", err)
+            return Response(
+                {'detail': f'Failed to generate database relationships PDF: {str(err)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 
 
 

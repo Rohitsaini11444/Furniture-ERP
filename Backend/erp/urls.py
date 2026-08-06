@@ -23,6 +23,7 @@ from .views import (
     SampleBulkDeleteView, FinishBulkDeleteView,
     StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet,
     StoreStockSummaryView, MonthlyContractorBillingView,
+    DatabaseRelationshipsPDFView,
 )
 
 router = DefaultRouter()
@@ -92,6 +93,7 @@ urlpatterns = [
     # Store Custom Analytics Endpoints
     path('store/stock-summary/', StoreStockSummaryView.as_view(), name='store-stock-summary'),
     path('store/monthly-contractor-bill/', MonthlyContractorBillingView.as_view(), name='store-contractor-bill'),
+    path('tools/database-relationships-pdf/', DatabaseRelationshipsPDFView.as_view(), name='database-relationships-pdf'),
 
     # Router URLs
     path('', include(router.urls)),
