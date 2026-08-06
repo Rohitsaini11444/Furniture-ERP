@@ -3,7 +3,7 @@ import api from '../api/axios';
 import {
   FileText, Presentation, Tag, ClipboardCheck, Calculator,
   Search, CheckSquare, Square, Download, Sparkles, Building2,
-  Box, CheckCircle, AlertCircle, Plus, Trash2, UploadCloud, Layers, Image as ImageIcon, X, Pencil
+  Box, CheckCircle, AlertCircle, Plus, Trash2, UploadCloud, Layers, Image as ImageIcon, X, Pencil, FolderTree
 } from 'lucide-react';
 
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
@@ -632,6 +632,27 @@ function Tools() {
     }
   };
 
+  const handleDownloadDbPdf = async (e) => {
+    if (e) e.stopPropagation();
+    setDownloadingFormat('db_pdf');
+    try {
+      const res = await api.get('/tools/database-relationships-pdf/', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Database_Relationships.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download Database Relationships PDF:', err);
+      alert('Failed to download Database Relationships PDF. Please try again.');
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
 
   const toolCards = [
     {
@@ -640,6 +661,14 @@ function Tools() {
       description: 'Create slide deck catalogs for buyers with cover page, 1-item slides, specs & thank-you slide.',
       icon: <Presentation size={28} />,
       color: '#8b5cf6',
+      active: true,
+    },
+    {
+      id: 'db_pdf',
+      title: 'Database Relationships PDF',
+      description: 'Export live ERP database schema diagram showing tables, PKs, FKs & relationships.',
+      icon: <FolderTree size={28} />,
+      color: '#8b5a2b',
       active: true,
     },
     {
@@ -679,7 +708,7 @@ function Tools() {
         </div>
       </div>
 
-      {/* ── 4 Tool Options Grid ── */}
+      {/* ── Tool Options Grid ── */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
@@ -691,7 +720,11 @@ function Tools() {
           return (
             <div
               key={tool.id}
-              onClick={() => {
+              onClick={(e) => {
+                if (tool.action) {
+                  tool.action(e);
+                  return;
+                }
                 if (tool.active) {
                   setActiveTool(tool.id);
                   if (tool.id === 'presentation') {
@@ -833,6 +866,114 @@ function Tools() {
           <p style={{ margin: 0, fontSize: '0.92rem', color: '#64748b', maxWidth: '520px', marginInline: 'auto' }}>
             Click <strong>Generate PPT Presentation</strong> above to configure and generate Buyer Catalogs, Brand Presentations, or Vendor Inspection Reports.
           </p>
+        </div>
+      )}
+
+      {/* ── Active Tool View: Database Relationships PDF ── */}
+      {activeTool === 'db_pdf' && (
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          padding: '2rem',
+          border: '1.5px solid #e7e5e4',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
+          animation: 'smoothFadeIn 0.3s ease'
+        }}>
+          {/* Tool Title Banner */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem', paddingBottom: '1.25rem', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', backgroundColor: '#fdf8f5', border: '1.5px solid #e9d5b8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <FolderTree size={28} color="#8b5a2b" />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontWeight: 700, fontSize: '1.2rem', color: '#1e293b' }}>
+                    Database Relationships PDF Generator
+                  </h3>
+                </div>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                  Export a high-resolution landscape A3 PDF diagram displaying all ERP database tables.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleDownloadDbPdf}
+              className="btn-primary"
+              disabled={downloadingFormat === 'db_pdf'}
+              style={{
+                backgroundColor: '#8b5a2b',
+                borderColor: '#8b5a2b',
+                padding: '0.75rem 1.5rem',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                borderRadius: '12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 12px rgba(139, 90, 43, 0.25)',
+                cursor: downloadingFormat === 'db_pdf' ? 'wait' : 'pointer'
+              }}
+            >
+              {downloadingFormat === 'db_pdf' ? (
+                <>
+                  <span style={{ width: '16px', height: '16px', border: '2px solid #fff', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }} />
+                  Generating & Downloading PDF...
+                </>
+              ) : (
+                <>
+                  <Download size={18} /> Download Database_Relationships.pdf
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Feature Metrics Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.75rem' }}>
+            <div style={{ backgroundColor: '#fdf8f5', border: '1px solid #f5ece1', borderRadius: '14px', padding: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#8b5a2b15', color: '#8b5a2b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Layers size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#8b5a2b' }}>39 Tables</div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Active Django ORM Models</div>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #dcfce7', borderRadius: '14px', padding: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#16a34a15', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#166534' }}>Landscape A3</div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>High-Res Vector Layout</div>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe', borderRadius: '14px', padding: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#2563eb15', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Building2 size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '1.15rem', color: '#1e40af' }}>1:1, 1:N & N:N</div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Foreign Key Relations</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Information Details & Developer Reference */}
+          <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.25rem' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#334155', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Sparkles size={16} color="#8b5a2b" /> Dynamic Inspection Specifications
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#475569', fontSize: '0.84rem', lineHeight: 1.6 }}>
+              <li><strong>Live Auto Inspection:</strong> Any future models or foreign keys added to the ERP codebase automatically appear in the PDF export.</li>
+              <li><strong>Clean Compact Box Layout:</strong> Each table node shows ONLY the Table Name, Primary Keys (🔑), and Foreign Keys (🔗). Normal columns, data types, and SQL syntax are omitted.</li>
+              <li><strong>90° Orthogonal Connector Routing:</strong> Connectors route cleanly around tables with directional arrowheads and cardinality badges.</li>
+              <li><strong>Direct Backend URL:</strong> <code>GET /api/tools/database-relationships-pdf/</code></li>
+            </ul>
+          </div>
         </div>
       )}
 
