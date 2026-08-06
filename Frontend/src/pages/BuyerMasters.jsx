@@ -61,7 +61,6 @@ function BuyerMasters() {
   
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
 
   const handleDownloadExcel = (withDetails = false) => {
@@ -187,15 +186,10 @@ function BuyerMasters() {
   const fetchData = () => {
     setLoading(true);
     if (!isNewFormMode) {
-      api.get('/buyer-masters/', { params: { page: currentPage, ordering: ordering } })
+      api.get('/buyer-masters/', { params: { nopage: true, ordering: ordering } })
         .then(res => {
           const data = res.data.results || res.data;
           setBuyerMasters(data);
-          if (res.data.count !== undefined) {
-            setTotalPages(Math.ceil(res.data.count / 50));
-          } else {
-            setTotalPages(1);
-          }
         })
         .catch(err => console.error(err))
         .finally(() => setLoading(false));
@@ -805,6 +799,15 @@ function BuyerMasters() {
       ))
     );
   }, [groupedMasters, searchTerm]);
+
+  const ITEMS_PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil((filteredGroupedMasters?.length || 0) / ITEMS_PER_PAGE));
+
+  const paginatedGroupedMasters = React.useMemo(() => {
+    if (!filteredGroupedMasters) return [];
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredGroupedMasters.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredGroupedMasters, currentPage]);
 
   const openGroupedEdit = (group) => {
     setFormError('');
@@ -1674,7 +1677,7 @@ function BuyerMasters() {
                     </td>
                   </tr>
                 ) : (
-                  filteredGroupedMasters.map(group => (
+                  paginatedGroupedMasters.map(group => (
                     <tr
                       key={group.buyerId}
                       onClick={() => openGroupedEdit(group)}
@@ -1759,7 +1762,7 @@ function BuyerMasters() {
                 No Buyer Master records found.
               </div>
             ) : (
-              filteredGroupedMasters.map(group => {
+              paginatedGroupedMasters.map(group => {
                 const initials = group.buyerName.substring(0, 2).toUpperCase();
                 return (
                   <div 

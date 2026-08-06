@@ -726,9 +726,13 @@ class BuyerMasterFinishingImageViewSet(viewsets.ModelViewSet):
         return qs
 
 
+from .pagination import OptionalPagination
+
+
 class BuyerMasterViewSet(viewsets.ModelViewSet):
     queryset = BuyerMaster.objects.select_related('buyer', 'sample').all()
     permission_classes = [IsAuthenticated]
+    pagination_class = OptionalPagination
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -924,43 +928,99 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 "detail": "Unable to read Excel file. Please ensure the file is not corrupt."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        header_row = [str(cell.value or '').strip() for cell in list(ws.iter_rows(min_row=1, max_row=1))[0]]
-        
+        import re
+
+        # Scan rows 1 to 15 to dynamically discover the actual header row
+        header_row_idx = 1
+        best_match_count = -1
+        rows_sample = list(ws.iter_rows(min_row=1, max_row=15))
+
+        keywords_to_check = [
+            'buyer code', 'bc code', 'buyer', 'code', 'style no', 'pc style', 'style',
+            'désignation', 'designation', 'product name', 'product', 'name', 'picture',
+            'material', 'finish', 'size', 'cbm', 'usd factory', 'price', 'qty', 'quantity', 'remark'
+        ]
+
+        for r_idx, row_cells in enumerate(rows_sample, start=1):
+            row_str = " ".join([str(c.value or '').lower() for c in row_cells])
+            matches = sum(1 for kw in keywords_to_check if kw in row_str)
+            if matches > best_match_count and matches >= 2:
+                best_match_count = matches
+                header_row_idx = r_idx
+
+        header_cells = list(ws.iter_rows(min_row=header_row_idx, max_row=header_row_idx))[0]
+        header_row = [str(cell.value or '').strip() for cell in header_cells]
+
         header_map = {}
         for idx, col in enumerate(header_row):
             col_norm = col.lower().replace('.', '').replace('*', '').replace('_', ' ').replace('/', ' ').strip()
-            header_map[col_norm] = idx
+            if col_norm:
+                header_map[col_norm] = idx
 
-        buyer_code_idx = next((header_map[k] for k in ['buyer code', 'buyer', 'code', 'buyer_code'] if k in header_map), None)
-        buyer_name_idx = next((header_map[k] for k in ['buyer name', 'buyer_name', 'name'] if k in header_map), None)
-        style_idx = next((header_map[k] for k in ['style no', 'style', 'style #', 'style_no', 'sample id', 'sample_id'] if k in header_map), None)
-        product_name_idx = next((header_map[k] for k in ['product name', 'product', 'item name', 'product_name'] if k in header_map), None)
+        # Check subheader row (if present)
+        subheader_row = []
+        if ws.max_row >= header_row_idx + 1:
+            sub_cells = list(ws.iter_rows(min_row=header_row_idx + 1, max_row=header_row_idx + 1))[0]
+            subheader_row = [str(cell.value or '').strip() for cell in sub_cells]
 
-        if buyer_code_idx is None or style_idx is None or product_name_idx is None:
+        def find_col_index(aliases):
+            for a in aliases:
+                a_norm = a.lower().replace('.', '').replace('*', '').replace('_', ' ').replace('/', ' ').strip()
+                if a_norm in header_map:
+                    return header_map[a_norm]
+            # Partial search
+            for k, idx in header_map.items():
+                for a in aliases:
+                    a_norm = a.lower().replace('.', '').replace('*', '').replace('_', ' ').replace('/', ' ').strip()
+                    if a_norm and a_norm in k:
+                        return idx
+            return None
+
+        buyer_code_idx = find_col_index(['bc code', 'buyer code', 'buyer_code', 'code', 'buyer cde', 'bccode'])
+        buyer_name_idx = find_col_index(['buyer name', 'buyer_name', 'buyer', 'client', 'customer'])
+        style_idx = find_col_index(['pc style', 'style no', 'style_no', 'style #', 'style', 'sample id', 'sample_id', 'pc_style', 'pcstyle'])
+        designation_idx = find_col_index(['désignation', 'designation'])
+        product_name_idx = find_col_index(['product name', 'product', 'item name', 'product_name', 'name'])
+
+        if buyer_code_idx is None and buyer_name_idx is not None:
+            buyer_code_idx = buyer_name_idx
+        elif buyer_name_idx is None and buyer_code_idx is not None:
+            buyer_name_idx = buyer_code_idx
+
+        if style_idx is None or (product_name_idx is None and designation_idx is None):
             return Response({
                 "error_type": "Header / Schema Mismatch",
-                "detail": "Required headers ('Buyer Code', 'Style No.' or 'Product Name') are missing. Please download the expected template below."
+                "detail": "Required headers ('PC Style' / 'Style No.' or 'Product Name' / 'Désignation') could not be identified in the Excel file."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        wood_idx = next((header_map[k] for k in ['material   wood', 'wood type', 'material', 'wood', 'material wood type'] if k in header_map), None)
-        finish_idx = next((header_map[k] for k in ['finish   color', 'finish color', 'finish', 'color'] if k in header_map), None)
-        len_idx = next((header_map[k] for k in ['size length (cm)', 'size length', 'length (cm)', 'length'] if k in header_map), None)
-        breadth_idx = next((header_map[k] for k in ['size breadth (cm)', 'size breadth', 'breadth (cm)', 'breadth', 'width (cm)', 'width'] if k in header_map), None)
-        height_idx = next((header_map[k] for k in ['size height (cm)', 'size height', 'height (cm)', 'height'] if k in header_map), None)
-        usd_idx = next((header_map[k] for k in ['price usd ($)', 'price usd', 'usd ($)', 'usd', 'price'] if k in header_map), None)
-        units_idx = next((header_map[k] for k in ['units', 'unit', 'qty', 'quantity'] if k in header_map), None)
-        cbm_idx = next((header_map[k] for k in ['cbm', 'total cbm'] if k in header_map), None)
-        remark_idx = next((header_map[k] for k in ['remark', 'remarks', 'note', 'notes'] if k in header_map), None)
+        wood_idx = find_col_index(['material', 'wood type', 'wood', 'material wood type', 'material   wood', 'wood_type'])
+        finish_idx = find_col_index(['finish', 'finish color', 'finish_color', 'color', 'finish   color'])
+        usd_idx = find_col_index(['usd factory', 'price usd ($)', 'price usd', 'usd ($)', 'usd', 'factory price', 'price', 'usd_factory', 'factory usd'])
+        units_idx = find_col_index(['qty.', 'qty', 'units', 'unit', 'quantity'])
+        cbm_idx = find_col_index(['cbm', 'total cbm'])
+        remark_idx = find_col_index(['remark', 'remarks', 'note', 'notes'])
 
-        vendor_details_idx = next((header_map[k] for k in ['vendor details', 'vendor', 'supplier'] if k in header_map), None)
-        vendor_price_idx = next((header_map[k] for k in ['vendor price'] if k in header_map), None)
-        costing_idx = next((header_map[k] for k in ['costing'] if k in header_map), None)
-        purchase_price_idx = next((header_map[k] for k in ['purchase price'] if k in header_map), None)
-        net_wt_idx = next((header_map[k] for k in ['net weight'] if k in header_map), None)
-        gross_wt_idx = next((header_map[k] for k in ['gross weight'] if k in header_map), None)
-        box_l_idx = next((header_map[k] for k in ['box length (cm)', 'box length'] if k in header_map), None)
-        box_b_idx = next((header_map[k] for k in ['box breadth (cm)', 'box breadth'] if k in header_map), None)
-        box_h_idx = next((header_map[k] for k in ['box height (cm)', 'box height'] if k in header_map), None)
+        vendor_details_idx = find_col_index(['vendor details', 'vendor', 'supplier'])
+        vendor_price_idx = find_col_index(['vendor price'])
+        costing_idx = find_col_index(['costing'])
+        purchase_price_idx = find_col_index(['purchase price'])
+        net_wt_idx = find_col_index(['net weight'])
+        gross_wt_idx = find_col_index(['gross weight'])
+        box_l_idx = find_col_index(['box length (cm)', 'box length'])
+        box_b_idx = find_col_index(['box breadth (cm)', 'box breadth'])
+        box_h_idx = find_col_index(['box height (cm)', 'box height'])
+
+        # Detailed Size Resolution
+        len_idx = find_col_index(['size length (cm)', 'size length', 'length (cm)', 'length', 'size l', 'width (cm)'])
+        breadth_idx = find_col_index(['size breadth (cm)', 'size breadth', 'breadth (cm)', 'breadth', 'size b', 'depth (cm)'])
+        height_idx = find_col_index(['size height (cm)', 'size height', 'height (cm)', 'height', 'size h'])
+
+        size_composite_idx = find_col_index(['size cms', 'size cm', 'size cms (w x d x h)', 'size (w x d x h)', 'size cms (l x w x h)', 'size'])
+
+        if size_composite_idx is not None and (len_idx is None or breadth_idx is None or height_idx is None):
+            len_idx = size_composite_idx
+            breadth_idx = size_composite_idx + 1 if size_composite_idx + 1 < len(header_row) else None
+            height_idx = size_composite_idx + 2 if size_composite_idx + 2 < len(header_row) else None
 
         row_images = {}
         if hasattr(ws, '_images'):
@@ -976,6 +1036,7 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         imported_count = 0
         updated_count = 0
         buyers_created = 0
+        samples_created = 0
         images_extracted = 0
 
         buyers_by_code = {b.code.lower(): b for b in Buyer.objects.filter(is_deleted=False)}
@@ -984,23 +1045,36 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         def parse_dec(val):
             if val is None or val == '': return None
             try:
-                return float(str(val).replace('$', '').replace('₹', '').replace(',', '').strip())
+                clean_str = str(val).replace('$', '').replace('₹', '').replace(',', '').strip()
+                return float(clean_str)
             except ValueError:
                 return None
 
-        for excel_row_num, row_cells in enumerate(ws.iter_rows(min_row=2), start=2):
+        # Determine data start row: skip header and subheader if applicable
+        start_row = header_row_idx + 1
+        if subheader_row and any(w in ' '.join(subheader_row).lower() for w in ['w', 'd', 'h', 'cm', 'l', 'b']):
+            start_row = header_row_idx + 2
+
+        for excel_row_num, row_cells in enumerate(ws.iter_rows(min_row=start_row), start=start_row):
             cells = [cell.value for cell in row_cells]
             if not any(cells):
                 continue
 
-            b_code_val = str(cells[buyer_code_idx]).strip() if buyer_code_idx < len(cells) and cells[buyer_code_idx] is not None else ''
-            style_no_val = str(cells[style_idx]).strip() if style_idx < len(cells) and cells[style_idx] is not None else ''
-            product_name_val = str(cells[product_name_idx]).strip() if product_name_idx < len(cells) and cells[product_name_idx] is not None else ''
+            b_code_val = str(cells[buyer_code_idx]).strip() if buyer_code_idx is not None and buyer_code_idx < len(cells) and cells[buyer_code_idx] is not None else ''
+            style_no_val = str(cells[style_idx]).strip() if style_idx is not None and style_idx < len(cells) and cells[style_idx] is not None else ''
 
-            if not b_code_val or not style_no_val or not product_name_val:
+            desig_val = str(cells[designation_idx]).strip() if designation_idx is not None and designation_idx < len(cells) and cells[designation_idx] is not None else ''
+            prod_val = str(cells[product_name_idx]).strip() if product_name_idx is not None and product_name_idx < len(cells) and cells[product_name_idx] is not None else ''
+            
+            product_name_val = desig_val or prod_val or style_no_val
+
+            if not style_no_val or not product_name_val:
                 continue
 
-            b_name_val = str(cells[buyer_name_idx]).strip() if buyer_name_idx is not None and buyer_name_idx < len(cells) and cells[buyer_name_idx] is not None else b_code_val
+            b_name_val = str(cells[buyer_name_idx]).strip() if buyer_name_idx is not None and buyer_name_idx < len(cells) and cells[buyer_name_idx] is not None else (b_code_val or 'Default Buyer')
+            if not b_code_val:
+                b_code_val = b_name_val
+
             buyer_obj = buyers_by_code.get(b_code_val.lower()) or buyers_by_name.get(b_name_val.lower())
             
             if not buyer_obj:
@@ -1014,9 +1088,24 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             remark_val = str(cells[remark_idx]).strip() if remark_idx is not None and remark_idx < len(cells) and cells[remark_idx] is not None else ''
             v_details_val = str(cells[vendor_details_idx]).strip() if vendor_details_idx is not None and vendor_details_idx < len(cells) and cells[vendor_details_idx] is not None else ''
 
-            size_len = parse_dec(cells[len_idx] if len_idx is not None and len_idx < len(cells) else None)
-            size_brd = parse_dec(cells[breadth_idx] if breadth_idx is not None and breadth_idx < len(cells) else None)
-            size_hgt = parse_dec(cells[height_idx] if height_idx is not None and height_idx < len(cells) else None)
+            # Size parsing logic
+            size_len = None
+            size_brd = None
+            size_hgt = None
+
+            raw_len_cell = cells[len_idx] if len_idx is not None and len_idx < len(cells) else None
+            if raw_len_cell is not None and isinstance(raw_len_cell, str):
+                match = re.search(r'(\d+(?:\.\d+)?)\s*[\s*xX×,-]\s*(\d+(?:\.\d+)?)\s*[\s*xX×,-]\s*(\d+(?:\.\d+)?)', raw_len_cell)
+                if match:
+                    size_len = parse_dec(match.group(1))
+                    size_brd = parse_dec(match.group(2))
+                    size_hgt = parse_dec(match.group(3))
+
+            if size_len is None:
+                size_len = parse_dec(raw_len_cell)
+                size_brd = parse_dec(cells[breadth_idx] if breadth_idx is not None and breadth_idx < len(cells) else None)
+                size_hgt = parse_dec(cells[height_idx] if height_idx is not None and height_idx < len(cells) else None)
+
             price_usd = parse_dec(cells[usd_idx] if usd_idx is not None and usd_idx < len(cells) else None)
             units_val = int(parse_dec(cells[units_idx]) or 1) if units_idx is not None and units_idx < len(cells) else 1
             cbm_val = parse_dec(cells[cbm_idx] if cbm_idx is not None and cbm_idx < len(cells) else None)
@@ -1030,11 +1119,51 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             box_b = parse_dec(cells[box_b_idx] if box_b_idx is not None and box_b_idx < len(cells) else None)
             box_h = parse_dec(cells[box_h_idx] if box_h_idx is not None and box_h_idx < len(cells) else None)
 
+            # Check if Sample already exists
+            sample_obj = Sample.objects.filter(
+                Q(style_no__iexact=style_no_val) | Q(sample_id__iexact=style_no_val)
+            ).first()
+
+            if not sample_obj:
+                base_sid = style_no_val
+                unique_sid = base_sid
+                if Sample.objects.filter(sample_id=unique_sid).exists():
+                    unique_sid = f"{base_sid}-{b_code_val}"
+
+                sample_obj = Sample.objects.create(
+                    sample_id=unique_sid,
+                    style_no=style_no_val,
+                    product_name=product_name_val,
+                    buyer=buyer_obj,
+                    material=wood_val,
+                    finish_color=finish_val,
+                    size_length=size_len,
+                    size_breadth=size_brd,
+                    size_height=size_hgt,
+                    usd=price_usd,
+                    cbm=cbm_val,
+                    remark=remark_val,
+                )
+                samples_created += 1
+            else:
+                # Update sample fields if missing
+                if not sample_obj.product_name and product_name_val: sample_obj.product_name = product_name_val
+                if not sample_obj.buyer and buyer_obj: sample_obj.buyer = buyer_obj
+                if not sample_obj.material and wood_val: sample_obj.material = wood_val
+                if not sample_obj.finish_color and finish_val: sample_obj.finish_color = finish_val
+                if sample_obj.size_length is None and size_len is not None: sample_obj.size_length = size_len
+                if sample_obj.size_breadth is None and size_brd is not None: sample_obj.size_breadth = size_brd
+                if sample_obj.size_height is None and size_hgt is not None: sample_obj.size_height = size_hgt
+                if sample_obj.usd is None and price_usd is not None: sample_obj.usd = price_usd
+                if sample_obj.cbm is None and cbm_val is not None: sample_obj.cbm = cbm_val
+                sample_obj.save()
+
             bm_obj, created = BuyerMaster.objects.get_or_create(
                 buyer=buyer_obj,
                 style_no=style_no_val,
                 defaults={
                     'buyer_code': b_code_val,
+                    'sample': sample_obj,
                     'product_name': product_name_val,
                     'wood_type': wood_val,
                     'finish_color': finish_val,
@@ -1060,6 +1189,7 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             if not created:
                 bm_obj.product_name = product_name_val
                 bm_obj.buyer_code = b_code_val
+                if sample_obj: bm_obj.sample = sample_obj
                 if wood_val: bm_obj.wood_type = wood_val
                 if finish_val: bm_obj.finish_color = finish_val
                 if size_len is not None: bm_obj.size_length = size_len
@@ -1093,14 +1223,22 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
 
                         BuyerMasterFinishingImage.objects.create(buyer_master=bm_obj, image=content_file)
                         images_extracted += 1
+
+                        if sample_obj:
+                            smp_file = ContentFile(image_bytes, name=f"SMP_{style_no_val.replace('/', '_')}_{img_idx+1}.{ext}")
+                            SampleImage.objects.create(sample=sample_obj, image=smp_file)
+                            if not sample_obj.image and img_idx == 0:
+                                sample_obj.image = smp_file
+                                sample_obj.save()
                     except Exception as img_err:
                         print(f"Error saving image for row {excel_row_num}: {img_err}")
 
         return Response({
-            "detail": f"Import complete! {imported_count} new Buyer Master style(s) created, {updated_count} updated. {buyers_created} new Buyer(s) created. {images_extracted} finishing image(s) extracted.",
+            "detail": f"Import complete! {imported_count} new Buyer Master style(s) created, {updated_count} updated. {buyers_created} new Buyer(s) created. {samples_created} new Sample(s) registered. {images_extracted} finishing image(s) extracted.",
             "imported_count": imported_count,
             "updated_count": updated_count,
             "buyers_created": buyers_created,
+            "samples_created": samples_created,
             "images_extracted": images_extracted,
         }, status=status.HTTP_200_OK)
 
