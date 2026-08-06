@@ -167,11 +167,21 @@
       }
 
       #jazzy-navigation .nav-link.active,
-      .sidebar-menu .nav-link.active {
-        background-color: var(--color-gold) !important;
+      .sidebar-menu .nav-link.active,
+      #jazzy-navigation .nav-item.active > .nav-link {
+        background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
         color: #ffffff !important;
         font-weight: 700 !important;
-        box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3) !important;
+        box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4) !important;
+        border-left: 4px solid #fbbf24 !important;
+      }
+
+      #jazzy-navigation .nav-link.active i,
+      .sidebar-menu .nav-link.active i,
+      #jazzy-navigation .nav-link.active p,
+      .sidebar-menu .nav-link.active p {
+        color: #ffffff !important;
+        font-weight: 700 !important;
       }
 
       #jazzy-navigation .nav-header,
@@ -500,7 +510,7 @@
                         <ul class="nav sidebar-menu flex-column {{ jazzmin_ui.sidebar_list_classes }}" data-lte-toggle="treeview" role="navigation" aria-label="Main navigation" data-accordion="false" id="jazzy-navigation">
 
                             <li class="nav-item">
-                                <a href="{% url 'admin:index' %}" class="nav-link">
+                                <a href="{% url 'admin:index' %}" class="nav-link {% if request.path == '/' or request.path == '/admin/' %}active{% endif %}">
                                     <i class="nav-icon fas fa-th-large"></i>
                                     <p>{% trans 'Dashboard' %}</p>
                                 </a>
@@ -512,7 +522,7 @@
                                     {% for model in app.models %}
                                         <li class="nav-item">
                                             {% if model.url %}
-                                            <a href="{{ model.url }}" class="nav-link">
+                                            <a href="{{ model.url }}" class="nav-link {% if model.url and model.url in request.path %}active{% endif %}">
                                                 <i class="nav-icon {{ model.icon }}"></i> <p>{{ model.name }}</p>
                                             </a>
                                         {% else %}
@@ -533,7 +543,7 @@
                                         <ul class="nav nav-treeview">
                                             {% for model in app.models %}
                                                 <li class="nav-item">
-                                                    <a href="{% if model.url %}{{ model.url }}{% else %}javascript:void(0){% endif %}" class="nav-link">
+                                                    <a href="{% if model.url %}{{ model.url }}{% else %}javascript:void(0){% endif %}" class="nav-link {% if model.url and model.url in request.path %}active{% endif %}">
                                                         <i class="nav-icon {{ model.icon }}"></i>
                                                         <p>{{ model.name }}</p>
                                                     </a>
@@ -740,6 +750,123 @@
       document.addEventListener('DOMContentLoaded', initSidebarSearch);
     } else {
       initSidebarSearch();
+    }
+  })();
+</script>
+
+<!-- Sidebar Scroll Position Persistence Script -->
+<script>
+  (function() {
+    function getSidebarElement() {
+      return document.querySelector('.sidebar-wrapper') || 
+             document.querySelector('#jazzy-sidebar') || 
+             document.querySelector('.app-sidebar') ||
+             document.querySelector('.main-sidebar') || 
+             document.querySelector('.sidebar');
+    }
+
+    function restoreSidebarScroll() {
+      const sidebar = getSidebarElement();
+      if (!sidebar) return;
+
+      const savedScroll = sessionStorage.getItem('jazzmin_sidebar_scroll');
+      if (savedScroll !== null) {
+        const targetPos = parseInt(savedScroll, 10);
+        sidebar.scrollTop = targetPos;
+        requestAnimationFrame(function() {
+          sidebar.scrollTop = targetPos;
+        });
+        setTimeout(function() {
+          sidebar.scrollTop = targetPos;
+        }, 100);
+      }
+
+      function saveScroll() {
+        if (sidebar) {
+          sessionStorage.setItem('jazzmin_sidebar_scroll', sidebar.scrollTop);
+        }
+      }
+
+      sidebar.addEventListener('scroll', saveScroll, { passive: true });
+
+      sidebar.addEventListener('click', function(e) {
+        if (e.target.closest('a')) {
+          saveScroll();
+        }
+      });
+
+      window.addEventListener('beforeunload', saveScroll);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', restoreSidebarScroll);
+    } else {
+      restoreSidebarScroll();
+    }
+  })();
+</script>
+
+<!-- Active Sidebar Option Highlight Script -->
+<script>
+  (function() {
+    function highlightActiveSidebarItem() {
+      const currentPath = window.location.pathname;
+      const nav = document.getElementById('jazzy-navigation') || document.querySelector('.sidebar-menu');
+      if (!nav) return;
+
+      const links = nav.querySelectorAll('a.nav-link');
+      let bestMatch = null;
+      let maxMatchLen = -1;
+
+      links.forEach(function(link) {
+        link.classList.remove('active');
+        const parentItem = link.closest('.nav-item');
+        if (parentItem) parentItem.classList.remove('active');
+
+        const href = link.getAttribute('href');
+        if (!href || href === '#' || href.startsWith('javascript:')) return;
+
+        let linkPath = href;
+        try {
+          linkPath = new URL(href, window.location.origin).pathname;
+        } catch(e) {}
+
+        const pCurrent = currentPath.replace(/\/+$/, '');
+        const pLink = linkPath.replace(/\/+$/, '');
+
+        if (pCurrent === pLink && pLink !== '') {
+          bestMatch = link;
+          maxMatchLen = 99999;
+        } else if (pLink !== '' && pLink !== '/admin' && pCurrent.startsWith(pLink)) {
+          if (pLink.length > maxMatchLen) {
+            bestMatch = link;
+            maxMatchLen = pLink.length;
+          }
+        }
+      });
+
+      if (bestMatch) {
+        bestMatch.classList.add('active');
+        const navItem = bestMatch.closest('.nav-item');
+        if (navItem) navItem.classList.add('active');
+
+        const parentTree = bestMatch.closest('ul.nav-treeview');
+        if (parentTree) {
+          parentTree.style.display = 'block';
+          const parentHeader = bestMatch.closest('li.has-treeview');
+          if (parentHeader) {
+            parentHeader.classList.add('menu-open', 'active');
+            const parentLink = parentHeader.querySelector('> a.nav-link');
+            if (parentLink) parentLink.classList.add('active');
+          }
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', highlightActiveSidebarItem);
+    } else {
+      highlightActiveSidebarItem();
     }
   })();
 </script>

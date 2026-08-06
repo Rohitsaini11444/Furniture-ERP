@@ -3578,7 +3578,7 @@ class ScanLookupView(APIView):
                 'po_date': str(matched_po.po_date) if matched_po and matched_po.po_date else (str(matched_pi.pi_date) if matched_pi and matched_pi.pi_date else None),
                 'supplier_name': matched_po.supplier.name if matched_po and matched_po.supplier else (matched_pi.buyer.name if matched_pi else 'Pinkcity Supplier'),
                 'status': matched_po.status if matched_po else 'Valid Invoice',
-                'supervisor': matched_po.supervisor if matched_po else None,
+                'supervisor': (matched_po.supervisor.get_full_name() or matched_po.supervisor.username) if (matched_po and matched_po.supervisor) else None,
                 'items_count': len(items_data),
                 'total_amount': float(matched_po.total_amount) if matched_po else 0.0,
             },
@@ -3992,7 +3992,7 @@ class StockOriginBreakdownView(APIView):
             po_date = str(po.po_date) if (po and po.po_date) else str(item.created_at.date())
             
             # Supervisor info
-            supervisor_info = po.supervisor if (po and po.supervisor) else "General Supervisor"
+            supervisor_info = (po.supervisor.get_full_name() or po.supervisor.username) if (po and po.supervisor) else "General Supervisor"
             
             # Clearance date (receipt date from GateInwardReceipt or created_at)
             clearance_date = item.created_at.strftime('%Y-%m-%d')

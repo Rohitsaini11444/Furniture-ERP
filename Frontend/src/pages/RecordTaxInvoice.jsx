@@ -243,27 +243,6 @@ export default function RecordTaxInvoice() {
     <div className="page-container" style={{ padding: '1.5rem 2rem', backgroundColor: '#fcfaf7', minHeight: '100vh' }}>
       {/* ── Top Navigation & Header ── */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <button
-          onClick={() => navigate('/vendor-management')}
-          className="btn-secondary"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            backgroundColor: '#ffffff',
-            color: '#475569',
-            borderColor: '#cbd5e1',
-            fontWeight: 600,
-            padding: '0.45rem 0.9rem',
-            borderRadius: '8px',
-            fontSize: '0.85rem',
-            marginBottom: '0.75rem',
-            cursor: 'pointer'
-          }}
-        >
-          <ArrowLeft size={16}/> Back to Vendor Management
-        </button>
-
         <div>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <FileText color="#8b5a2b" size={30}/> Record Supplier Tax Invoice (Multi-PO Dispatch)

@@ -444,13 +444,6 @@ function POForm({ poId, onBack, onSaved }) {
         <SupplierModal onClose={() => setShowSupplierModal(false)} onSaved={handleSupplierAdded} />
       )}
 
-      <button
-        onClick={onBack}
-        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem', padding: 0, fontSize: '1rem' }}
-      >
-        <ArrowLeft size={18} /> Back to Purchase Orders
-      </button>
-
       <form onSubmit={handleSubmit}>
         {formError && (
           <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', color: '#991b1b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>

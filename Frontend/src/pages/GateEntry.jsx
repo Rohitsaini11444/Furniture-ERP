@@ -531,27 +531,6 @@ function QCForm({ poId, onBack }) {
           }}
         />
       )}
-      {/* Top Back Navigation Link */}
-      <button 
-        onClick={onBack}
-        style={{ 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          gap: '0.5rem', 
-          background: 'none', 
-          border: 'none', 
-          color: '#059669', 
-          fontWeight: 700, 
-          cursor: 'pointer', 
-          marginBottom: '1.25rem', 
-          padding: 0, 
-          fontSize: '0.95rem' 
-        }}
-      >
-        <ArrowLeft size={18} strokeWidth={2.5} />
-        <span>Back to Gate Entry List</span>
-      </button>
-
       {/* Header Card */}
       <div className="po-header-card">
         <div className="po-header-left">

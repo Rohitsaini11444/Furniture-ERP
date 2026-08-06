@@ -1,5 +1,36 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
+
+ADMIN_CUSTOM_CSS = mark_safe("""
+<style>
+.inline-group td.delete { vertical-align: middle !important; text-align: center !important; }
+.inline-group td.delete input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 28px; height: 28px;
+    background-color: #fee2e2; border: 1.5px solid #f87171;
+    border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease; margin: 0; outline: none;
+}
+.inline-group td.delete input[type="checkbox"]:before {
+    content: "✖"; color: #dc2626; font-size: 14px; font-weight: bold; line-height: 1;
+}
+.inline-group td.delete input[type="checkbox"]:checked {
+    background-color: #dc2626; border-color: #b91c1c; box-shadow: 0 2px 6px rgba(220,38,38,0.3);
+}
+.inline-group td.delete input[type="checkbox"]:checked:before {
+    color: #ffffff;
+}
+.inline-group td.delete input[type="checkbox"]:hover {
+    transform: scale(1.1);
+}
+p.file-upload { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; font-size: 0.82rem; }
+p.file-upload a { color: #8b5a2b; font-weight: 600; text-decoration: underline; }
+</style>
+""")
+
 from .models import (
     User, ProductionUnit, Finish, Sample, SampleImage,
     Buyer, BuyerUnitAllocation, UnitWorkReallocation,
@@ -39,27 +70,116 @@ class ProductionUnitAdmin(admin.ModelAdmin):
 # ── Finish Catalog ──────────────────────────────────────────────────────────
 @admin.register(Finish)
 class FinishAdmin(admin.ModelAdmin):
-    list_display = ['finish_code', 'name', 'color', 'wood_type', 'created_at']
+    list_display = ['finish_image_thumbnail', 'finish_code', 'name', 'color', 'wood_type', 'created_at']
     list_filter = ['wood_type', 'color']
     search_fields = ['name', 'finish_code', 'color', 'wood_type']
+
+    def finish_image_thumbnail(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block;" />', obj.image.url)
+        return format_html('<span style="color: #94a3b8; font-size: 0.78rem;">No Image</span>')
+
+    finish_image_thumbnail.short_description = "Finish Image"
 
 
 # ── Sample Catalog & Images ──────────────────────────────────────────────────
 class SampleImageInline(admin.TabularInline):
     model = SampleImage
     extra = 1
+    readonly_fields = ['image_preview']
+    fields = ['image_preview', 'image']
+
+    def image_preview(self, obj):
+        if obj and obj.image:
+            return ADMIN_CUSTOM_CSS + format_html(
+                '''
+                <div style="display: flex; align-items: center; gap: 10px; padding: 4px 0;">
+                    <a href="{0}" target="_blank" title="Click to view full image in new tab">
+                        <img src="{0}" style="width: 75px; height: 75px; object-fit: cover; border-radius: 8px; border: 2px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.08); transition: transform 0.2s;" />
+                    </a>
+                </div>
+                ''',
+                obj.image.url
+            )
+        return ADMIN_CUSTOM_CSS + format_html('<span style="color: #94a3b8; font-size: 0.8rem; font-style: italic;">No image yet</span>')
+
+    image_preview.short_description = "Image Preview"
 
 @admin.register(Sample)
 class SampleAdmin(admin.ModelAdmin):
-    list_display = ['sample_id', 'style_no', 'product_name', 'buyer', 'material', 'finish_color', 'usd', 'cbm', 'vendor_name', 'created_at']
+    list_display = ['sample_image_thumbnail', 'sample_id', 'style_no', 'product_name', 'buyer', 'material', 'finish_color', 'usd', 'cbm', 'vendor_name', 'created_at']
     list_filter = ['buyer', 'material']
     search_fields = ['sample_id', 'style_no', 'product_name', 'vendor_name', 'material', 'finish_color']
+    readonly_fields = ['main_image_preview']
+    fields = [
+        'sample_id', 'style_no', 'product_name', 'buyer', 'material', 'finish', 'finish_color',
+        'cbm', 'usd', 'vendor_name', 'main_image_preview', 'image',
+        'size_length', 'size_breadth', 'size_height',
+        'size_length_inch', 'size_breadth_inch', 'size_height_inch',
+        'remark'
+    ]
     inlines = [SampleImageInline]
+
+    def sample_image_thumbnail(self, obj):
+        img_url = None
+        if obj.image:
+            img_url = obj.image.url
+        elif hasattr(obj, 'images') and obj.images.exists():
+            first_img = obj.images.first()
+            if first_img and first_img.image:
+                img_url = first_img.image.url
+        
+        if img_url:
+            return format_html('<img src="{}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block;" />', img_url)
+        return format_html('<span style="color: #94a3b8; font-size: 0.78rem;">No Image</span>')
+
+    sample_image_thumbnail.short_description = "Sample Image"
+
+    def main_image_preview(self, obj):
+        if obj and obj.image:
+            return format_html(
+                '''
+                <div style="margin-bottom: 8px;">
+                    <a href="{0}" target="_blank" title="View main sample image">
+                        <img src="{0}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 10px; border: 2px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.08);" />
+                    </a>
+                </div>
+                ''',
+                obj.image.url
+            )
+        return format_html('<span style="color: #94a3b8; font-size: 0.82rem; font-style: italic;">No main image uploaded</span>')
+
+    main_image_preview.short_description = "Current Main Image"
 
 @admin.register(SampleImage)
 class SampleImageAdmin(admin.ModelAdmin):
-    list_display = ['sample', 'image', 'uploaded_at']
+    list_display = ['sample_image_thumbnail', 'sample', 'image', 'uploaded_at']
     search_fields = ['sample__sample_id', 'sample__style_no']
+    readonly_fields = ['image_preview']
+    fields = ['sample', 'image_preview', 'image']
+
+    def sample_image_thumbnail(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block;" />', obj.image.url)
+        return format_html('<span style="color: #94a3b8; font-size: 0.78rem;">No Image</span>')
+
+    sample_image_thumbnail.short_description = "Image Preview"
+
+    def image_preview(self, obj):
+        if obj and obj.image:
+            return format_html(
+                '''
+                <div style="margin-bottom: 8px;">
+                    <a href="{0}" target="_blank" title="Click to view full image">
+                        <img src="{0}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 10px; border: 2px solid #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.08);" />
+                    </a>
+                </div>
+                ''',
+                obj.image.url
+            )
+        return format_html('<span style="color: #94a3b8; font-size: 0.82rem; font-style: italic;">No image uploaded yet</span>')
+
+    image_preview.short_description = "Current Image Preview"
 
 
 # ── Buyer & Allocations ──────────────────────────────────────────────────────

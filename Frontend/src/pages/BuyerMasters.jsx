@@ -984,19 +984,6 @@ function BuyerMasters() {
     <div>
       {isFormMode ? (
         <div className="new-page-form">
-          {/* Back button */}
-          <button
-            onClick={closeModal}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-              background: 'none', border: 'none', color: '#8b5a2b',
-              fontWeight: 600, cursor: 'pointer', marginBottom: '1.5rem',
-              padding: 0, fontSize: '1rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to Buyer Master
-          </button>
-
           {/* Page Title */}
           <div style={{ marginBottom: '1.25rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>

@@ -27,6 +27,7 @@ import VendorManagement from './pages/VendorManagement';
 import RecordTaxInvoice from './pages/RecordTaxInvoice';
 import SupplierManagement from './pages/SupplierManagement';
 import StoreManagement from './pages/StoreManagement';
+import Breadcrumbs from './components/Breadcrumbs';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
 
@@ -1348,6 +1349,7 @@ function AppLayout() {
     <div className="app-container">
       {isAuthenticated && !isLogin && <Navbar />}
       <main className={isLogin ? '' : 'container'}>
+        {isAuthenticated && !isLogin && <Breadcrumbs />}
         <div key={location.pathname} className="page-transition-wrapper">
           <Routes location={location}>
             <Route path="/login" element={<Login />} />

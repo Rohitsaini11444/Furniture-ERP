@@ -250,28 +250,6 @@ export default function StockDetails() {
         /* Desktop Web Header (Pristine Original Design) */
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <button
-              type="button"
-              onClick={() => navigate('/stock')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                padding: '6px 14px',
-                borderRadius: '10px',
-                fontWeight: 700,
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                marginBottom: '0.75rem',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-              }}
-            >
-              <ArrowLeft size={16} /> Back to Stock Registry
-            </button>
-            
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{
                 width: '44px',

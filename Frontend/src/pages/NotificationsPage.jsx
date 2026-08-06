@@ -166,26 +166,6 @@ function NotificationsPage() {
   return (
     <div style={{ padding: '1.5rem 0', width: '100%' }}>
       
-      {/* Back to Dashboard Link */}
-      <div 
-        onClick={() => navigate('/')}
-        style={{ 
-          display: 'inline-flex', 
-          alignItems: 'center', 
-          gap: '0.4rem', 
-          color: '#8b5a2b', 
-          fontSize: '0.9rem', 
-          fontWeight: 600, 
-          cursor: 'pointer',
-          marginBottom: '1rem',
-          transition: 'transform 0.2s'
-        }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'translateX(-3px)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}
-      >
-        <ChevronLeft size={16} /> Back to Dashboard
-      </div>
-
       {/* Main card */}
       <div style={{
         backgroundColor: 'white',

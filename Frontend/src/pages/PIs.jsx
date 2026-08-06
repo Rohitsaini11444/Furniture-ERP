@@ -394,25 +394,6 @@ function PIs() {
     <div>
       {id ? (
         <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <button
-            onClick={() => navigate('/invoices')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              background: 'none',
-              border: 'none',
-              color: '#8b5a2b',
-              fontWeight: 600,
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '1rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to Invoices
-          </button>
-
           <div className="form-card-container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>

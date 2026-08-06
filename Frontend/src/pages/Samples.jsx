@@ -579,25 +579,6 @@ function Samples() {
     <div>
       {id ? (
         <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <button 
-            onClick={closeModal} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              background: 'none', 
-              border: 'none', 
-              color: '#8b5a2b', 
-              fontWeight: 600, 
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '1rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to Samples
-          </button>
-
           <div className="form-card-container">
             <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Sample' : '+ Create New Sample'}</h2>

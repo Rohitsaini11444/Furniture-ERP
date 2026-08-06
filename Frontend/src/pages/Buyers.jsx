@@ -239,26 +239,6 @@ function Buyers() {
     <div>
       {selectedBuyer ? (
         <div className="buyer-detail-view" style={{ padding: '1rem 0' }}>
-          {/* Back Link */}
-          <button 
-            onClick={() => navigate('/buyers')} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              background: 'none', 
-              border: 'none', 
-              color: '#8b5a2b', 
-              fontWeight: 600, 
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '1rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to Buyers
-          </button>
-
           {/* Profile Card */}
           <div className="buyer-profile-card">
             <div className="buyer-profile-info">

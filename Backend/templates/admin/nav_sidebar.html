@@ -139,4 +139,40 @@
       }
     })();
   </script>
+
+  <!-- Sidebar Scroll Persistence for standard nav_sidebar -->
+  <script>
+    (function() {
+      function restoreNavSidebarScroll() {
+        const navSidebar = document.getElementById('nav-sidebar') || document.querySelector('.nav-sidebar');
+        if (!navSidebar) return;
+
+        const savedScroll = sessionStorage.getItem('django_nav_sidebar_scroll');
+        if (savedScroll !== null) {
+          const targetPos = parseInt(savedScroll, 10);
+          navSidebar.scrollTop = targetPos;
+          requestAnimationFrame(function() { navSidebar.scrollTop = targetPos; });
+          setTimeout(function() { navSidebar.scrollTop = targetPos; }, 100);
+        }
+
+        function saveScroll() {
+          if (navSidebar) {
+            sessionStorage.setItem('django_nav_sidebar_scroll', navSidebar.scrollTop);
+          }
+        }
+
+        navSidebar.addEventListener('scroll', saveScroll, { passive: true });
+        navSidebar.addEventListener('click', function(e) {
+          if (e.target.closest('a')) saveScroll();
+        });
+        window.addEventListener('beforeunload', saveScroll);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restoreNavSidebarScroll);
+      } else {
+        restoreNavSidebarScroll();
+      }
+    })();
+  </script>
 </div>

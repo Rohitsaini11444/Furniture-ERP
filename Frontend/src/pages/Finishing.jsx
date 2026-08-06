@@ -414,30 +414,6 @@ function Finishing() {
         `}</style>
 
         <div className="finish-detail-page">
-          {/* Back Navigation Bar */}
-          <button
-            onClick={() => navigate('/finishing')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#9a5323',
-              fontSize: '0.9rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              marginBottom: '1.15rem',
-              padding: '0.4rem 0.6rem',
-              borderRadius: '8px',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fff2e2'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <ArrowLeft size={18} /> Back to Finishing Catalog
-          </button>
-
           {/* Form Card */}
           <div className="finish-detail-card" style={{
             backgroundColor: '#ffffff',
