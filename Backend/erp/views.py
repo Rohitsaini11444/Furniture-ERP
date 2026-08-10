@@ -1,67 +1,91 @@
-from django.utils import timezone
-from rest_framework import viewsets, status, generics
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.http import HttpResponse
-import openpyxl
+import csv
+from datetime import datetime, timedelta
+from decimal import Decimal
 import io
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
-from openpyxl.drawing.image import Image as OpenpyxlImage
+from io import BytesIO
+import json
+import math
+import os
+import random
+import re
+import string
+import tempfile
+import zipfile
+
+from num2words import num2words
+import openpyxl
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
-from PIL import Image as PILImage
-import tempfile
-import os
-from decimal import Decimal
-from num2words import num2words
-from django.db.models import Q, Case, When, Value, IntegerField
-from django.conf import settings
-from .models import (
-    User, ProductionUnit, BuyerUnitAllocation, UnitWorkReallocation, Finish, Sample, SampleImage,
-    Buyer, BuyerMaster, Supplier, SupplierPO, SupplierPOItem, POSupplierHistory,
-    PerformaInvoice, PerformaInvoiceItem,
-    BuyerPI, BuyerPIItem,
-    UserSession, Notification, StockItem, ProductionJob, ProductionQCLog,
-    GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
-    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus
-)
-from .serializers import (
-    LoginSerializer, UserSerializer, UserMinimalSerializer,
-    ProductionUnitSerializer, BuyerUnitAllocationSerializer, UnitWorkReallocationSerializer,
-    UserSessionSerializer,
-    FinishSerializer, FinishDropdownSerializer,
-    SampleSerializer, SampleImageSerializer,
-    ProductionJobSerializer, ProductionQCLogSerializer,
-    BuyerSerializer, BuyerMasterSerializer,
-    SupplierSerializer, SupplierPOSerializer, SupplierPOItemSerializer, POSupplierHistorySerializer,
-    PerformaInvoiceSerializer, PerformaInvoiceItemSerializer,
-    BuyerPISerializer, BuyerPIItemSerializer, StockItemSerializer,
-    GateInwardReceiptSerializer, SupplierDebitNoteSerializer, SupplierTaxInvoiceSerializer, SupplierTaxInvoiceItemSerializer, SupplierDebitNoteItemSerializer,
-    StoreItemCategorySerializer, StoreItemRateHistorySerializer, StoreItemSerializer, ContractorPersonSerializer,
-    StorePurchaseOrderItemSerializer, StorePurchaseOrderSerializer, StoreMaterialInSerializer, StoreDailyIssueSerializer,
-)
-from .permissions import (
-    IsAdmin, IsSupervisor, IsContractor,
-    IsAdminOrSupervisor, IsSandingSupervisor, IsAdminOrSandingSupervisor,
-)
-
-from django.db.models import Q
-from .serializers import SampleCompactSerializer
-from .serializers import SampleDropdownSerializer
-from .serializers import SampleListSerializer
-from .serializers import SampleSerializer
-import openpyxl
-import io
-from openpyxl.styles import Font, PatternFill, Alignment
-from openpyxl.utils import get_column_letter, coordinate_to_tuple
-from PIL import Image as PILImage, ImageDraw
 from openpyxl.drawing.image import Image as OpenpyxlImage
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
 from openpyxl.drawing.xdr import XDRPositiveSize2D
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import coordinate_to_tuple, get_column_letter
+from PIL import Image as PILImage, ImageDraw
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from django.conf import settings
+from django.core.files.base import ContentFile
+from django.db.models import Case, IntegerField, Q, Value, When
+from django.http import HttpResponse
+from django.utils import timezone
+
+from rest_framework import generics, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from .db_diagram_pdf import generate_db_relationships_pdf
+from .models import (
+    Buyer, BuyerMaster, BuyerMasterFinishingImage, BuyerPI, BuyerPIItem,
+    BuyerUnitAllocation, ContractorPerson, Finish, GateInwardReceipt,
+    Notification, POExtensionLog, POSupplierHistory, PerformaInvoice,
+    PerformaInvoiceItem, ProductionJob, ProductionQCLog, ProductionUnit,
+    Sample, SampleImage, StockItem, StoreDailyIssue, StoreItem,
+    StoreItemCategory, StoreItemRateHistory, StoreItemStatus, StoreMaterialIn,
+    StorePurchaseOrder, StorePurchaseOrderItem, Supplier, SupplierDebitNote,
+    SupplierDebitNoteItem, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
+    SupplierPOItemDefectImage, SupplierTaxInvoice, SupplierTaxInvoiceItem,
+    UnitWorkReallocation, User, UserSession
+)
+from .pagination import OptionalPagination
+from .permissions import (
+    IsAdmin, IsAdminOrSandingSupervisor, IsAdminOrSupervisor,
+    IsContractor, IsSandingSupervisor, IsSupervisor
+)
+from .presentation_generator import (
+    find_image_path, generate_brand_pptx_presentation,
+    generate_pptx_presentation, generate_vendor_inspection_pptx
+)
+from .serializers import (
+    BuyerDropdownSerializer, BuyerMasterFinishingImageSerializer,
+    BuyerMasterListSerializer, BuyerMasterSerializer, BuyerPIItemSerializer,
+    BuyerPIListSerializer, BuyerPISerializer, BuyerSerializer,
+    BuyerUnitAllocationSerializer, ContractorPersonSerializer,
+    FinishDropdownSerializer, FinishSerializer, GateInwardReceiptSerializer,
+    LoginSerializer, NotificationSerializer, POSupplierHistorySerializer,
+    PerformaInvoiceItemSerializer, PerformaInvoiceSerializer,
+    ProductionJobSerializer, ProductionQCLogSerializer, ProductionUnitSerializer,
+    SampleCompactSerializer, SampleDropdownSerializer, SampleImageSerializer,
+    SampleListSerializer, SampleSerializer, StockItemSerializer,
+    StoreDailyIssueSerializer, StoreItemCategorySerializer,
+    StoreItemRateHistorySerializer, StoreItemSerializer, StoreMaterialInSerializer,
+    StorePurchaseOrderItemSerializer, StorePurchaseOrderSerializer,
+    SupplierDebitNoteItemSerializer, SupplierDebitNoteSerializer,
+    SupplierPOItemDefectSerializer, SupplierPOItemSerializer,
+    SupplierPOListSerializer, SupplierPOSerializer, SupplierSerializer,
+    SupplierTaxInvoiceItemSerializer, SupplierTaxInvoiceSerializer,
+    UnitWorkReallocationSerializer, UserMinimalSerializer, UserSerializer,
+    UserSessionSerializer
+)
+
 
 def add_centered_image(ws, cell_address, xl_img):
     """
@@ -70,60 +94,28 @@ def add_centered_image(ws, cell_address, xl_img):
     """
     row_idx, col_idx = coordinate_to_tuple(cell_address)
     col_letter = get_column_letter(col_idx)
-    
+
     anchor_row = row_idx - 1
     anchor_col = col_idx - 1
-    
+
     row_height_pt = ws.row_dimensions[row_idx].height or 15.0
     col_width_char = ws.column_dimensions[col_letter].width or 8.43
-        
+
     cell_height_emu = int(row_height_pt * 12700)
     cell_width_emu = int((col_width_char * 7.5 + 5) * 9525)
-    
+
     img_width_emu = int(xl_img.width * 9525)
     img_height_emu = int(xl_img.height * 9525)
-    
+
     col_off = max(0, (cell_width_emu - img_width_emu) // 2)
     row_off = max(0, (cell_height_emu - img_height_emu) // 2)
-    
+
     marker = AnchorMarker(col=anchor_col, colOff=col_off, row=anchor_row, rowOff=row_off)
     size = XDRPositiveSize2D(cx=img_width_emu, cy=img_height_emu)
-    
+
     xl_img.anchor = OneCellAnchor(_from=marker, ext=size)
     ws.add_image(xl_img)
 
-from django.core.files.base import ContentFile
-from .serializers import BuyerDropdownSerializer
-from .serializers import BuyerSerializer
-from .serializers import BuyerMasterFinishingImageSerializer
-from .models import BuyerMasterFinishingImage
-from .serializers import BuyerMasterListSerializer
-from .serializers import BuyerMasterSerializer
-import zipfile
-from .serializers import SupplierPOListSerializer
-from .serializers import SupplierPOSerializer
-from reportlab.pdfgen import canvas as rl_canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib import colors
-from decimal import Decimal
-from num2words import num2words
-from io import BytesIO
-import math
-import os
-from .models import StockItem
-from .models import StockItem, ProductionQCLog
-from .serializers import BuyerPIListSerializer
-from .serializers import BuyerPISerializer
-from .models import SupplierPOItemDefect
-from .serializers import SupplierPOItemDefectSerializer
-from .models import Notification, User, SupplierPOItemDefectImage
-from .models import Notification
-from .models import SupplierPOItem
-from .serializers import SupplierPOItemSerializer
-from .models import StockItem, SupplierPOItemDefect
-from .serializers import NotificationSerializer
-from .presentation_generator import generate_pptx_presentation, generate_brand_pptx_presentation, generate_vendor_inspection_pptx, find_image_path
 
 
 # ─── Auth Views ───────────────────────────────────────────────────────────────
@@ -726,9 +718,6 @@ class BuyerMasterFinishingImageViewSet(viewsets.ModelViewSet):
         return qs
 
 
-from .pagination import OptionalPagination
-
-
 class BuyerMasterViewSet(viewsets.ModelViewSet):
     queryset = BuyerMaster.objects.select_related('buyer', 'sample').all()
     permission_classes = [IsAuthenticated]
@@ -927,8 +916,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 "error_type": "Unreadable File",
                 "detail": "Unable to read Excel file. Please ensure the file is not corrupt."
             }, status=status.HTTP_400_BAD_REQUEST)
-
-        import re
 
         # Scan rows 1 to 15 to dynamically discover the actual header row
         header_row_idx = 1
@@ -1484,9 +1471,6 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='extend-due-date')
     def extend_due_date(self, request, pk=None):
-        from datetime import timedelta, datetime
-        from .models import POExtensionLog
-
         po = self.get_object()
         days_added = request.data.get('days_added')
         reason = request.data.get('reason', '')
@@ -1540,7 +1524,6 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         A single truck delivery with 1 supplier invoice can contain multiple PO items.
         Generates 1 single combined Debit Note for all rejected SKUs in the round.
         """
-        import json
         po = self.get_object()
         data = request.data
 
@@ -3479,7 +3462,6 @@ class GeneratePresentationView(APIView):
         presentation_type = request.data.get('presentation_type', 'buyer_sample')
 
         if presentation_type == 'vendor_inspection':
-            import json
             cover_info_raw = request.data.get('cover_info', '{}')
             if isinstance(cover_info_raw, str):
                 try:
@@ -3548,7 +3530,6 @@ class GeneratePresentationView(APIView):
 
             slides = []
             slides_meta_raw = request.data.get('slides_meta', '[]')
-            import json
             if isinstance(slides_meta_raw, str):
                 try:
                     slides_meta = json.loads(slides_meta_raw)
@@ -3667,7 +3648,6 @@ class ScanLookupView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        import json
         code_raw = str(request.data.get('code', '')).strip()
         if not code_raw:
             return Response({'error': 'No QR code or barcode payload provided.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -3851,7 +3831,6 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
                     rem -= take
 
             # Create Debit Notes
-            import random, string
             for idx, batch_q in enumerate(batch_pcs):
                 suffix = string.ascii_uppercase[idx] if len(batch_pcs) > 1 else ""
                 vch_num = f"DN/{timezone.now().strftime('%y-%m')}/{random.randint(100,999)}{suffix}"
@@ -3916,12 +3895,6 @@ class SupplierTaxInvoiceViewSet(viewsets.ModelViewSet):
 
 
 def generate_debit_note_pdf(debit_note):
-    from io import BytesIO
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -4783,7 +4756,6 @@ class FinishExcelImportView(APIView):
                         except Exception as img_err:
                             print(f"Error saving finish image for row {excel_row_num}: {img_err}")
             else:
-                import csv
                 decoded_file = file_obj.read().decode('utf-8-sig')
                 csv_reader = csv.DictReader(io.StringIO(decoded_file))
 
@@ -5197,10 +5169,6 @@ class MonthlyContractorBillingView(APIView):
             'total_non_chargeable_amount': total_non_chargeable_amt,
             'total_issue_entries_count': len(chargeable_items) + len(non_chargeable_items)
         })
-
-
-from django.http import HttpResponse
-from .db_diagram_pdf import generate_db_relationships_pdf
 
 
 class DatabaseRelationshipsPDFView(APIView):

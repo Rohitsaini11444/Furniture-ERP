@@ -1,8 +1,11 @@
+import uuid
+from decimal import Decimal
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Sum
 from django.utils import timezone
-from decimal import Decimal
-import uuid
+
 
 
 # ─── Role & Category Choices ─────────────────────────────────────────────────
@@ -157,7 +160,6 @@ class Sample(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
-        from decimal import Decimal
         if self.size_length:
             self.size_length_inch = round(Decimal(str(self.size_length)) / Decimal('2.54'), 2)
         else:
@@ -1021,13 +1023,11 @@ class StoreItem(models.Model):
 
     @property
     def total_stock_qty(self):
-        from django.db.models import Sum
         inward = self.inward_entries.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
         return inward
 
     @property
     def total_issued_qty(self):
-        from django.db.models import Sum
         issued = self.daily_issues.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
         return issued
 
