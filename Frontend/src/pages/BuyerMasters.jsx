@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2 } from 'lucide-react';
@@ -9,6 +9,9 @@ import MultiSearchableSelect from '../components/MultiSearchableSelect';
 import CustomFileUpload from '../components/CustomFileUpload';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
 import CustomSelect from '../components/CustomSelect';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 
 
@@ -42,7 +45,6 @@ function BuyerMasters() {
   const location = useLocation();
   const isNewFormMode = location.pathname === '/buyer-masters/new';
 
-
   const [buyerMasters, setBuyerMasters] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
@@ -60,8 +62,17 @@ function BuyerMasters() {
   const [finishingImages, setFinishingImages] = useState([]);
   
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_buyer_masters');
+      const savedPage = sessionStorage.getItem('last_visited_page_buyer_masters');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyer_masters', id || paramBuyerId, currentPage);
 
   const handleDownloadExcel = (withDetails = false) => {
     if (!exportBuyerId) return;
@@ -273,8 +284,13 @@ function BuyerMasters() {
     fetchData();
   }, [currentPage, ordering]);
 
-  // Reset page when search changes
+  // Reset page when search changes (skip initial mount)
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, ordering]);
 
@@ -292,6 +308,38 @@ function BuyerMasters() {
   const [batchError, setBatchError] = useState('');
   const [batchSuccess, setBatchSuccess] = useState('');
   const [mobilePanelView, setMobilePanelView] = useState('list'); // 'list' | 'editor'
+  const [loadingBuyerStyles, setLoadingBuyerStyles] = useState(false);
+
+  // ── Unsaved Changes / Draft hook (new-form mode only) ─────────────────────
+  const {
+    isDirty: bmIsDirty,
+    setIsDirty: setBmIsDirty,
+    showExitModal: bmShowExitModal,
+    confirmExit: bmConfirmExit,
+    handleSaveDraft: bmHandleSaveDraft,
+    handleDiscardAndExit: bmHandleDiscardAndExit,
+    handleCancelExit: bmHandleCancelExit,
+    currentDraftId: bmCurrentDraftId,
+    setCurrentDraftId: setBmCurrentDraftId,
+    clearDraft: bmClearDraft,
+  } = useUnsavedChanges({
+    formType: 'buyer_master',
+    formLabel: 'Buyer Master',
+    getFormTitle: (data) => {
+      const qLen = data?.queueLength || 0;
+      const buyer = data?.buyerName || 'Unknown Buyer';
+      return `Buyer Master - ${buyer} (${qLen} style${qLen !== 1 ? 's' : ''} queued)`;
+    },
+    getFormData: () => ({
+      queueLength: styleQueue.filter(q => q.status !== 'saved').length,
+      buyerName: buyers.find(b => b.id === globalBuyerId)?.name || globalBuyerId,
+      globalBuyerId,
+      selectedStyleIds,
+      styleQueue,
+    }),
+    targetPath: '/buyer-masters/new',
+    onSaveForm: null, // No single submit; user must save manually
+  });
 
   // Build an empty style form data for a given sample
   const buildStyleFromSample = (sampleId, buyerId) => {
@@ -378,12 +426,13 @@ function BuyerMasters() {
   const activeItem = styleQueue[activeStyleIdx];
 
   const updateActiveFormData = (updater) => {
+    setBmIsDirty(true); // mark dirty when any field in queue is edited
     setStyleQueue(prev => {
       const next = [...prev];
       if (!next[activeStyleIdx]) return prev;
       const item = { ...next[activeStyleIdx] };
       item.formData = typeof updater === 'function' ? updater(item.formData) : { ...item.formData, ...updater };
-      if (item.status !== 'saved') item.status = 'editing';
+      item.status = 'editing';
       next[activeStyleIdx] = item;
       return next;
     });
@@ -520,6 +569,8 @@ function BuyerMasters() {
     if (failed > 0) {
       setBatchError(`${failed} style(s) failed to save. Please check highlighted errors.`);
     } else {
+      if (bmCurrentDraftId) bmClearDraft(bmCurrentDraftId);
+      setBmIsDirty(false);
       setBatchSuccess(`All ${styleQueue.length} styles saved successfully!`);
     }
   };
@@ -693,6 +744,7 @@ function BuyerMasters() {
   useEffect(() => {
     const targetBuyerId = paramBuyerId || (id && id !== 'new' ? id : null);
     if (targetBuyerId) {
+      setLoadingBuyerStyles(true);
       setLoading(true);
       api.get('/buyer-masters/', { params: { buyer: targetBuyerId, nopage: true } })
         .then(res => {
@@ -804,15 +856,25 @@ function BuyerMasters() {
           }
         })
         .catch(err => console.error(err))
-        .finally(() => setLoading(false));
+        .finally(() => { setLoading(false); setLoadingBuyerStyles(false); });
     } else if (id === 'new') {
-      setFormData(emptyForm);
-      setGlobalBuyerId('');
-      setSelectedStyleIds([]);
-      setStyleQueue([]);
-      setActiveStyleIdx(0);
+      if (location.state?.draftData) {
+        const d = location.state.draftData;
+        if (d.globalBuyerId) setGlobalBuyerId(d.globalBuyerId);
+        if (d.styleQueue) setStyleQueue(d.styleQueue);
+        if (d.selectedStyleIds) setSelectedStyleIds(d.selectedStyleIds);
+        setActiveStyleIdx(0);
+        setBmIsDirty(true);
+        if (location.state.draftId) setBmCurrentDraftId(location.state.draftId);
+      } else {
+        setFormData(emptyForm);
+        setGlobalBuyerId('');
+        setSelectedStyleIds([]);
+        setStyleQueue([]);
+        setActiveStyleIdx(0);
+      }
     }
-  }, [id, paramBuyerId]);
+  }, [id, paramBuyerId, location.state]);
 
   // Group Buyer Master records by Buyer for 1 Buyer = 1 Listing Row pattern
   const groupedMasters = React.useMemo(() => {
@@ -1324,7 +1386,44 @@ function BuyerMasters() {
                 </div>
               )}
 
-              {styleQueue.length === 0 ? (
+              {loadingBuyerStyles ? (
+                /* ── Skeleton Loading ── */
+                <div style={{ display: 'flex', gap: '1rem', minHeight: '480px' }}>
+                  {/* Sidebar skeleton */}
+                  <div style={{ width: '200px', flexShrink: 0, backgroundColor: '#fff', borderRadius: '14px', padding: '1rem', boxShadow: '0 1px 6px rgba(0,0,0,0.07)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <div style={{ height: '20px', borderRadius: '6px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem', borderRadius: '10px', background: i === 0 ? '#fdf8f5' : 'transparent', border: i === 0 ? '1.5px solid #e9d5b8' : '1px solid transparent' }}>
+                        <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ height: '10px', borderRadius: '4px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite', marginBottom: '4px' }} />
+                          <div style={{ height: '8px', width: '60%', borderRadius: '4px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                        </div>
+                        <div style={{ width: '40px', height: '18px', borderRadius: '10px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                      </div>
+                    ))}
+                  </div>
+                  {/* Editor skeleton */}
+                  <div style={{ flex: 1, backgroundColor: '#fff', borderRadius: '14px', padding: '1.25rem', boxShadow: '0 1px 6px rgba(0,0,0,0.07)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #f1f5f9' }}>
+                      <div style={{ height: '22px', width: '160px', borderRadius: '6px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                      <div style={{ height: '22px', width: '100px', borderRadius: '6px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                    </div>
+                    {/* Form fields */}
+                    {[2, 2, 1, 2, 1].map((cols, rowIdx) => (
+                      <div key={rowIdx} style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '0.75rem' }}>
+                        {Array.from({ length: cols }).map((_, colIdx) => (
+                          <div key={colIdx}>
+                            <div style={{ height: '12px', width: '80px', borderRadius: '4px', marginBottom: '8px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                            <div style={{ height: '38px', borderRadius: '8px', background: 'linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : styleQueue.length === 0 ? (
                 /* Empty state */
                 <div style={{ backgroundColor: '#fff', border: '1.5px solid #e7e5e4', borderRadius: '16px', padding: '3.5rem 1.5rem', textAlign: 'center', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
                   <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'linear-gradient(135deg, #fdf8f5, #f5efe6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', border: '2px solid #e9d5b8' }}>
@@ -1564,8 +1663,8 @@ function BuyerMasters() {
                                 <label className="form-label" style={{ fontWeight: 650 }}>Packaging Image</label>
                                 <CustomFileUpload icon={Package}
                                   singleFile={activeItem.packagingFile || null}
-                                  onChange={file => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: file }; return n; })}
-                                  onRemoveNew={() => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: null }; return n; })}
+                                  onChange={file => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: file, status: 'editing' }; return n; })}
+                                  onRemoveNew={() => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], packagingFile: null, status: 'editing' }; return n; })}
                                 />
                               </div>
 
@@ -1577,9 +1676,9 @@ function BuyerMasters() {
                                   newFiles={activeItem.finishingFiles || []}
                                   onChange={files => {
                                     const mapped = files.map(f => ({ file: f, preview: URL.createObjectURL(f) }));
-                                    setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: [...(n[activeStyleIdx].finishingFiles || []), ...mapped] }; return n; });
+                                    setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: [...(n[activeStyleIdx].finishingFiles || []), ...mapped], status: 'editing' }; return n; });
                                   }}
-                                  onRemoveNew={idx => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: n[activeStyleIdx].finishingFiles.filter((_, i) => i !== idx) }; return n; })}
+                                  onRemoveNew={idx => setStyleQueue(prev => { const n = [...prev]; n[activeStyleIdx] = { ...n[activeStyleIdx], finishingFiles: n[activeStyleIdx].finishingFiles.filter((_, i) => i !== idx), status: 'editing' }; return n; })}
                                 />
                               </div>
                             </div>
@@ -1614,7 +1713,17 @@ function BuyerMasters() {
                       </div>
 
                       {/* Desktop: Cancel + Save Current */}
-                      <button type="button" className="btn-secondary bm-desktop-only" onClick={closeModal}>Cancel</button>
+                      <button
+                        type="button"
+                        className="btn-secondary bm-desktop-only"
+                        onClick={() => {
+                          if (isNewFormMode && bmIsDirty) {
+                            bmConfirmExit('/buyer-masters');
+                          } else {
+                            closeModal();
+                          }
+                        }}
+                      >Cancel</button>
                       <button
                         type="button"
                         className="btn-secondary bm-desktop-only"
@@ -1659,6 +1768,17 @@ function BuyerMasters() {
               )}
             </>
           )}
+
+          {/* Unsaved Changes Modal for new Buyer Master form */}
+          <UnsavedChangesModal
+            isOpen={bmShowExitModal}
+            title="Unsaved Buyer Master Styles"
+            message={`You have ${styleQueue.filter(q => q.status !== 'saved').length} unsaved style(s) in this queue. Save as draft to resume later, or discard your changes.`}
+            onSave={null}
+            onSaveDraft={() => bmHandleSaveDraft(true)}
+            onDiscard={bmHandleDiscardAndExit}
+            onCancel={bmHandleCancelExit}
+          />
         </div>
       ) : (
         <>
@@ -1779,27 +1899,30 @@ function BuyerMasters() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedGroupedMasters.map(group => (
-                    <tr
-                      key={group.buyerId}
-                      onClick={() => openGroupedEdit(group)}
-                      style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
-                      className="table-fade-slide-up"
-                      title="Click to view/edit multi-style buyer master"
-                    >
-                      <td>
-                        <strong style={{ fontSize: '0.95rem' }}>{group.buyerName}</strong>
-                        {group.buyerCode && (
-                          <span className="navbar-role-badge admin-badge" style={{ marginLeft: '0.5rem', fontSize: '0.72rem' }}>
-                            {group.buyerCode}
+                  paginatedGroupedMasters.map(group => {
+                    const isRecentlyVisited = String(group.buyerId) === String(lastVisitedId) || String(group.id) === String(lastVisitedId);
+                    return (
+                      <tr
+                        key={group.buyerId}
+                        ref={isRecentlyVisited ? setHighlightRef : null}
+                        onClick={() => openGroupedEdit(group)}
+                        style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
+                        className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                        title="Click to view/edit multi-style buyer master"
+                      >
+                        <td>
+                          <strong style={{ fontSize: '0.95rem' }}>{group.buyerName}</strong>
+                          {group.buyerCode && (
+                            <span className="navbar-role-badge admin-badge" style={{ marginLeft: '0.5rem', fontSize: '0.72rem' }}>
+                              {group.buyerCode}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700, color: '#8b5a2b' }}>
+                            {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
                           </span>
-                        )}
-                      </td>
-                      <td>
-                        <span style={{ fontWeight: 700, color: '#8b5a2b' }}>
-                          {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
-                        </span>
-                      </td>
+                        </td>
                       <td>{group.totalUnits} Units</td>
                       <td>
                         <strong style={{ color: '#16a34a' }}>
@@ -1849,8 +1972,9 @@ function BuyerMasters() {
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
+                  );
+                })
+              )}
               </tbody>
             </table>
           </div>
@@ -1866,10 +1990,12 @@ function BuyerMasters() {
             ) : (
               paginatedGroupedMasters.map(group => {
                 const initials = group.buyerName.substring(0, 2).toUpperCase();
+                const isRecentlyVisited = String(group.buyerId) === String(lastVisitedId) || String(group.id) === String(lastVisitedId);
                 return (
                   <div 
-                    className="mobile-card smooth-fade-in" 
+                    className={`mobile-card smooth-fade-in ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                     key={group.buyerId} 
+                    ref={isRecentlyVisited ? setHighlightRef : null}
                     onClick={() => openGroupedEdit(group)}
                     style={{ backgroundColor: '#fff', cursor: 'pointer', flexDirection: 'column', gap: '0.75rem', padding: '1rem', border: '1px solid #e7e5e4', borderRadius: '16px', marginBottom: '0.75rem' }}
                   >
@@ -1879,7 +2005,9 @@ function BuyerMasters() {
                           {initials}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>{group.buyerName}</div>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>
+                            {group.buyerName}
+                          </div>
                           <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
                             Code: <strong>{group.buyerCode || '—'}</strong> · {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
                           </div>

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DraftsProvider, useDrafts } from './context/DraftsContext';
+import DraftsModal from './components/DraftsModal';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login          from './pages/Login';
@@ -44,9 +46,12 @@ function Navbar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showDraftsModal, setShowDraftsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { draftCount } = useDrafts();
 
   // ── Global & Expandable Search State ──
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -614,6 +619,37 @@ function Navbar() {
             <Search size={22} color="#8b5a2b" />
           </button>
 
+          {/* Mobile Drafts Button */}
+          <div
+            style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            onClick={() => setShowDraftsModal(true)}
+            title="Saved Drafts"
+          >
+            <FileBox size={22} color="#8b5a2b" />
+            {draftCount > 0 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '-3px',
+                  right: '-3px',
+                  backgroundColor: '#14b8a6',
+                  color: 'white',
+                  fontSize: '0.6rem',
+                  fontWeight: '800',
+                  width: '16px',
+                  height: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 0 2px #ffffff'
+                }}
+              >
+                {draftCount}
+              </span>
+            )}
+          </div>
+
           {/* Mobile Notification Bell */}
           {renderBell(notifRefMobile, "navbar-mobile-bell-container")}
 
@@ -910,9 +946,39 @@ function Navbar() {
           {/* Desktop Actions & User Section */}
           <div className="navbar-actions">
             <div className="navbar-action-icons">
+              {/* Drafts Button */}
+              <div
+                style={{ position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                onClick={() => setShowDraftsModal(true)}
+                title="Saved Drafts"
+              >
+                <FileBox size={26} color="#8b5a2b" className="navbar-action-icon" />
+                {draftCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-1px',
+                      right: '-2px',
+                      backgroundColor: '#14b8a6',
+                      color: 'white',
+                      fontSize: '0.62rem',
+                      fontWeight: '800',
+                      width: '17px',
+                      height: '17px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 0 2px #ffffff'
+                    }}
+                  >
+                    {draftCount}
+                  </span>
+                )}
+              </div>
+
               {/* Desktop Notification Bell */}
               {renderBell(notifRefDesktop, "desktop-only")}
-              {/* <Clock size={20} color="#64748b" className="navbar-action-icon" /> */}
             </div>
 
             {user && (
@@ -1281,6 +1347,8 @@ function Navbar() {
           </div>
         </div>
       )}
+      {/* Render Drafts Modal */}
+      <DraftsModal isOpen={showDraftsModal} onClose={() => setShowDraftsModal(false)} />
     </>
   );
 }
@@ -1446,7 +1514,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppLayout />
+        <DraftsProvider>
+          <AppLayout />
+        </DraftsProvider>
       </AuthProvider>
     </Router>
   );

@@ -4695,4 +4695,20 @@ select.filter-input {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   LAST VISITED ITEM HIGHLIGHT STYLES (Minimal & Classic)
+═══════════════════════════════════════════════════════════════ */
+.row-recently-visited {
+  position: relative !important;
+  background-color: #faf6f0 !important;
+  border-left: 3.5px solid #8b5a2b !important;
+  transition: background-color 0.25s ease, border-color 0.25s ease !important;
+}
 
+.card-recently-visited {
+  position: relative !important;
+  background-color: #faf6f0 !important;
+  border-left: 4px solid #8b5a2b !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05) !important;
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease !important;
+}

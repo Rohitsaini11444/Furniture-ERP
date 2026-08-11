@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText, Building2 } from 'lucide-react';
@@ -6,10 +6,12 @@ import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_STYLE, ORDER_OPTIONS_DATE_PINO, ORDER_OPTIONS_DATE_PONO, ORDER_OPTIONS_DATE_NAME } from '../components/OrderBySelect';
 import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 
 
 function Buyers() {
   const navigate = useNavigate();
+  const { id } = useParams();
   const [buyers, setBuyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,12 +33,20 @@ function Buyers() {
   });
   const [activeTab, setActiveTab] = useState('Overview');
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const { id } = useParams();
-  
+
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_buyers');
+      const savedPage = sessionStorage.getItem('last_visited_page_buyers');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyers', id, currentPage);
 
   // Tab-specific filters & pagination (50/page)
   const [bmSearch, setBmSearch] = useState('');
@@ -81,7 +91,12 @@ function Buyers() {
     fetchBuyers();
   }, [currentPage, ordering]);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, ordering]);
 
@@ -308,7 +323,7 @@ function Buyers() {
           }}>
             {[
               { id: 'Overview', label: 'Overview' },
-              { id: 'Buyer Master', label: `Buyer Master (${buyerDetails.buyerMasters.length})` },
+              { id: 'Buyer Master', label: `Buyer Master (${buyerDetails.buyerMasters.length > 0 ? 1 : 0})` },
               { id: 'PI', label: `PI (${buyerDetails.buyerPIs.length})` },
               { id: 'PO', label: `PO (${buyerDetails.pos.length})` }
             ].map(tab => (
@@ -485,92 +500,79 @@ function Buyers() {
               )}
 
               {/* TAB 2: BUYER MASTER */}
-              {activeTab === 'Buyer Master' && (
-                <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
-                      Buyer Master Styles ({filteredBMs.length} Total)
-                    </h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      {/* Search */}
-                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.35rem 0.6rem', backgroundColor: '#f8fafc' }}>
-                        <Search size={14} style={{ color: '#64748b', marginRight: '0.4rem' }} />
-                        <input
-                          type="text"
-                          placeholder="Search style or product..."
-                          value={bmSearch}
-                          onChange={e => { setBmSearch(e.target.value); setBmPage(1); }}
-                          style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: '0.85rem', width: '170px' }}
-                        />
-                      </div>
-                      {/* Order By Filter */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.78rem', color: '#8b5a2b', fontWeight: 700, textTransform: 'uppercase' }}>ORDER BY:</span>
-                        <OrderBySelect
-                          options={ORDER_OPTIONS_DATE_STYLE}
-                          value={bmOrder}
-                          onChange={setBmOrder}
-                        />
-                      </div>
+              {activeTab === 'Buyer Master' && (() => {
+                const totalStyles = buyerDetails.buyerMasters.length;
+                const totalUnits = buyerDetails.buyerMasters.reduce((sum, bm) => sum + (parseFloat(bm.quantity) || 0), 0);
+                const totalValue = buyerDetails.buyerMasters.reduce((sum, bm) => sum + (parseFloat(bm.price_usd) || 0), 0);
+                const lastUpdated = buyerDetails.buyerMasters.reduce((latest, bm) => {
+                  const d = new Date(bm.updated_at || bm.created_at || 0);
+                  return d > latest ? d : latest;
+                }, new Date(0));
+                return (
+                  <div style={{ backgroundColor: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                        Buyer Master Registry
+                      </h3>
                       <button onClick={() => navigate('/buyer-masters')} className="btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                         View All Buyer Masters →
                       </button>
                     </div>
-                  </div>
 
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Style No</th>
-                          <th>Product Name</th>
-                          <th>Material</th>
-                          <th>Finish</th>
-                          <th>Dimensions (L×B×H)</th>
-                          <th>Price (USD)</th>
-                          <th>Total CBM</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedBMs.map(bm => (
-                          <tr key={bm.id} onClick={() => navigate(`/buyer-masters/${bm.id}`, { state: { fromBuyer: selectedBuyer.id } })} style={{ cursor: 'pointer' }}>
-                            <td><span className="navbar-role-badge admin-badge">{bm.style_no}</span></td>
-                            <td><strong>{bm.product_name}</strong></td>
-                            <td>{bm.wood_type || '—'}</td>
-                            <td>{bm.finish_color || '—'}</td>
-                            <td>{bm.size_length || 0} × {bm.size_breadth || 0} × {bm.size_height || 0} cm</td>
-                            <td><strong>${parseFloat(bm.price_usd || 0).toFixed(2)}</strong></td>
-                            <td>{bm.total_cbm ? `${parseFloat(bm.total_cbm).toFixed(4)} CBM` : '—'}</td>
-                            <td onClick={e => e.stopPropagation()}>
-                              <button 
-                                onClick={() => navigate(`/buyer-masters/${bm.id}`, { state: { fromBuyer: selectedBuyer.id } })}
-                                className="btn-secondary" 
-                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
-                              >
-                                View Style
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {paginatedBMs.length === 0 && (
-                          <tr>
-                            <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                              No Buyer Master styles found matching filters.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                    {totalStyles === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                        No Buyer Master styles registered for this buyer yet.
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Buyer Master</th>
+                              <th>Styles Registered</th>
+                              <th>Total Units</th>
+                              <th>Total Value ($)</th>
+                              <th>Last Updated</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr style={{ cursor: 'pointer' }} onClick={() => navigate(`/buyer-masters?buyer=${selectedBuyer.id}`, { state: { fromBuyer: selectedBuyer.id } })}>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <strong style={{ fontSize: '1rem' }}>{selectedBuyer.name}</strong>
+                                  <span className="navbar-role-badge admin-badge" style={{ fontSize: '0.7rem' }}>{selectedBuyer.code}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <span style={{ color: '#6366f1', fontWeight: 700, fontSize: '1rem' }}>{totalStyles} Styles</span>
+                              </td>
+                              <td>
+                                <span style={{ color: '#14b8a6', fontWeight: 600 }}>{totalUnits > 0 ? `${totalUnits} Units` : '—'}</span>
+                              </td>
+                              <td>
+                                <span style={{ color: '#16a34a', fontWeight: 700 }}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </td>
+                              <td style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                {lastUpdated.getFullYear() > 1970 ? lastUpdated.toLocaleDateString() : '—'}
+                              </td>
+                              <td onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => navigate(`/buyer-masters?buyer=${selectedBuyer.id}`)}
+                                  className="btn-secondary"
+                                  style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem', marginRight: '0.5rem' }}
+                                >
+                                  Edit ({totalStyles})
+                                </button>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-
-                  {bmTotalPages > 1 && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <Pagination currentPage={bmPage} totalPages={bmTotalPages} onPageChange={setBmPage} />
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              })()}
 
               {/* TAB 3: PI */}
               {activeTab === 'PI' && (
@@ -822,31 +824,35 @@ function Buyers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredBuyers.map(b => (
-                    <tr 
-                      key={b.id} 
-                      onClick={() => navigate(`/buyers/${b.id}`)}
-                      style={{ cursor: 'pointer', transition: 'background-color 0.2s ease' }}
-                      className="smooth-fade-in"
-                      title="Click to view details"
-                    >
-                      <td>
-                        <span style={{ fontWeight: 'bold', color: '#8b5a2b' }}>
-                          {b.name}
-                        </span>
-                      </td>
-                      <td><span className="navbar-role-badge admin-badge">{b.code}</span></td>
-                      <td>{b.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                      <td>{b.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                      <td>{b.address || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button onClick={() => openEditModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
-                          <button onClick={() => openDeleteModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  filteredBuyers.map(b => {
+                    const isRecentlyVisited = String(b.id) === String(lastVisitedId);
+                    return (
+                      <tr 
+                        key={b.id} 
+                        ref={isRecentlyVisited ? setHighlightRef : null}
+                        onClick={() => navigate(`/buyers/${b.id}`)}
+                        style={{ cursor: 'pointer', transition: 'background-color 0.2s ease' }}
+                        className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                        title="Click to view details"
+                      >
+                        <td>
+                          <span style={{ fontWeight: 'bold', color: '#8b5a2b' }}>
+                            {b.name}
+                          </span>
+                        </td>
+                        <td><span className="navbar-role-badge admin-badge">{b.code}</span></td>
+                        <td>{b.email || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td>{b.phone || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td>{b.address || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button onClick={() => openEditModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', marginRight: 0 }}>Edit</button>
+                            <button onClick={() => openDeleteModal(b)} className="btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#fca5a5' }}>Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -863,10 +869,12 @@ function Buyers() {
             ) : (
               filteredBuyers.map(b => {
                 const initials = b.name ? b.name.substring(0, 2).toUpperCase() : 'DB';
+                const isRecentlyVisited = String(b.id) === String(lastVisitedId);
                 return (
                   <div 
-                    className="mobile-card smooth-fade-in" 
+                    className={`mobile-card smooth-fade-in ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                     key={b.id} 
+                    ref={isRecentlyVisited ? setHighlightRef : null}
                     onClick={() => navigate(`/buyers/${b.id}`)}
                   >
                     <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', fontWeight: 'bold', fontSize: '1.2rem', borderRadius: '12px', width: '56px', height: '56px' }}>
@@ -874,7 +882,9 @@ function Buyers() {
                     </div>
                     
                     <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                      <div className="mobile-card-title">{b.name}</div>
+                      <div className="mobile-card-title">
+                        {b.name}
+                      </div>
                       <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem' }}>
                         <span className="navbar-role-badge admin-badge" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', padding: '2px 8px' }}>{b.code}</span>
                       </div>

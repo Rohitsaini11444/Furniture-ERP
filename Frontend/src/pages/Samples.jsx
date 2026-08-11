@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
+import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2, FileText } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
 import CustomSelect from '../components/CustomSelect';
 import { useAuth } from '../context/AuthContext';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 
 
@@ -132,8 +135,6 @@ function Lightbox({ images, startIndex, onClose }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 function Samples() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -141,10 +142,42 @@ function Samples() {
 
   const [samples, setSamples] = useState([]);
   const [buyers, setBuyers] = useState([]);
-  const [finishesOptions, setFinishesOptions] = useState([]);
+  const location = useLocation();
+
+  const {
+    isDirty,
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveAndExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'sample',
+    formLabel: 'Sample',
+    getFormTitle: (data) => {
+      return `Sample ${data?.formData?.style_no || 'New'} - ${data?.formData?.product_name || 'Draft'}`;
+    },
+    getFormData: () => ({ formData, materialsList, finishesList }),
+    targetPath: '/samples/new',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('sample-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+  const [finishesOptions, setFinishesOptions] = useState([]);
 
   const [formError, setFormError] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -169,11 +202,20 @@ function Samples() {
   const [filterBuyer, setFilterBuyer] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
   const [filtered, setFiltered] = useState([]);
-  
+
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_samples');
+      const savedPage = sessionStorage.getItem('last_visited_page_samples');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('samples', id, currentPage);
 
   // Excel Import state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -348,8 +390,13 @@ function Samples() {
     }
   };
 
-  // Reset page when filters change
+  // Reset page when filters change (skip initial mount)
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
     setSelectedRowIds(new Set());
   }, [filterBuyer, filterMaterial, ordering]);
@@ -362,7 +409,7 @@ function Samples() {
     setFiltered(f);
   }, [filterBuyer, filterMaterial, samples]);
 
-  // Load sample on id change (routing edit)
+  // Load sample on id change (routing edit) or restore draft
   useEffect(() => {
     if (id && id !== 'new') {
       api.get(`/samples/${id}/`)
@@ -397,22 +444,34 @@ function Samples() {
         })
         .catch(err => console.error(err));
     } else {
-      setFormData(emptyForm);
-      setMaterialsList(['']);
-      setFinishesList(['']);
-      setImages([]);
-      setEditingId(null);
+      if (location.state?.draftData) {
+        if (location.state.draftData.formData) setFormData(location.state.draftData.formData);
+        if (location.state.draftData.materialsList) setMaterialsList(location.state.draftData.materialsList);
+        if (location.state.draftData.finishesList) setFinishesList(location.state.draftData.finishesList);
+        setIsDirty(true);
+        if (location.state.draftId) {
+          setCurrentDraftId(location.state.draftId);
+        }
+      } else {
+        setFormData(emptyForm);
+        setMaterialsList(['']);
+        setFinishesList(['']);
+        setImages([]);
+        setEditingId(null);
+      }
     }
-  }, [id]);
+  }, [id, location.state]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
 
   const handleChange = (e) => {
+    setIsDirty(true);
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     if (formError) setFormError('');
   };
 
   const handleMaterialItemChange = (idx, value) => {
+    setIsDirty(true);
     const next = [...materialsList];
     next[idx] = value;
     setMaterialsList(next);
@@ -554,6 +613,8 @@ function Samples() {
         });
       }
 
+      if (currentDraftId) clearDraft(currentDraftId);
+      setIsDirty(false);
       closeModal();
       fetchSamples();
     } catch (err) {
@@ -585,7 +646,7 @@ function Samples() {
             </div>
             
             <div className="modal-body" style={{ padding: 0 }}>
-              <form onSubmit={handleSubmit}>
+              <form id="sample-form" onSubmit={handleSubmit}>
                 {formError && (
                   <div style={{
                     backgroundColor: '#fef2f2',
@@ -828,8 +889,24 @@ function Samples() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        if (confirmExit('/samples')) closeModal();
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                      onClick={() => handleSaveDraft()}
+                    >
+                      <FileText size={16} /> Save as Draft
+                    </button>
                     <button type="submit" className="btn-primary" disabled={submitting}>
                       {submitting ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Sample')}
                     </button>
@@ -1244,64 +1321,70 @@ function Samples() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map(s => (
-                    <tr
-                      key={s.id}
-                      onClick={() => selectionMode ? toggleSelectRow(s.id) : openEditModal(s)}
-                      style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : 'transparent', transition: 'background 0.15s' }}
-                      className="table-fade-slide-up"
-                    >
-                      {selectionMode && (
-                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedRowIds.has(s.id)}
-                            onChange={e => toggleSelectRow(s.id, e)}
-                            style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
-                          />
-                        </td>
-                      )}
-                      <td>
-                        <div className="table-image-stack">
-                          {(s.images || []).slice(0, 3).map((img, idx) => (
-                            <img
-                              key={img.id}
-                              src={img.image_url}
-                              alt={s.product_name}
-                              className="table-thumb"
-                              style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
+                  filtered.map(s => {
+                    const isRecentlyVisited = String(s.id) === String(lastVisitedId);
+                    return (
+                      <tr
+                        key={s.id}
+                        ref={isRecentlyVisited ? setHighlightRef : null}
+                        onClick={() => selectionMode ? toggleSelectRow(s.id) : openEditModal(s)}
+                        style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : undefined, transition: 'background 0.15s' }}
+                        className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                      >
+                        {selectionMode && (
+                          <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedRowIds.has(s.id)}
+                              onChange={e => toggleSelectRow(s.id, e)}
+                              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
                             />
-                          ))}
-                          {(s.images || []).length === 0 && (
-                            <div className="table-no-img"><ImageIcon size={14} /></div>
-                          )}
-                          {(s.images || []).length > 3 && (
-                            <div className="table-more-imgs">+{s.images.length - 3}</div>
-                          )}
-                        </div>
-                      </td>
-                      <td><strong>{s.style_no || s.id}</strong></td>
-                      <td><strong>{s.product_name}</strong></td>
-                      <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td>{s.finish_color}</td>
-                      <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td>
-                        {s.size_length && s.size_breadth && s.size_height
-                          ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
-                          : <span style={{color:'var(--text-muted)'}}>—</span>
-                        }
-                      </td>
-                      <td>
-                        {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
-                          ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
-                          : <span style={{color:'var(--text-muted)'}}>—</span>
-                        }
-                      </td>
-                    </tr>
-                  ))
+                          </td>
+                        )}
+                        <td>
+                          <div className="table-image-stack">
+                            {(s.images || []).slice(0, 3).map((img, idx) => (
+                              <img
+                                key={img.id}
+                                src={img.image_url}
+                                alt={s.product_name}
+                                className="table-thumb"
+                                style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
+                              />
+                            ))}
+                            {(s.images || []).length === 0 && (
+                              <div className="table-no-img"><ImageIcon size={14} /></div>
+                            )}
+                            {(s.images || []).length > 3 && (
+                              <div className="table-more-imgs">+{s.images.length - 3}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <strong>{s.style_no || s.id}</strong>
+                        </td>
+                        <td><strong>{s.product_name}</strong></td>
+                        <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>{s.finish_color}</td>
+                        <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>
+                          {s.size_length && s.size_breadth && s.size_height
+                            ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
+                            : <span style={{color:'var(--text-muted)'}}>—</span>
+                          }
+                        </td>
+                        <td>
+                          {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
+                            ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
+                            : <span style={{color:'var(--text-muted)'}}>—</span>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1316,40 +1399,46 @@ function Samples() {
                 No samples found.
               </div>
             ) : (
-              filtered.map(s => (
-                <div 
-                  className="mobile-card smooth-fade-in" 
-                  key={s.id} 
-                  onClick={() => openEditModal(s)}
-                  style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : '#fff' }}
-                >
-                  <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedRowIds.has(s.id)}
-                      onChange={e => toggleSelectRow(s.id, e)}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                    />
-                  </div>
-                  
-                  <div className="mobile-card-img">
-                    {s.images && s.images.length > 0 ? (
-                      <img src={s.images[0].image_url} alt="sample" />
-                    ) : (
-                      <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
-                    )}
-                  </div>
-                  
-                  <div className="mobile-card-content">
-                    <div className="mobile-card-title">{s.sample_id}</div>
-                    <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
-                  </div>
+              filtered.map(s => {
+                const isRecentlyVisited = String(s.id) === String(lastVisitedId);
+                return (
+                  <div 
+                    className={`mobile-card smooth-fade-in ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
+                    key={s.id} 
+                    ref={isRecentlyVisited ? setHighlightRef : null}
+                    onClick={() => openEditModal(s)}
+                    style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : undefined }}
+                  >
+                    <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(s.id)}
+                        onChange={e => toggleSelectRow(s.id, e)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                    </div>
+                    
+                    <div className="mobile-card-img">
+                      {s.images && s.images.length > 0 ? (
+                        <img src={s.images[0].image_url} alt="sample" />
+                      ) : (
+                        <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
+                      )}
+                    </div>
+                    
+                    <div className="mobile-card-content">
+                      <div className="mobile-card-title">
+                        {s.sample_id}
+                      </div>
+                      <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
+                    </div>
 
-                  <div className="mobile-card-arrow">
-                    <ChevronRight size={20} color="#94a3b8" />
+                    <div className="mobile-card-arrow">
+                      <ChevronRight size={20} color="#94a3b8" />
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
           
@@ -1624,6 +1713,16 @@ function Samples() {
           </div>
         </div>
       )}
+      {/* Unsaved Changes Exit Guard Modal */}
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        title="Unsaved Sample Form Changes"
+        message="You have unsaved changes in this Sample form. Would you like to save your Sample or store it as a draft before leaving?"
+        onSave={handleSaveAndExit}
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
+      />
     </div>
   );
 }

@@ -495,13 +495,13 @@ function Dashboard() {
           Quick Action Shortcuts
         </h4>
         <div className="admin-quick-actions">
-          <Link to="/samples" className="quick-action-btn">
+          <Link to="/samples/new" className="quick-action-btn">
             <Plus size={16} color="#22c55e" /> Add New Sample
           </Link>
           <Link to="/buyers" className="quick-action-btn">
             <Users size={16} color="#ec4899" /> Add Buyer
           </Link>
-          <Link to="/pos" className="quick-action-btn">
+          <Link to="/pos/new" className="quick-action-btn">
             <ClipboardList size={16} color="#14b8a6" /> Create Supplier PO
           </Link>
           <Link to="/tools" className="quick-action-btn">

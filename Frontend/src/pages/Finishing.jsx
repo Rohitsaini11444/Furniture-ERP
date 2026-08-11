@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { 
   X, Upload, Sparkles, Filter, Search, ArrowLeft, Download, 
@@ -9,6 +9,9 @@ import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
 import { useAuth } from '../context/AuthContext';
 import CustomSelect from '../components/CustomSelect';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 const emptyFinishForm = {
   name: '',
@@ -98,8 +101,9 @@ function SkeletonCard() {
 function Finishing() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAdmin } = useAuth();
-
+  const isDetailPage = !!id;
   const [finishes, setFinishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -109,12 +113,47 @@ function Finishing() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
+  // ── Unsaved Changes / Draft hook ───────────────────────────────────────────
+  const {
+    isDirty,
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveAndExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'finishing',
+    formLabel: 'Finishing',
+    getFormTitle: (data) => data?.name ? `Finish: ${data.name}${data.finish_code ? ' (' + data.finish_code + ')' : ''}` : 'New Finish',
+    getFormData: () => ({ ...formData }),
+    targetPath: '/finishing/new',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('finish-detail-form');
+      if (formEl) { formEl.requestSubmit(); return true; }
+      return false;
+    }
+  });
+
   // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
   const [filterWoodType, setFilterWoodType] = useState('');
   const [ordering, setOrdering] = useState('-created_at');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_finishes');
+      const savedPage = sessionStorage.getItem('last_visited_page_finishes');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('finishes', id, currentPage);
 
   // Modal / Prompt confirmation states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -225,8 +264,6 @@ function Finishing() {
     }
   };
 
-  const isDetailPage = Boolean(id);
-
   // ── Fetch Finishes ─────────────────────────────────────────────────────────
 
   const fetchFinishes = useCallback(() => {
@@ -253,7 +290,7 @@ function Finishing() {
     fetchFinishes();
   }, [fetchFinishes]);
 
-  // Handle URL parameter for detail/edit page
+  // Handle URL parameter for detail/edit page or restore draft
   useEffect(() => {
     if (id && id !== 'new') {
       api.get(`/finishes/${id}/`)
@@ -274,11 +311,18 @@ function Finishing() {
         });
     } else if (id === 'new') {
       setEditingId(null);
-      setFormData(emptyFinishForm);
-      setImageFile(null);
-      setImagePreview(null);
+      if (location.state?.draftData) {
+        const d = location.state.draftData;
+        setFormData(prev => ({ ...prev, ...d }));
+        setIsDirty(true);
+        if (location.state.draftId) setCurrentDraftId(location.state.draftId);
+      } else {
+        setFormData(emptyFinishForm);
+        setImageFile(null);
+        setImagePreview(null);
+      }
     }
-  }, [id, navigate]);
+  }, [id, location.state, navigate]);
 
   // ── Form Handlers ──────────────────────────────────────────────────────────
 
@@ -286,13 +330,16 @@ function Finishing() {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (formError) setFormError('');
+    if (!editingId) setIsDirty(true); // mark dirty on new forms
   };
+
 
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+      if (!editingId) setIsDirty(true);
     }
   };
 
@@ -338,6 +385,8 @@ function Finishing() {
         });
       }
 
+      if (currentDraftId) clearDraft(currentDraftId);
+      setIsDirty(false);
       navigate('/finishing');
       fetchFinishes();
     } catch (err) {
@@ -429,7 +478,7 @@ function Finishing() {
               </h2>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form id="finish-detail-form" onSubmit={handleSubmit}>
               {/* Error Alert Banner */}
               {formError && (
                 <div style={{
@@ -569,10 +618,37 @@ function Finishing() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  {!editingId && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDraft()}
+                      style={{
+                        padding: '0.55rem 1rem',
+                        borderRadius: '10px',
+                        fontWeight: 650,
+                        fontSize: '0.85rem',
+                        border: '1.5px solid #d6c7b2',
+                        backgroundColor: '#fdf8f5',
+                        color: '#8b5a2b',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      Save Draft
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => navigate('/finishing')}
+                    onClick={() => {
+                      if (!editingId && isDirty) {
+                        confirmExit('/finishing');
+                      } else {
+                        navigate('/finishing');
+                      }
+                    }}
                     style={{ padding: '0.55rem 1.15rem', borderRadius: '10px', fontWeight: 650 }}
                   >
                     Cancel
@@ -662,6 +738,17 @@ function Finishing() {
             </div>
           </div>
         )}
+
+        {/* Unsaved Changes Modal */}
+        <UnsavedChangesModal
+          isOpen={showExitModal}
+          title="Unsaved Finish Changes"
+          message="You have unsaved changes in this finish form. Would you like to save as a draft so you can continue later?"
+          onSave={handleSaveAndExit}
+          onSaveDraft={() => handleSaveDraft(true)}
+          onDiscard={handleDiscardAndExit}
+          onCancel={handleCancelExit}
+        />
       </div>
     );
   }
@@ -1082,14 +1169,16 @@ function Finishing() {
           {finishes.map((finish, index) => {
             const imgSrc = finish.image_url || finish.image;
             const isSelected = selectedFinishIds.has(finish.id);
+            const isRecentlyVisited = String(finish.id) === String(lastVisitedId);
 
             return (
               <div
                 key={finish.id}
-                className="finish-card-animated"
+                ref={isRecentlyVisited ? setHighlightRef : null}
+                className={`finish-card-animated ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                 style={{
                   animationDelay: `${index * 50}ms`,
-                  backgroundColor: isSelected ? '#fffbeb' : '#ffffff',
+                  backgroundColor: isSelected ? '#fffbeb' : undefined,
                   borderRadius: '24px',
                   boxShadow: '0 8px 30px rgba(0, 0, 0, 0.04)',
                   padding: '1.25rem 1.35rem',
@@ -1099,7 +1188,7 @@ function Finishing() {
                   cursor: 'pointer',
                   transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
                   position: 'relative',
-                  border: isSelected ? '2px solid #f59e0b' : '1px solid rgba(0,0,0,0.04)'
+                  border: isSelected ? '2px solid #f59e0b' : undefined
                 }}
                 onClick={() => selectionMode ? toggleSelectFinish(finish.id) : navigate(`/finishing/${finish.id}`)}
                 onMouseEnter={e => {
@@ -1187,7 +1276,11 @@ function Finishing() {
                     fontWeight: 800,
                     color: '#1a1a1a',
                     letterSpacing: '-0.02em',
-                    lineHeight: 1.25
+                    lineHeight: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    flexWrap: 'wrap'
                   }}>
                     {finish.name}
                   </h3>

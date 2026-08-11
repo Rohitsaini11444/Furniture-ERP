@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2 } from 'lucide-react';
@@ -8,6 +8,9 @@ import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySel
 import { CustomDatePicker } from '../components/CustomDatePicker';
 import CustomSelect from '../components/CustomSelect';
 import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBreakdownModal';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 
 
@@ -58,7 +61,6 @@ function num2words(num) {
 function BuyerPIs() {
   const { id } = useParams();
   const navigate = useNavigate();
-
   const [pis, setPis] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [buyerMasters, setBuyerMasters] = useState([]);
@@ -77,9 +79,18 @@ function BuyerPIs() {
 
   
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_buyer_pis');
+      const savedPage = sessionStorage.getItem('last_visited_page_buyer_pis');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyer_pis', id, currentPage);
   
 
   const emptyForm = {
@@ -94,8 +105,84 @@ function BuyerPIs() {
     remarks: '',
     items: [],
   };
+  const location = useLocation();
+
+  const {
+    isDirty,
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveAndExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'pi',
+    formLabel: 'Performa Invoice',
+    getFormTitle: (data) => {
+      const bObj = buyers.find(b => b.id === data?.buyer);
+      return `PI ${data?.pi_no || 'New'} - ${bObj?.name || 'Draft'} (${data?.items?.length || 0} items)`;
+    },
+    getFormData: () => formData,
+    targetPath: '/performa-invoices/new',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('pi-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
 
   const [formData, setFormData] = useState(emptyForm);
+
+  useEffect(() => {
+    if (id && id !== 'new') {
+      api.get(`/buyer-pis/${id}/`)
+        .then(res => {
+          const p = res.data;
+          setFormData({
+            pi_no: p.pi_no || '',
+            pi_date: p.pi_date || '',
+            ex_factory_date: p.ex_factory_date || '',
+            payment_terms: p.payment_terms || '100% TT 30 Days from BL',
+            buyer: p.buyer || '',
+            delivered_to_name: p.delivered_to_name || '',
+            delivered_to_company: p.delivered_to_company || '',
+            delivered_to_address: p.delivered_to_address || '',
+            remarks: p.remarks || '',
+            items: p.items || [],
+          });
+          setEditingId(p.id);
+          if (p.buyer) {
+            fetchBuyerMasters(p.buyer);
+          }
+        })
+        .catch(err => console.error('Failed to fetch Buyer PI detail', err));
+    } else if (id === 'new') {
+      if (location.state?.draftData) {
+        setFormData(location.state.draftData);
+        setIsDirty(true);
+        if (location.state.draftId) {
+          setCurrentDraftId(location.state.draftId);
+        }
+        if (location.state.draftData.buyer) {
+          fetchBuyerMasters(location.state.draftData.buyer);
+        }
+      } else {
+        const randomNum = Math.floor(1000000 + Math.random() * 9000000);
+        setFormData({
+          ...emptyForm,
+          pi_no: `P${randomNum}`,
+        });
+        setEditingId(null);
+      }
+    }
+  }, [id, location.state]);
 
   const fetchPIs = () => {
     setLoading(true);
@@ -137,7 +224,12 @@ function BuyerPIs() {
     fetchBuyers();
   }, []);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, filterBuyerId, ordering]);
 
@@ -145,42 +237,10 @@ function BuyerPIs() {
     fetchPIs();
   }, [currentPage, ordering, filterBuyerId]);
 
-  useEffect(() => {
-    if (id && id !== 'new') {
-      api.get(`/buyer-pis/${id}/`)
-        .then(res => {
-          const p = res.data;
-          setFormData({
-            pi_no: p.pi_no || '',
-            pi_date: p.pi_date || '',
-            ex_factory_date: p.ex_factory_date || '',
-            payment_terms: p.payment_terms || '100% TT 30 Days from BL',
-            buyer: p.buyer || '',
-            delivered_to_name: p.delivered_to_name || '',
-            delivered_to_company: p.delivered_to_company || '',
-            delivered_to_address: p.delivered_to_address || '',
-            remarks: p.remarks || '',
-            items: p.items || [],
-          });
-          setEditingId(p.id);
-          if (p.buyer) {
-            fetchBuyerMasters(p.buyer);
-          }
-        })
-        .catch(err => console.error('Failed to fetch Buyer PI detail', err));
-    } else if (id === 'new') {
-      const randomNum = Math.floor(1000000 + Math.random() * 9000000);
-      setFormData({
-        ...emptyForm,
-        pi_no: `P${randomNum}`,
-      });
-      setEditingId(null);
-    }
-  }, [id]);
-
   const handleBuyerChange = (eOrVal) => {
     const buyerId = (typeof eOrVal === 'object' && eOrVal?.target) ? eOrVal.target.value : eOrVal;
     const bObj = buyers.find(b => b.id === buyerId);
+    setIsDirty(true);
     setFormData(prev => ({
       ...prev,
       buyer: buyerId,
@@ -197,10 +257,12 @@ function BuyerPIs() {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    setIsDirty(true);
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleAddManualItem = () => {
+    setIsDirty(true);
     setFormData(prev => ({
       ...prev,
       items: [
@@ -324,6 +386,8 @@ function BuyerPIs() {
       : api.post('/buyer-pis/', payload);
 
     req.then(() => {
+      if (currentDraftId) clearDraft(currentDraftId);
+      setIsDirty(false);
       navigate('/performa-invoices');
       fetchPIs();
     }).catch(err => {
@@ -434,7 +498,7 @@ function BuyerPIs() {
               )}
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form id="pi-form" onSubmit={handleSubmit}>
               {/* Header Info */}
               <div className="form-section">
                 <h3 className="form-section-title">🏢 Buyer & Exporter Info</h3>
@@ -508,43 +572,118 @@ function BuyerPIs() {
                 </div>
 
                 {/* Import from Buyer Master */}
-                {formData.buyer && buyerMasters.length > 0 && (
-                  <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #d6c7b2', borderRadius: '14px', padding: '1.25rem', marginBottom: '1.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
-                        <Layers size={20} color="#8b5a2b" /> Select Styles from Buyer Master to Populate PI
+                {formData.buyer && buyerMasters.length > 0 && (() => {
+                  const filteredBuyerMasters = buyerMasters.filter(bm => {
+                    if (!styleSearchTerm) return true;
+                    const t = styleSearchTerm.toLowerCase();
+                    return (
+                      (bm.style_no && bm.style_no.toLowerCase().includes(t)) ||
+                      (bm.product_name && bm.product_name.toLowerCase().includes(t)) ||
+                      (bm.wood_type && bm.wood_type.toLowerCase().includes(t)) ||
+                      (bm.finish_color && bm.finish_color.toLowerCase().includes(t))
+                    );
+                  });
+
+                  const isAllFilteredSelected = filteredBuyerMasters.length > 0 && filteredBuyerMasters.every(bm => selectedMasterIds.includes(bm.id));
+
+                  const handleToggleSelectAll = () => {
+                    if (isAllFilteredSelected) {
+                      const filteredIds = new Set(filteredBuyerMasters.map(bm => bm.id));
+                      setSelectedMasterIds(prev => prev.filter(id => !filteredIds.has(id)));
+                    } else {
+                      const filteredIds = filteredBuyerMasters.map(bm => bm.id);
+                      setSelectedMasterIds(prev => Array.from(new Set([...prev, ...filteredIds])));
+                    }
+                  };
+
+                  const handleImportAll = () => {
+                    const listToImport = filteredBuyerMasters.length > 0 ? filteredBuyerMasters : buyerMasters;
+                    if (listToImport.length === 0) return;
+
+                    const newItems = listToImport.map(bm => {
+                      const sample = bm.sample_detail || {};
+                      const cbmVal = parseFloat(bm.cbm) || parseFloat(sample.cbm) || 0.15;
+                      const priceVal = parseFloat(bm.price_usd) || parseFloat(sample.usd) || 0;
+                      const qty = (bm.units !== undefined && bm.units !== null) ? parseInt(bm.units) : 1;
+                      const totCbm = bm.total_cbm ? parseFloat(bm.total_cbm) : (qty * cbmVal);
+                      const totAmt = bm.total_amount ? parseFloat(bm.total_amount) : (qty * priceVal);
+
+                      return {
+                        buyer_master: bm.id,
+                        barcode: sample.sample_id || '',
+                        buyer_no: bm.buyer_code || '',
+                        style_no: bm.style_no || '',
+                        product_name: bm.product_name || '',
+                        size_length: bm.size_length || sample.size_length || '',
+                        size_breadth: bm.size_breadth || sample.size_breadth || '',
+                        size_height: bm.size_height || sample.size_height || '',
+                        material: bm.wood_type || sample.material || '',
+                        finish_color: bm.finish_color || sample.finish_color || '',
+                        cbm: cbmVal,
+                        price_usd: priceVal,
+                        units: qty,
+                        total_cbm: totCbm.toFixed(4),
+                        total_amount: totAmt.toFixed(2),
+                        remarks: bm.remark || '',
+                        image_url: sample.images && sample.images.length > 0 ? sample.images[0].image_url : '',
+                      };
+                    });
+
+                    setFormData(prev => ({
+                      ...prev,
+                      items: [...prev.items, ...newItems]
+                    }));
+                    setSelectedMasterIds([]);
+                  };
+
+                  return (
+                    <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #d6c7b2', borderRadius: '14px', padding: '1.25rem', marginBottom: '1.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, color: '#1e293b', fontSize: '1rem' }}>
+                          <Layers size={20} color="#8b5a2b" /> Select Styles from Buyer Master to Populate PI
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <button
+                            type="button"
+                            onClick={handleToggleSelectAll}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              fontSize: '0.82rem',
+                              color: '#8b5a2b',
+                              fontWeight: 650,
+                              backgroundColor: isAllFilteredSelected ? '#f5efe6' : '#ffffff',
+                              border: '1.5px solid #d6c7b2',
+                              padding: '4px 12px',
+                              borderRadius: '20px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            {isAllFilteredSelected ? '✓ Deselect All' : '☐ Select All'}
+                          </button>
+                          <span style={{ fontSize: '0.82rem', color: '#8b5a2b', fontWeight: 700, backgroundColor: '#f5efe6', padding: '4px 12px', borderRadius: '20px' }}>
+                            {selectedMasterIds.length} style(s) selected
+                          </span>
+                        </div>
                       </div>
-                      <span style={{ fontSize: '0.82rem', color: '#8b5a2b', fontWeight: 700, backgroundColor: '#f5efe6', padding: '4px 12px', borderRadius: '20px' }}>
-                        {selectedMasterIds.length} style(s) selected
-                      </span>
-                    </div>
 
-                    {/* Search Box */}
-                    <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
-                      <Search size={16} color="#8b5a2b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                      <input
-                        type="text"
-                        placeholder="Search styles by number, product name or wood..."
-                        value={styleSearchTerm}
-                        onChange={e => setStyleSearchTerm(e.target.value)}
-                        style={{ width: '100%', padding: '0.55rem 0.8rem 0.55rem 2.3rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.88rem', outline: 'none' }}
-                      />
-                    </div>
+                      {/* Search Box */}
+                      <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+                        <Search size={16} color="#8b5a2b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                        <input
+                          type="text"
+                          placeholder="Search styles by number, product name or wood..."
+                          value={styleSearchTerm}
+                          onChange={e => setStyleSearchTerm(e.target.value)}
+                          style={{ width: '100%', padding: '0.55rem 0.8rem 0.55rem 2.3rem', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '0.88rem', outline: 'none' }}
+                        />
+                      </div>
 
-                    {/* Interactive List */}
-                    <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
-                      {buyerMasters
-                        .filter(bm => {
-                          if (!styleSearchTerm) return true;
-                          const t = styleSearchTerm.toLowerCase();
-                          return (
-                            (bm.style_no && bm.style_no.toLowerCase().includes(t)) ||
-                            (bm.product_name && bm.product_name.toLowerCase().includes(t)) ||
-                            (bm.wood_type && bm.wood_type.toLowerCase().includes(t)) ||
-                            (bm.finish_color && bm.finish_color.toLowerCase().includes(t))
-                          );
-                        })
-                        .map(bm => {
+                      {/* Interactive List */}
+                      <div style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '4px' }}>
+                        {filteredBuyerMasters.map(bm => {
                           const isSelected = selectedMasterIds.includes(bm.id);
                           return (
                             <div
@@ -586,19 +725,38 @@ function BuyerPIs() {
                             </div>
                           );
                         })}
-                    </div>
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={handleImportBuyerMasters}
-                      className="btn-primary"
-                      disabled={selectedMasterIds.length === 0}
-                      style={{ marginTop: '0.85rem', padding: '0.55rem 1.25rem', fontSize: '0.88rem' }}
-                    >
-                      Import Selected Styles ({selectedMasterIds.length})
-                    </button>
-                  </div>
-                )}
+                      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.85rem', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={handleImportBuyerMasters}
+                          className="btn-primary"
+                          disabled={selectedMasterIds.length === 0}
+                          style={{ padding: '0.55rem 1.25rem', fontSize: '0.88rem' }}
+                        >
+                          Import Selected Styles ({selectedMasterIds.length})
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleImportAll}
+                          className="btn-secondary"
+                          style={{
+                            padding: '0.55rem 1.25rem',
+                            fontSize: '0.88rem',
+                            borderColor: '#8b5a2b',
+                            color: '#8b5a2b',
+                            fontWeight: 650,
+                            backgroundColor: '#fdf8f5'
+                          }}
+                        >
+                          ⚡ Import All Styles ({filteredBuyerMasters.length})
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
 
                 <div className="table-container" style={{ overflowX: 'auto', width: '100%', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
@@ -707,8 +865,26 @@ function BuyerPIs() {
                 </div>
               </div>
 
-              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => navigate('/performa-invoices')}>Cancel</button>
+              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    if (confirmExit('/performa-invoices')) {
+                      navigate('/performa-invoices');
+                    }
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  onClick={() => handleSaveDraft()}
+                >
+                  <FileText size={16} /> Save as Draft
+                </button>
                 <button type="submit" className="btn-primary">
                   {editingId ? 'Save PI Changes' : 'Create Performa Invoice'}
                 </button>
@@ -1082,16 +1258,19 @@ function BuyerPIs() {
                   const pAmt = pItems.reduce((acc, it) => acc + (parseFloat(it.total_amount) || 0), 0);
                   const pRem = p.remaining_units !== undefined ? p.remaining_units : pUnits;
                   const pAlloc = p.allocated_units !== undefined ? p.allocated_units : 0;
+                  const isRecentlyVisited = String(p.id) === String(lastVisitedId);
 
                   return (
                     <tr
                       key={p.id}
+                      ref={isRecentlyVisited ? setHighlightRef : null}
                       onClick={() => navigate(`/performa-invoices/${p.id}`)}
                       style={{
                         cursor: 'pointer',
                         backgroundColor: selectedRowIds.has(p.id) ? '#dcfce7' : undefined,
                         transition: 'background-color 0.2s ease',
                       }}
+                      className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                       title="Click to view/edit detail"
                     >
                       <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
@@ -1102,7 +1281,9 @@ function BuyerPIs() {
                           style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#16a34a' }}
                         />
                       </td>
-                      <td><strong>{p.pi_no}</strong></td>
+                      <td>
+                        <strong>{p.pi_no}</strong>
+                      </td>
                       <td>{p.pi_date || '—'}</td>
                       <td>
                         <strong>{p.buyer_detail?.name}</strong>
@@ -1172,20 +1353,24 @@ function BuyerPIs() {
             {filteredPIs.map(p => {
               const pItems = p.items || [];
               const pUnits = pItems.reduce((acc, it) => acc + (it.units || 0), 0);
+              const isRecentlyVisited = String(p.id) === String(lastVisitedId);
               
               return (
                 <div 
-                  className="mobile-card" 
+                  className={`mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                   key={p.id} 
+                  ref={isRecentlyVisited ? setHighlightRef : null}
                   onClick={() => navigate(`/performa-invoices/${p.id}`)}
-                  style={{ backgroundColor: selectedRowIds.has(p.id) ? '#f0fdf4' : '#fff' }}
+                  style={{ backgroundColor: selectedRowIds.has(p.id) ? '#f0fdf4' : undefined }}
                 >
                   <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', borderRadius: '12px', width: '56px', height: '56px' }}>
                     <FileText size={24} />
                   </div>
                   
                   <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                    <div className="mobile-card-title">{p.pi_no}</div>
+                    <div className="mobile-card-title">
+                      {p.pi_no}
+                    </div>
                     <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', color: 'var(--text-main)' }}>
                       {p.buyer_detail?.name || 'Unknown Buyer'}
                     </div>
@@ -1221,6 +1406,17 @@ function BuyerPIs() {
         isOpen={Boolean(breakdownModalPi)}
         onClose={() => setBreakdownModalPi(null)}
         piData={breakdownModalPi}
+      />
+
+      {/* Unsaved Changes Exit Guard Modal */}
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        title="Unsaved Performa Invoice Changes"
+        message="You have unsaved changes in this Performa Invoice. Would you like to save your PI or store it as a draft before leaving?"
+        onSave={handleSaveAndExit}
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
       />
     </div>
   );

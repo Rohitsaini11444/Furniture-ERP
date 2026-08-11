@@ -12,6 +12,7 @@ import QRScannerModal from '../components/QRScannerModal';
 import DebitNotePrintout from '../components/DebitNotePrintout';
 import GRNPrintoutModal from '../components/GRNPrintoutModal';
 import RecordInstallmentModal from '../components/RecordInstallmentModal';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 
 
 
@@ -1103,18 +1104,26 @@ function QCForm({ poId, onBack }) {
   );
 }
 
-// ─── Main Gate Entry List Page ────────────────────────────────────────────────
 export default function GateEntry() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [pos, setPos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  
+
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_gate_entry');
+      const savedPage = sessionStorage.getItem('last_visited_page_gate_entry');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('gate_entry', id, currentPage);
 
   // Scanner state
   const [showScanner, setShowScanner] = useState(false);
@@ -1140,7 +1149,12 @@ export default function GateEntry() {
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
 
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, ordering]);
 
@@ -1373,20 +1387,31 @@ export default function GateEntry() {
                     <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
                   </td>
                 </tr>
-              ) : filteredPOs.map(p => (
-                <tr key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', transition: 'background 0.15s' }} className="smooth-fade-in">
-                  <td style={{ fontWeight: 600 }}>{p.po_number}</td>
-                  <td>{p.supplier_detail?.name || '—'}</td>
-                  <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
-                  <td>{(p.items || []).length}</td>
-                  <td><StatusBadge status={p.status}/></td>
-                  <td>
-                    <button className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#14b8a6', borderColor: '#ccfbf1' }} onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}>
-                      Start QC
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              ) : filteredPOs.map(p => {
+                const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+                return (
+                  <tr
+                    key={p.id}
+                    ref={isRecentlyVisited ? setHighlightRef : null}
+                    onClick={() => navigate(`/gate-entry/${p.id}`)}
+                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                    className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                  >
+                    <td style={{ fontWeight: 600 }}>
+                      {p.po_number}
+                    </td>
+                    <td>{p.supplier_detail?.name || '—'}</td>
+                    <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
+                    <td>{(p.items || []).length}</td>
+                    <td><StatusBadge status={p.status}/></td>
+                    <td>
+                      <button className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#14b8a6', borderColor: '#ccfbf1' }} onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}>
+                        Start QC
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1400,20 +1425,30 @@ export default function GateEntry() {
             <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
             <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
           </div>
-        ) : filteredPOs.map(p => (
-          <div className="po-mobile-card" key={p.id} onClick={() => navigate(`/gate-entry/${p.id}`)} style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <FileText size={24} color="#8b5a2b"/>
+        ) : filteredPOs.map(p => {
+          const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+          return (
+            <div 
+              className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`} 
+              key={p.id} 
+              ref={isRecentlyVisited ? setHighlightRef : null}
+              onClick={() => navigate(`/gate-entry/${p.id}`)} 
+              style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <FileText size={24} color="#8b5a2b"/>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem', marginBottom: '0.2rem' }}>
+                      {p.po_number}
+                    </div>
+                    <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem', marginBottom: '0.2rem' }}>{p.po_number}</div>
-                  <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
-                </div>
+                <ChevronRight size={20} color="#64748b" />
               </div>
-              <ChevronRight size={20} color="#64748b" />
-            </div>
 
             <div style={{ height: '1px', background: '#e2e8f0', margin: '0' }} />
 
@@ -1450,7 +1485,8 @@ export default function GateEntry() {
               </button>
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
 
       <Pagination 

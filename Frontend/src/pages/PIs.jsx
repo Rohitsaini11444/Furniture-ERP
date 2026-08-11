@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { Search, ArrowLeft, Trash2, Download, Layers } from 'lucide-react';
@@ -8,6 +8,7 @@ import { CustomDatePicker } from '../components/CustomDatePicker';
 import CustomSelect from '../components/CustomSelect';
 import InvoiceQRCode from '../components/InvoiceQRCode';
 import QRScannerModal from '../components/QRScannerModal';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 
 
 
@@ -57,7 +58,6 @@ function num2words(num) {
 function PIs() {
   const { id } = useParams();
   const navigate = useNavigate();
-
   const [pis, setPis] = useState([]);
   const [buyers, setBuyers] = useState([]);
   const [availablePOs, setAvailablePOs] = useState([]);
@@ -66,11 +66,20 @@ function PIs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBuyerId, setFilterBuyerId] = useState('');
   const [loading, setLoading] = useState(true);
-  
+
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_pis');
+      const savedPage = sessionStorage.getItem('last_visited_page_pis');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('pis', id, currentPage);
 
   // Scanner test state
   const [showTestScanner, setShowTestScanner] = useState(false);
@@ -158,7 +167,12 @@ function PIs() {
     fetchBuyers();
   }, []);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, filterBuyerId, ordering]);
 
@@ -798,13 +812,20 @@ function PIs() {
                   const pItems = p.items || [];
                   const pQty = pItems.reduce((acc, it) => acc + (it.qty || 0), 0);
                   const pAmt = pItems.reduce((acc, it) => acc + (parseFloat(it.amount_usd) || 0), 0);
+                  const isRecentlyVisited = String(p.id) === String(lastVisitedId);
 
                   return (
-                    <tr key={p.id}>
+                    <tr 
+                      key={p.id}
+                      ref={isRecentlyVisited ? setHighlightRef : null}
+                      className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                    >
                       <td>
                         <InvoiceQRCode invoiceData={p} size={48} showTestButton={false} />
                       </td>
-                      <td><strong>{p.pi_no}</strong></td>
+                      <td>
+                        <strong>{p.pi_no}</strong>
+                      </td>
                       <td>{p.pi_date || '—'}</td>
                       <td>
                         <strong>{p.buyer_detail?.name || p.buyer_name}</strong>

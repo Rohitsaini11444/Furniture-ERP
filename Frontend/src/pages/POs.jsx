@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import {
@@ -16,6 +16,9 @@ import CustomSelect from '../components/CustomSelect';
 import GateEntry from './GateEntry';
 import VendorManagement from './VendorManagement';
 import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBreakdownModal';
+import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
@@ -188,6 +191,39 @@ function POForm({ poId, onBack, onSaved }) {
   const [selectedPiData, setSelectedPiData] = useState(null);
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
 
+  const location = useLocation();
+
+  const {
+    isDirty,
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveAndExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'po',
+    formLabel: 'Supplier PO',
+    getFormTitle: (data) => {
+      const sObj = suppliers.find(s => s.id === data?.header?.supplier);
+      return `PO ${data?.header?.po_number || 'New'} - ${sObj?.name || 'Draft'} (${data?.items?.length || 0} items)`;
+    },
+    getFormData: () => ({ header, items }),
+    targetPath: '/pos/new',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('po-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
   const [header, setHeader] = useState({
     po_number: '',
     po_date: new Date().toISOString().slice(0, 10),
@@ -204,57 +240,21 @@ function POForm({ poId, onBack, onSaved }) {
 
   const [items, setItems] = useState([emptyItem()]);
 
-  // Load reference data
+  // Restore draft if passed via state
   useEffect(() => {
-    Promise.all([
-      api.get('/suppliers/'),
-      api.get('/buyers/'),
-      api.get('/buyer-pis/'),
-      api.get('/users/supervisors/'),
-    ]).then(([s, b, p, u]) => {
-      setSuppliers(s.data.results || s.data);
-      setBuyers(b.data.results || b.data);
-      setBuyerPIs(p.data.results || p.data);
-      setSupervisors(u.data.results || u.data || []);
-    }).catch(err => {
-      console.error('Error loading reference data:', err);
-    });
-  }, []);
-
-  const handleSelectHeaderPI = async (piId) => {
-    setHeader(h => ({ ...h, buyer_pi: piId }));
-    if (!piId) {
-      setSelectedPiData(null);
-      return;
-    }
-
-    try {
-      const res = await api.get(`/buyer-pis/${piId}/`);
-      const piData = res.data;
-      setSelectedPiData(piData);
-
-      if (piData && piData.items && piData.items.length > 0) {
-        const newItems = piData.items.map(piItem => {
-          const remQty = piItem.remaining_quantity !== undefined ? piItem.remaining_quantity : (parseFloat(piItem.units) || 0);
-          return {
-            id: undefined,
-            buyer: piData.buyer || '',
-            buyer_pi: piId,
-            buyer_pi_item: piItem.id,
-            description: `${piItem.style_no} (${piItem.product_name || piItem.style_no})`,
-            quantity: String(remQty),
-            unit: 'pcs',
-            rate: '',
-            amount: '',
-            remark: '',
-          };
-        });
-        setItems(newItems);
+    if (location.state?.draftData && isNew) {
+      if (location.state.draftData.header) {
+        setHeader(location.state.draftData.header);
       }
-    } catch (err) {
-      console.error(err);
+      if (location.state.draftData.items) {
+        setItems(location.state.draftData.items);
+      }
+      setIsDirty(true);
+      if (location.state.draftId) {
+        setCurrentDraftId(location.state.draftId);
+      }
     }
-  };
+  }, [location.state, isNew]);
 
   // Load existing PO for edit
   useEffect(() => {
@@ -295,11 +295,15 @@ function POForm({ poId, onBack, onSaved }) {
         })
         .finally(() => setLoading(false));
     }
-  }, [poId]);
+  }, [poId, isNew]);
 
-  const updateHeader = (key, val) => setHeader(h => ({ ...h, [key]: val }));
+  const updateHeader = (key, val) => {
+    setIsDirty(true);
+    setHeader(h => ({ ...h, [key]: val }));
+  };
 
   const updateItem = (idx, key, val) => {
+    setIsDirty(true);
     setItems(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
@@ -416,6 +420,8 @@ function POForm({ poId, onBack, onSaved }) {
       } else {
         await api.put(`/supplier-pos/${poId}/`, payload);
       }
+      if (currentDraftId) clearDraft(currentDraftId);
+      setIsDirty(false);
       onSaved();
     } catch (err) {
       console.error('PO Save Error:', err);
@@ -444,7 +450,7 @@ function POForm({ poId, onBack, onSaved }) {
         <SupplierModal onClose={() => setShowSupplierModal(false)} onSaved={handleSupplierAdded} />
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form id="po-form" onSubmit={handleSubmit}>
         {formError && (
           <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', color: '#991b1b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
@@ -795,8 +801,23 @@ function POForm({ poId, onBack, onSaved }) {
 
             {/* Actions */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
-              <button type="button" className="btn-secondary" onClick={onBack} style={{ padding: '0.65rem 1.6rem', borderRadius: '10px', fontWeight: 600 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  if (confirmExit('/pos')) onBack();
+                }}
+                style={{ padding: '0.65rem 1.6rem', borderRadius: '10px' }}
+              >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', padding: '0.65rem 1.4rem' }}
+                onClick={() => handleSaveDraft()}
+              >
+                <FileText size={16} /> Save as Draft
               </button>
               <button type="submit" className="btn-primary" disabled={saving}
                 style={{ padding: '0.65rem 2.2rem', borderRadius: '10px', fontWeight: 800, backgroundColor: '#8b5a2b', borderColor: '#8b5a2b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -816,7 +837,6 @@ function POForm({ poId, onBack, onSaved }) {
   );
 }
 
-// ─── Main POs List Page ─────────────────────────────────────────────────────────
 function POs() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -829,11 +849,20 @@ function POs() {
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(null);
-  
+
   // Pagination & Ordering
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const hasVisitedItem = sessionStorage.getItem('last_visited_pos');
+      const savedPage = sessionStorage.getItem('last_visited_page_pos');
+      if (hasVisitedItem && savedPage) return Number(savedPage);
+    } catch (e) {}
+    return 1;
+  });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { lastVisitedId, setHighlightRef } = useLastVisitedItem('pos', id, currentPage);
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
@@ -853,7 +882,12 @@ function POs() {
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [searchTerm, statusFilter, ordering]);
 
@@ -1188,22 +1222,25 @@ function POs() {
                       </div>
                     </td>
                   </tr>
-                ) : filteredPOs.map(p => (
-                  <tr
-                    key={p.id}
-                    onClick={() => navigate(`/pos/${p.id}`)}
-                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                    className="smooth-fade-in"
-                    title="Click to view/edit"
-                  >
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <FileText size={15} color="#8b5a2b"/>
+                ) : filteredPOs.map(p => {
+                  const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+                  return (
+                    <tr
+                      key={p.id}
+                      ref={isRecentlyVisited ? setHighlightRef : null}
+                      onClick={() => navigate(`/pos/${p.id}`)}
+                      style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                      className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                      title="Click to view/edit"
+                    >
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <FileText size={15} color="#8b5a2b"/>
+                          </div>
+                          <strong>{p.po_number}</strong>
                         </div>
-                        <strong>{p.po_number}</strong>
-                      </div>
-                    </td>
+                      </td>
                     <td>
                       <div style={{ fontWeight: 600 }}>{p.supplier_detail?.name || '—'}</div>
                       {p.supplier_detail?.state_name && (
@@ -1269,7 +1306,8 @@ function POs() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
             </div>
@@ -1283,53 +1321,64 @@ function POs() {
             <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
             <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
           </div>
-        ) : filteredPOs.map(p => (
-          <div className="po-mobile-card" key={p.id} onClick={() => navigate(`/pos/${p.id}`)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <FileText size={24} color="#8b5a2b"/>
+        ) : filteredPOs.map(p => {
+          const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+          return (
+            <div 
+              className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`} 
+              key={p.id} 
+              ref={isRecentlyVisited ? setHighlightRef : null}
+              onClick={() => navigate(`/pos/${p.id}`)} 
+              style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <FileText size={24} color="#8b5a2b"/>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>
+                      {p.po_number}
+                    </div>
+                    <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>
+                  </div>
                 </div>
+                
                 <div>
-                  <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>{p.po_number}</div>
-                  <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
-                  <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>TOTAL AMOUNT</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b' }}>
+                    {fmtINR(p.total_amount)}
+                  </div>
                 </div>
               </div>
-              
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>TOTAL AMOUNT</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b' }}>
-                  {fmtINR(p.total_amount)}
-                </div>
-              </div>
-            </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '1rem' }}>
-              <button
-                onClick={e => handleDownloadPDF(p, e)}
-                disabled={downloading === p.id}
-                style={{
-                  background: '#fff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '0.75rem 0.5rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.35rem',
-                  color: '#3b82f6',
-                  cursor: 'pointer',
-                  minWidth: '60px'
-                }}
-              >
-                <Download size={22}/>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{downloading === p.id ? '...' : 'PDF'}</span>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '1rem' }}>
+                <button
+                  onClick={e => handleDownloadPDF(p, e)}
+                  disabled={downloading === p.id}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    padding: '0.75rem 0.5rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.35rem',
+                    color: '#3b82f6',
+                    cursor: 'pointer',
+                    minWidth: '60px'
+                  }}
+                >
+                  <Download size={22}/>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{downloading === p.id ? '...' : 'PDF'}</span>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Pagination 
