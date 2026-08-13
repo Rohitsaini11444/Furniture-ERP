@@ -1154,11 +1154,11 @@ function Stock() {
                 />
               </div>
 
-              {/* Right Single Horizontal Row Dropdowns */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginLeft: 'auto', flexWrap: 'nowrap' }}>
+              {/* Right Responsive Dropdowns */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
                 {activeTab === 'stock' && (
                   <>
-                    <div style={{ width: '155px', flexShrink: 0 }}>
+                    <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
                       <StatusSelect
                         options={STOCK_STATUS_FILTER_OPTIONS}
                         value={statusFilter}
@@ -1166,7 +1166,7 @@ function Stock() {
                       />
                     </div>
 
-                    <div style={{ width: '145px', flexShrink: 0 }}>
+                    <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
                       <CustomSelect
                         value={buyerFilter}
                         onChange={e => setBuyerFilter(e.target.value)}
@@ -1180,7 +1180,7 @@ function Stock() {
                   </>
                 )}
 
-                <div style={{ width: '165px', flexShrink: 0 }}>
+                <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
                   <OrderBySelect
                     options={ORDER_OPTIONS_DATE_QTY}
                     value={ordering}

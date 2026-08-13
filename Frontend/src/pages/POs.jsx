@@ -1140,28 +1140,59 @@ function POs() {
           }
           .po-stat-grid-v2 {
             grid-template-columns: repeat(2, 1fr) !important;
-            gap: 0.75rem !important;
+            gap: 0.5rem !important;
+          }
+          .po-stat-card-item {
+            padding: 0.65rem 0.75rem !important;
+            gap: 0.6rem !important;
+          }
+          .po-stat-card-icon {
+            width: 36px !important;
+            height: 36px !important;
+          }
+          .po-stat-card-value {
+            font-size: 1.25rem !important;
+          }
+          .po-stat-card-sub {
+            font-size: 0.7rem !important;
+          }
+          .po-filter-card {
+            padding: 0.85rem !important;
+            height: auto !important;
+            min-height: 0 !important;
           }
           .po-filter-bar-inner {
             flex-direction: column !important;
             align-items: stretch !important;
-            gap: 0.65rem !important;
+            gap: 0.75rem !important;
           }
           .po-search-wrap {
             width: 100% !important;
             max-width: 100% !important;
+            height: 42px !important;
+            flex: none !important;
           }
           .po-filters-wrap {
             width: 100% !important;
-            flex-direction: column !important;
-            gap: 0.5rem !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 0.65rem !important;
           }
           .po-filter-item {
             width: 100% !important;
-            justify-content: space-between !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.3rem !important;
+          }
+          .po-filter-item span {
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            color: #64748b !important;
+            display: block !important;
           }
           .po-filter-item > div {
-            flex: 1 !important;
+            width: 100% !important;
           }
         }
       `}</style>
@@ -1267,7 +1298,7 @@ function POs() {
           {/* ── Stat Cards Grid (4 KPI Cards) ── */}
           <div className="po-stat-grid-v2">
             {/* Card 1: Total POs */}
-            <div style={{
+            <div className="po-stat-card-item" style={{
               backgroundColor: '#faf7f2',
               borderRadius: '14px',
               padding: '1.1rem 1.25rem',
@@ -1277,7 +1308,7 @@ function POs() {
               gap: '1rem',
               boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
             }}>
-              <div style={{
+              <div className="po-stat-card-icon" style={{
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
@@ -1293,17 +1324,17 @@ function POs() {
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   TOTAL POs
                 </div>
-                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
                   {stats.total}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', fontWeight: 500 }}>
+                <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', fontWeight: 500 }}>
                   All Purchase Orders
                 </div>
               </div>
             </div>
 
             {/* Card 2: Pending */}
-            <div style={{
+            <div className="po-stat-card-item" style={{
               backgroundColor: '#fff8ed',
               borderRadius: '14px',
               padding: '1.1rem 1.25rem',
@@ -1313,7 +1344,7 @@ function POs() {
               gap: '1rem',
               boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
             }}>
-              <div style={{
+              <div className="po-stat-card-icon" style={{
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
@@ -1329,17 +1360,17 @@ function POs() {
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   PENDING
                 </div>
-                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
+                <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
                   {stats.pending}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
+                <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
                   Awaiting Actions
                 </div>
               </div>
             </div>
 
             {/* Card 3: Received */}
-            <div style={{
+            <div className="po-stat-card-item" style={{
               backgroundColor: '#f0f6fe',
               borderRadius: '14px',
               padding: '1.1rem 1.25rem',
@@ -1349,7 +1380,7 @@ function POs() {
               gap: '1rem',
               boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
             }}>
-              <div style={{
+              <div className="po-stat-card-icon" style={{
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
@@ -1365,17 +1396,17 @@ function POs() {
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   RECEIVED
                 </div>
-                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
+                <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
                   {stats.received}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
+                <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
                   Fully Received
                 </div>
               </div>
             </div>
 
             {/* Card 4: Total Value */}
-            <div style={{
+            <div className="po-stat-card-item" style={{
               backgroundColor: '#f0fdf4',
               borderRadius: '14px',
               padding: '1.1rem 1.25rem',
@@ -1385,7 +1416,7 @@ function POs() {
               gap: '1rem',
               boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
             }}>
-              <div style={{
+              <div className="po-stat-card-icon" style={{
                 width: '44px',
                 height: '44px',
                 borderRadius: '10px',
@@ -1404,18 +1435,18 @@ function POs() {
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   TOTAL VALUE
                 </div>
-                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
                   ₹{stats.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#166534', marginTop: '4px', fontWeight: 500 }}>
+                <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#166534', marginTop: '4px', fontWeight: 500 }}>
                   Across All POs
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── Filter Bar ── */}
-          <div className="po-filter-card">
+          {/* ── Filter Bar (Desktop Web View) ── */}
+          <div className="po-filter-card desktop-only">
             <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
               <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
                 <Search size={16} color="#94a3b8" />
@@ -1455,6 +1486,56 @@ function POs() {
                       options={ORDER_OPTIONS_DATE_PONO}
                       value={ordering}
                       onChange={setOrdering}
+                      width="165px"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Filter Bar (Mobile View Only) ── */}
+          <div className="po-filter-card mobile-only">
+            <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search by PO number or supplier..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    width: '100%',
+                    fontSize: '0.88rem',
+                    color: '#1e293b'
+                  }}
+                />
+              </div>
+
+              <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 auto' }}>
+                  <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>STATUS:</span>
+                  <div style={{ width: '100%', minWidth: '135px' }}>
+                    <StatusSelect
+                      options={PO_STATUS_OPTIONS}
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      placeholder="All Statuses"
+                    />
+                  </div>
+                </div>
+
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 auto' }}>
+                  <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
+                  <div style={{ width: '100%', minWidth: '135px' }}>
+                    <OrderBySelect
+                      options={ORDER_OPTIONS_DATE_PONO}
+                      value={ordering}
+                      onChange={setOrdering}
+                      width="100%"
                     />
                   </div>
                 </div>

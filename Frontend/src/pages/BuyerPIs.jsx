@@ -901,24 +901,191 @@ function BuyerPIs() {
             <button onClick={() => navigate('/performa-invoices/new')} className="btn-primary">+ Create New PI</button>
           </div>
 
-          {/* Universal Search & Filter Bar */}
-          <div className="filter-bar" style={{ marginBottom: '1.25rem' }}>
-            <div className="bm-filter-container" style={{ flexWrap: 'wrap', gap: '0.85rem' }}>
-              <div className="bm-search" style={{ flex: '1 1 240px' }}>
-                <Search size={16} className="filter-icon" />
-                <span className="filter-label">Search:</span>
-                <input
-                  type="text"
-                  className="filter-input"
-                  placeholder="Search by PI No, Buyer, Contact..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              </div>
+          <style>{`
+        .desktop-only { display: block; }
+        .mobile-only { display: none; }
+        @media (max-width: 900px) {
+          .desktop-only { display: none; }
+          .mobile-only { display: block; }
+        }
+        .pi-filter-card {
+          background-color: #ffffff;
+          border-radius: 16px;
+          padding: 0.85rem 1.25rem;
+          border: 1px solid #f1f5f9;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+          margin-bottom: 1.5rem;
+        }
 
-              <div className="bm-export" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>BUYER:</span>
+        .pi-filter-bar-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .pi-search-wrap {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          flex: 1 1 280px;
+          max-width: 420px;
+          background-color: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 0 0.85rem;
+          height: 42px;
+          box-sizing: border-box;
+        }
+
+        .pi-filters-wrap {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .pi-filter-item {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          flex: 1 1 auto;
+        }
+
+        .pi-filter-label {
+          text-transform: uppercase;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #64748b;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+        }
+
+        .pi-select-box {
+          width: 100%;
+          min-width: 130px;
+        }
+
+        @media (max-width: 768px) {
+          .pi-filter-card {
+            padding: 0.85rem !important;
+            height: auto !important;
+            min-height: 0 !important;
+          }
+          .pi-filter-bar-inner {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.75rem !important;
+          }
+          .pi-search-wrap {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: 42px !important;
+            flex: none !important;
+          }
+          .pi-filters-wrap {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 0.5rem !important;
+          }
+          .pi-filter-item {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.3rem !important;
+          }
+          .pi-filter-label {
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            color: #64748b !important;
+            display: block !important;
+          }
+          .pi-select-box {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+        }
+      `}</style>
+
+      {/* Universal Search & Filter Bar (Desktop Web View - Original) */}
+      <div className="desktop-only filter-bar" style={{ marginBottom: '1.25rem', width: '100%' }}>
+        <div className="bm-filter-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.85rem', alignItems: 'center', width: '100%' }}>
+          <div className="bm-search" style={{ flex: '1 1 240px' }}>
+            <Search size={16} className="filter-icon" />
+            <span className="filter-label">Search:</span>
+            <input
+              type="text"
+              className="filter-input"
+              placeholder="Search by PI No, Buyer, Contact..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div className="bm-export" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>BUYER:</span>
+            <SearchableSelect
+              options={buyers}
+              value={filterBuyerId}
+              onChange={val => setFilterBuyerId(val)}
+              placeholder="All Buyers"
+              searchPlaceholder="Search buyer..."
+              codeKey="code"
+              titleKey="name"
+              icon={Users}
+              style={{ minWidth: '180px' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>PO STATUS:</span>
+            <CustomSelect
+              value={filterAllocationStatus}
+              onChange={val => setFilterAllocationStatus(val?.target ? val.target.value : val)}
+              placeholder="All Statuses"
+              options={[
+                { value: 'ALL', label: 'All Statuses' },
+                { value: 'UNALLOCATED', label: 'Unassigned Only' },
+                { value: 'PARTIAL', label: 'Partially Allocated Only' },
+                { value: 'FULLY_ALLOCATED', label: 'Fully Allocated Only' },
+              ]}
+              style={{ minWidth: '190px' }}
+            />
+          </div>
+
+          <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+            <OrderBySelect
+              options={ORDER_OPTIONS_DATE_PINO}
+              value={ordering}
+              onChange={setOrdering}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Universal Search & Filter Bar (Mobile View Only) */}
+      <div className="mobile-only pi-filter-card">
+        <div className="pi-filter-bar-inner">
+          <div className="pi-search-wrap">
+            <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
+            <input
+              type="text"
+              placeholder="Search by PI No, Buyer, Contact..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '0.88rem', color: '#1e293b' }}
+            />
+          </div>
+
+          <div className="pi-filters-wrap">
+            <div className="pi-filter-item">
+              <span className="pi-filter-label">BUYER:</span>
+              <div className="pi-select-box">
                 <SearchableSelect
                   options={buyers}
                   value={filterBuyerId}
@@ -928,12 +1095,14 @@ function BuyerPIs() {
                   codeKey="code"
                   titleKey="name"
                   icon={Users}
-                  style={{ minWidth: '180px' }}
+                  style={{ width: '100%' }}
                 />
               </div>
+            </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>PO STATUS:</span>
+            <div className="pi-filter-item">
+              <span className="pi-filter-label">PO STATUS:</span>
+              <div className="pi-select-box">
                 <CustomSelect
                   value={filterAllocationStatus}
                   onChange={val => setFilterAllocationStatus(val?.target ? val.target.value : val)}
@@ -944,36 +1113,52 @@ function BuyerPIs() {
                     { value: 'PARTIAL', label: 'Partially Allocated Only' },
                     { value: 'FULLY_ALLOCATED', label: 'Fully Allocated Only' },
                   ]}
-                  style={{ minWidth: '190px' }}
+                  style={{ width: '100%' }}
                 />
               </div>
+            </div>
 
-              <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
+            <div className="pi-filter-item">
+              <span className="pi-filter-label">ORDER BY:</span>
+              <div className="pi-select-box">
                 <OrderBySelect
                   options={ORDER_OPTIONS_DATE_PINO}
                   value={ordering}
                   onChange={setOrdering}
+                  width="100%"
                 />
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
           {/* Module Navigation Sub-Tabs */}
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.25rem', borderBottom: '2px solid #e2e8f0' }}>
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            marginBottom: '1.25rem',
+            borderBottom: '2px solid #e2e8f0',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+            paddingBottom: '2px'
+          }}>
             <button
               onClick={() => setPiSubTab('directory')}
               style={{
-                padding: '0.65rem 1.2rem',
+                padding: '0.65rem 1rem',
                 fontWeight: 800,
-                fontSize: '0.88rem',
+                fontSize: '0.85rem',
                 color: piSubTab === 'directory' ? '#8b5a2b' : '#64748b',
                 borderBottom: piSubTab === 'directory' ? '3px solid #8b5a2b' : '3px solid transparent',
                 background: 'none',
                 borderLeft: 'none', borderRight: 'none', borderTop: 'none',
                 cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
-                marginBottom: '-2px'
+                marginBottom: '-2px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
               <FileSpreadsheet size={18} />Performa Invoices Directory ({filteredPIs.length})
@@ -981,19 +1166,21 @@ function BuyerPIs() {
             <button
               onClick={() => setPiSubTab('allocation_tracker')}
               style={{
-                padding: '0.65rem 1.2rem',
+                padding: '0.65rem 1rem',
                 fontWeight: 800,
-                fontSize: '0.88rem',
+                fontSize: '0.85rem',
                 color: piSubTab === 'allocation_tracker' ? '#8b5a2b' : '#64748b',
                 borderBottom: piSubTab === 'allocation_tracker' ? '3px solid #8b5a2b' : '3px solid transparent',
                 background: 'none',
                 borderLeft: 'none', borderRight: 'none', borderTop: 'none',
                 cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
-                marginBottom: '-2px'
+                marginBottom: '-2px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              <Layers size={18} />PO Allocation & Supplier Assignment Tracker ({filteredPIs.length})
+              <Layers size={18} />PO Allocation & Supplier Tracker ({filteredPIs.length})
             </button>
           </div>
 
