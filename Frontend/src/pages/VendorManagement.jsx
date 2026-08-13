@@ -603,84 +603,96 @@ export default function VendorManagement() {
               const totalReceived = po.total_received_qty || 0;
               const progressPct = totalOrdered > 0 ? Math.min(100, Math.round((totalReceived / totalOrdered) * 100)) : 0;
 
+              const dotColor = isRed ? '#ef4444' : isGreen ? '#10b981' : '#f59e0b';
+              const dotBg = isRed ? '#fee2e2' : isGreen ? '#dcfce7' : '#fef3c7';
+
               return (
                 <div
                   key={po.id}
                   style={{
-                    backgroundColor: rowBg,
-                    border: `2px solid ${rowBorder}`,
-                    borderRadius: '14px',
-                    padding: '1.1rem 1.25rem',
-                    boxShadow: isRed ? '0 4px 12px rgba(220, 38, 38, 0.08)' : '0 2px 4px rgba(0,0,0,0.02)',
-                    transition: 'all 0.2s'
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    padding: '0.95rem 1.25rem',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.015)',
+                    transition: 'all 0.15s ease-in-out'
                   }}
                 >
-                  {/* Desktop Ribbon Header */}
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    marginBottom: '0.85rem',
-                    borderBottom: `1px solid ${isRed ? '#fecaca' : isGreen ? '#bbf7d0' : '#fef08a'}`,
-                    paddingBottom: '0.75rem'
+                    gap: '1.25rem',
+                    flexWrap: 'wrap'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        backgroundColor: badgeBg,
-                        color: statusTextColor,
-                        padding: '5px 14px',
-                        borderRadius: '999px',
-                        fontSize: '0.82rem',
-                        fontWeight: 800,
-                        border: `1px solid ${rowBorder}`
-                      }}>
-                        {badgeIcon}
-                        {badgeText}
-                      </span>
-
-                      {po.extension_logs && po.extension_logs.length > 0 && (
-                        <span style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          backgroundColor: '#eff6ff',
-                          color: '#1d4ed8',
-                          padding: '3px 10px',
-                          borderRadius: '999px',
-                          border: '1px solid #bfdbfe',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}>
-                          <History size={12} /> Extended {po.extension_logs.length}x
-                        </span>
-                      )}
+                    {/* Col 1: Status Circle Dot & PO Number */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '120px' }}>
+                      <div style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: dotColor,
+                        boxShadow: `0 0 0 3px ${dotBg}`,
+                        flexShrink: 0
+                      }} title={badgeText} />
+                      <strong style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b' }}>
+                        {po.po_number}
+                      </strong>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      {po.supplier_detail?.phone && (
-                        <a
-                          href={`tel:${po.supplier_detail.phone}`}
-                          className="btn-secondary"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            padding: '5px 11px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            color: '#0284c7',
-                            backgroundColor: '#f0f9ff',
-                            borderColor: '#bae6fd'
-                          }}
-                        >
-                          <PhoneCall size={14} /> Call Vendor
-                        </a>
-                      )}
+                    {/* Col 2: Vendor / Supplier & Phone */}
+                    <div style={{ minWidth: '180px', flex: '1 1 180px' }}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>
+                        {po.supplier_detail?.name || '—'}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#e11d48', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 500 }}>
+                        <Phone size={12} color="#e11d48" />
+                        {po.supplier_detail?.phone ? (
+                          <a href={`tel:${po.supplier_detail.phone}`} style={{ color: '#e11d48', textDecoration: 'none', fontWeight: 600 }}>
+                            {po.supplier_detail.phone}
+                          </a>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>No phone listed</span>
+                        )}
+                      </div>
+                    </div>
 
+                    {/* Col 3: Issued & Due Dates */}
+                    <div style={{ minWidth: '220px', display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.84rem' }}>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 500 }}>Issued: </span>
+                        <span style={{ color: '#334155', fontWeight: 600 }}>{po.po_date || '—'}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 500 }}>Due: </span>
+                        <strong style={{ color: isRed ? '#dc2626' : '#1e293b', fontWeight: 800 }}>{po.due_date || 'Not set'}</strong>
+                      </div>
+                    </div>
+
+                    {/* Col 4: Progress Bar & Total Amount */}
+                    <div style={{ minWidth: '260px', flex: '1 1 260px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+                        <span>Received</span>
+                        <span style={{ fontWeight: 700, color: '#1e293b' }}>{totalReceived} / {totalOrdered} pcs ({progressPct}%)</span>
+                      </div>
+                      <div style={{ width: '100%', height: '7px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${progressPct}%`,
+                            height: '100%',
+                            backgroundColor: dotColor,
+                            borderRadius: '999px',
+                            transition: 'width 0.4s ease'
+                          }}
+                        />
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+                        Total Amount: <strong style={{ color: '#1e293b', fontWeight: 800 }}>{fmtINR(po.total_amount)}</strong>
+                      </div>
+                    </div>
+
+                    {/* Col 5: Actions (+5 Days & View Details Button) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
                       <button
                         type="button"
                         onClick={() => {
@@ -692,96 +704,40 @@ export default function VendorManagement() {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          padding: '6px 14px',
+                          gap: '4px',
+                          padding: '0.35rem 0.65rem',
                           borderRadius: '8px',
-                          fontSize: '0.82rem',
-                          fontWeight: 800,
-                          backgroundColor: isRed ? '#dc2626' : '#8b5a2b',
-                          color: '#ffffff',
-                          border: 'none',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          backgroundColor: isRed ? '#fef2f2' : '#fff7ed',
+                          color: isRed ? '#dc2626' : '#c2410c',
+                          border: isRed ? '1px solid #fecaca' : '1px solid #ffedd5',
+                          cursor: 'pointer'
                         }}
+                        title="Extend due date by +5 days"
                       >
-                        <Phone size={15} /> Extend +5 Days
+                        +5 Days
                       </button>
-                    </div>
-                  </div>
 
-                  {/* Desktop Grid Body (5 Columns) */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(5, 1fr)',
-                    gap: '1.25rem',
-                    alignItems: 'center'
-                  }}>
-                    {/* Col 1 */}
-                    <div>
-                      <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, display: 'block' }}>PURCHASE ORDER</span>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>
-                        {po.po_number}
-                      </span>
-                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                        Issued: <strong>{po.po_date || '—'}</strong>
-                      </div>
-                    </div>
-
-                    {/* Col 2 */}
-                    <div>
-                      <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, display: 'block' }}>VENDOR / SUPPLIER</span>
-                      <span style={{ fontSize: '1rem', fontWeight: 800, color: '#8b5a2b' }}>
-                        {po.supplier_detail?.name || '—'}
-                      </span>
-                      <div style={{ fontSize: '0.78rem', color: '#475569', marginTop: '2px' }}>
-                        📞 {po.supplier_detail?.phone || 'No phone listed'}
-                      </div>
-                    </div>
-
-                    {/* Col 3 */}
-                    <div>
-                      <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, display: 'block' }}>ENDING / DUE DATE</span>
-                      <span style={{ fontSize: '1.05rem', fontWeight: 800, color: isRed ? '#dc2626' : '#1e293b' }}>
-                        📅 {po.due_date || 'Not set'}
-                      </span>
-                      {po.original_due_date && po.original_due_date !== po.due_date && (
-                        <div style={{ fontSize: '0.72rem', color: '#64748b', textDecoration: 'line-through' }}>
-                          Original: {po.original_due_date}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Col 4 */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                        <span>Received Pcs</span>
-                        <span>{totalReceived} / {totalOrdered} pcs ({progressPct}%)</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${progressPct}%`,
-                            height: '100%',
-                            backgroundColor: isGreen ? '#16a34a' : isRed ? '#dc2626' : '#d97706',
-                            borderRadius: '999px',
-                            transition: 'width 0.4s ease'
-                          }}
-                        />
-                      </div>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
-                        Total Amount: <strong>{fmtINR(po.total_amount)}</strong>
-                      </span>
-                    </div>
-
-                    {/* Col 5 */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button
                         type="button"
-                        className="btn-secondary"
                         onClick={() => handleToggleExpandPo(po.id)}
-                        style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        style={{
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          padding: '0.4rem 0.85rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
                       >
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                         {isExpanded ? 'Hide Details' : 'View Items & Logs'}
                       </button>
                     </div>
@@ -1132,26 +1088,38 @@ export default function VendorManagement() {
               const progressPct = totalOrdered > 0 ? Math.min(100, Math.round((totalReceived / totalOrdered) * 100)) : 0;
               const goodsDesc = (po.items || []).map(it => `${it.description || 'Goods'} ${it.quantity} ${it.unit || 'pcs'}`).join(', ');
 
+              const dotColor = isRed ? '#ef4444' : isGreen ? '#10b981' : '#f59e0b';
+              const dotBg = isRed ? '#fee2e2' : isGreen ? '#dcfce7' : '#fef3c7';
+
               return (
                 <div
                   key={po.id}
                   className="vm-mob-po-card"
                   style={{
-                    backgroundColor: cardBg,
-                    border: `2px solid ${cardBorder}`,
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
                   }}
                 >
-                  {/* Ribbon Header */}
+                  {/* Header Row */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
-                    <span className="vm-mob-badge-ribbon" style={{ backgroundColor: badgeBg, color: badgeTextColor, border: `1px solid ${cardBorder}` }}>
-                      {badgeIcon}
-                      {badgeText}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <div style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: dotColor,
+                        boxShadow: `0 0 0 3px ${dotBg}`,
+                        flexShrink: 0
+                      }} title={badgeText} />
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#1e293b', margin: 0 }}>
+                        {po.po_number}
+                      </h3>
+                    </div>
 
                     <button
                       type="button"
                       className="vm-mob-extend-btn"
-                      style={{ backgroundColor: btnBg }}
+                      style={{ backgroundColor: isRed ? '#dc2626' : '#8b5a2b' }}
                       onClick={() => {
                         setExtensionModalPo(po);
                         setExtensionDays(5);
@@ -1159,13 +1127,9 @@ export default function VendorManagement() {
                         setCustomNewDate('');
                       }}
                     >
-                      <Phone size={14} /> 📞 Extend +5 Days
+                      <Phone size={14} /> +5 Days
                     </button>
                   </div>
-
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#1e293b', margin: '0 0 0.2rem 0' }}>
-                    {po.po_number}
-                  </h3>
 
                   <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#475569', marginBottom: '1rem' }}>
                     {po.supplier_detail?.name || 'Supplier'}

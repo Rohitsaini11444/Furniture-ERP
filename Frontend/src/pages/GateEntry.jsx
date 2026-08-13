@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
-  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight, Box, Clock, Hourglass, Check, Truck, Download
+  ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight, Box, Clock, Hourglass, Check, Truck, Download,
+  ShieldCheck, List, Building2, Calendar, Play, Scan
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -1309,72 +1310,299 @@ export default function GateEntry() {
         </div>
       )}
 
-      {/* Header Bar */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ClipboardCheck size={28} color="#14b8a6"/> Gate Entry / QC
-          </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Record material receipts and perform quality checks on POs
-          </p>
-        </div>
-
-        <button
-          onClick={() => setShowScanner(true)}
-          className="btn-primary"
-          style={{
-            backgroundColor: '#0284c7',
-            borderColor: '#0284c7',
+      {/* Page Header Banner */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '16px',
+        padding: '1.25rem 1.5rem',
+        border: '1px solid #f1f5f9',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem',
+        marginBottom: '1.5rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{
+            width: '52px',
+            height: '52px',
+            borderRadius: '14px',
+            backgroundColor: '#e6f7f3',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.65rem 1.25rem',
-            fontSize: '0.9rem',
-            fontWeight: 800,
-            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
-          }}
-        >
-          📷 Scan Invoice QR Code
-        </button>
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <ClipboardCheck size={26} color="#0d9488" />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
+              Gate Entry / QC
+            </h1>
+            <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.86rem', fontWeight: 450 }}>
+              Record material receipts and perform quality checks on POs
+            </p>
+          </div>
+        </div>
+        <div>
+          <button
+            onClick={() => setShowScanner(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              backgroundColor: '#0d9488',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '0.65rem 1.35rem',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(13, 148, 136, 0.25)',
+              transition: 'background-color 0.15s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0f766e'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0d9488'}
+          >
+            <Scan size={18} /> Scan Invoice QR Code
+          </button>
+        </div>
       </div>
 
+      {/* ── Stat Cards Grid (4 KPI Cards) ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        gap: '1.25rem',
+        marginBottom: '1.5rem'
+      }}>
+        {/* Card 1: TOTAL ENTRIES */}
+        <div style={{
+          backgroundColor: '#e6f7f3',
+          borderRadius: '14px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid #bbf7d0',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            backgroundColor: '#dcfce7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <FileText size={20} color="#0d9488" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              TOTAL ENTRIES
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+              {pos.length}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#047857', marginTop: '4px', fontWeight: 500 }}>
+              All Gate Entries
+            </div>
+          </div>
+        </div>
 
-      <div className="filter-bar">
-        <div className="filter-bar-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 220 }}>
-            <Search size={15} className="filter-icon"/>
+        {/* Card 2: PENDING */}
+        <div style={{
+          backgroundColor: '#fff8ed',
+          borderRadius: '14px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid #fde68a',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            backgroundColor: '#fef3c7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Hourglass size={20} color="#d97706" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              PENDING
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.status === 'Pending').length}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
+              Awaiting QC
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: COMPLETED */}
+        <div style={{
+          backgroundColor: '#f0f6fe',
+          borderRadius: '14px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid #bfdbfe',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            backgroundColor: '#dbeafe',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <ShieldCheck size={20} color="#1d4ed8" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              COMPLETED
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.status === 'Received').length}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
+              Quality Checked
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: TODAY'S ENTRIES */}
+        <div style={{
+          backgroundColor: '#faf5ff',
+          borderRadius: '14px',
+          padding: '1.1rem 1.25rem',
+          border: '1px solid #e9d5ff',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '1rem',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+        }}>
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '10px',
+            backgroundColor: '#f3e8ff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <List size={20} color="#7e22ce" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              TODAY'S ENTRIES
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#7e22ce', marginTop: '2px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.po_date && new Date(p.po_date).toDateString() === new Date().toDateString()).length}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#6b21a8', marginTop: '4px', fontWeight: 500 }}>
+              Today
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Filter Bar ── */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '16px',
+        padding: '0.85rem 1.25rem',
+        border: '1px solid #f1f5f9',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        marginBottom: '1.5rem'
+      }}>
+        <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+          <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
+            <Search size={16} color="#94a3b8" />
             <input
               type="text"
-              className="filter-input"
               placeholder="Search by PO number or supplier..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              style={{ flex: 1 }}
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                width: '100%',
+                fontSize: '0.88rem',
+                color: '#1e293b'
+              }}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginLeft: 'auto' }}>
-            <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
-            <OrderBySelect
-              options={ORDER_OPTIONS_DATE_PONO}
-              value={ordering}
-              onChange={setOrdering}
-            />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+            <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
+            <div style={{ width: '165px' }}>
+              <OrderBySelect
+                options={ORDER_OPTIONS_DATE_PONO}
+                value={ordering}
+                onChange={setOrdering}
+              />
+            </div>
           </div>
         </div>
       </div>
 
+      {/* ── Desktop Data Table ── */}
       <div className="po-desktop-table">
-        <div className="table-container">
-          <table className="data-table">
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '16px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          overflow: 'hidden'
+        }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th>PO Number</th>
-                <th>Supplier</th>
-                <th>PO Date</th>
-                <th>Items count</th>
-                <th>Status</th>
-                <th>Action</th>
+              <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <FileText size={14} color="#8b5a2b" /> PO NUMBER
+                  </div>
+                </th>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Building2 size={14} color="#8b5a2b" /> SUPPLIER
+                  </div>
+                </th>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Calendar size={14} color="#8b5a2b" /> PO DATE
+                  </div>
+                </th>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Package size={14} color="#8b5a2b" /> ITEMS COUNT
+                  </div>
+                </th>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  STATUS
+                </th>
+                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  ACTION
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1394,19 +1622,48 @@ export default function GateEntry() {
                     key={p.id}
                     ref={isRecentlyVisited ? setHighlightRef : null}
                     onClick={() => navigate(`/gate-entry/${p.id}`)}
-                    style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                    style={{ cursor: 'pointer', transition: 'background 0.15s', borderBottom: '1px solid #f1f5f9' }}
                     className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                   >
-                    <td style={{ fontWeight: 600 }}>
-                      {p.po_number}
+                    <td style={{ padding: '0.95rem 1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <div style={{ width: 34, height: 34, borderRadius: '10px', background: '#f5eee6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <FileText size={16} color="#8b5a2b"/>
+                        </div>
+                        <strong style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
+                      </div>
                     </td>
-                    <td>{p.supplier_detail?.name || '—'}</td>
-                    <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN') : '—'}</td>
-                    <td>{(p.items || []).length}</td>
-                    <td><StatusBadge status={p.status}/></td>
-                    <td>
-                      <button className="btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', color: '#14b8a6', borderColor: '#ccfbf1' }} onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}>
-                        Start QC
+                    <td style={{ padding: '0.95rem 1rem', fontWeight: 700, color: '#1e293b' }}>
+                      {p.supplier_detail?.name || '—'}
+                    </td>
+                    <td style={{ padding: '0.95rem 1rem', color: '#475569', fontWeight: 500 }}>
+                      {p.po_date ? new Date(p.po_date).toLocaleDateString('en-GB') : '—'}
+                    </td>
+                    <td style={{ padding: '0.95rem 1rem', fontWeight: 700, color: '#1e293b' }}>
+                      {(p.items || []).length}
+                    </td>
+                    <td style={{ padding: '0.95rem 1rem' }}>
+                      <StatusBadge status={p.status}/>
+                    </td>
+                    <td style={{ padding: '0.95rem 1rem' }} onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                        style={{
+                          backgroundColor: '#e6f7f3',
+                          border: '1px solid #a7f3d0',
+                          color: '#0d9488',
+                          borderRadius: '8px',
+                          padding: '0.35rem 0.85rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <Play size={12} fill="#0d9488" color="#0d9488" /> Start QC
                       </button>
                     </td>
                   </tr>
@@ -1415,8 +1672,79 @@ export default function GateEntry() {
             </tbody>
           </table>
         </div>
+
+        {/* Footer Entry Count & Teal Pagination */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', padding: '0 0.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
+            Showing 1 to {filteredPOs.length} of {pos.length || filteredPOs.length} entries
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              style={{
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#ffffff',
+                color: '#64748b',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                opacity: currentPage <= 1 ? 0.5 : 1
+              }}
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                style={{
+                  border: 'none',
+                  backgroundColor: currentPage === pageNum ? '#0d9488' : '#ffffff',
+                  color: currentPage === pageNum ? '#ffffff' : '#64748b',
+                  borderRadius: '8px',
+                  width: '32px',
+                  height: '32px',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: currentPage === pageNum ? '0 2px 4px rgba(13, 148, 136, 0.2)' : 'none'
+                }}
+              >
+                {pageNum}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              style={{
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#ffffff',
+                color: '#64748b',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                opacity: currentPage >= totalPages ? 0.5 : 1
+              }}
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
       </div>
 
+      {/* Mobile Cards Fallback */}
       <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
         {loading ? (
           <CardSkeleton count={4} />
@@ -1428,11 +1756,11 @@ export default function GateEntry() {
         ) : filteredPOs.map(p => {
           const isRecentlyVisited = String(p.id) === String(lastVisitedId);
           return (
-            <div 
-              className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`} 
-              key={p.id} 
+            <div
+              className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
+              key={p.id}
               ref={isRecentlyVisited ? setHighlightRef : null}
-              onClick={() => navigate(`/gate-entry/${p.id}`)} 
+              onClick={() => navigate(`/gate-entry/${p.id}`)}
               style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1450,43 +1778,43 @@ export default function GateEntry() {
                 <ChevronRight size={20} color="#64748b" />
               </div>
 
-            <div style={{ height: '1px', background: '#e2e8f0', margin: '0' }} />
+              <div style={{ height: '1px', background: '#e2e8f0', margin: '0' }} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-start' }}>
-                <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Package size={18} color="#059669" />
-                  <div>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEMS & ORDERED QTY</div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>
-                      {(p.items || []).length} Line Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} Pcs)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-start' }}>
+                  <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Package size={18} color="#059669" />
+                    <div>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEMS & ORDERED QTY</div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>
+                        {(p.items || []).length} Line Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} Pcs)
+                      </div>
                     </div>
                   </div>
+                  <StatusBadge status={p.status} />
                 </div>
-                <StatusBadge status={p.status} />
-              </div>
 
-              <button
-                className="btn-secondary"
-                onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
-                style={{
-                  padding: '0.6rem 1rem',
-                  fontSize: '0.9rem',
-                  color: '#14b8a6',
-                  borderColor: '#99f6e4',
-                  borderRadius: '10px',
-                  background: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  fontWeight: 600
-                }}
-              >
-                Start QC
-              </button>
+                <button
+                  className="btn-secondary"
+                  onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                  style={{
+                    padding: '0.6rem 1rem',
+                    fontSize: '0.9rem',
+                    color: '#14b8a6',
+                    borderColor: '#99f6e4',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontWeight: 600
+                  }}
+                >
+                  Start QC
+                </button>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </div>
 
       <Pagination 

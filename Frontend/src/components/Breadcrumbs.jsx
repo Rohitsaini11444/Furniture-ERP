@@ -91,8 +91,8 @@ function getCrumbsForPath(pathname) {
     ];
   }
 
-  // Stock Inventory routes
-  if (pathname === '/stock') {
+  // Stock Inventory & Production Pipeline routes
+  if (pathname === '/stock' || pathname === '/production-pipeline') {
     return [{ label: 'Stock Inventory', path: '/stock' }];
   }
   if (pathname.startsWith('/stock/') || pathname.startsWith('/stock-details/')) {
@@ -101,21 +101,16 @@ function getCrumbsForPath(pathname) {
       { label: 'Stock Details' }
     ];
   }
+  if (pathname === '/sanding') {
+    return [
+      { label: 'Stock Inventory', path: '/stock' },
+      { label: 'Sanding Stage' }
+    ];
+  }
 
   // Store Management
   if (pathname === '/store-management') {
     return [{ label: 'Store Management Hub' }];
-  }
-
-  // Production Pipeline
-  if (pathname === '/production-pipeline') {
-    return [{ label: 'Production Pipeline' }];
-  }
-  if (pathname === '/sanding') {
-    return [
-      { label: 'Production Pipeline', path: '/production-pipeline' },
-      { label: 'Sanding Stage' }
-    ];
   }
 
   // Buyer Masters & Buyers
@@ -183,6 +178,35 @@ function getCrumbsForPath(pathname) {
     return [
       { label: 'Invoices (PI)', path: '/invoices' },
       { label: 'Invoice Details' }
+    ];
+  }
+
+  // Store Management
+  if (pathname === '/store-management') {
+    return [{ label: 'Store Management Hub', path: '/store-management' }];
+  }
+  if (pathname === '/store-management/material-in') {
+    return [
+      { label: 'Store Management Hub', path: '/store-management' },
+      { label: 'Material Inward Entry' }
+    ];
+  }
+  if (pathname === '/store-management/daily-issue') {
+    return [
+      { label: 'Store Management Hub', path: '/store-management' },
+      { label: 'Daily Issue Entry' }
+    ];
+  }
+  if (pathname === '/store-management/item-master/new') {
+    return [
+      { label: 'Store Management Hub', path: '/store-management' },
+      { label: 'New Store Item Master' }
+    ];
+  }
+  if (pathname.startsWith('/store-management/item-master/edit/')) {
+    return [
+      { label: 'Store Management Hub', path: '/store-management' },
+      { label: 'Edit Store Item Master' }
     ];
   }
 

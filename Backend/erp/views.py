@@ -4969,6 +4969,182 @@ class StoreItemViewSet(viewsets.ModelViewSet):
 
         return Response(comparison)
 
+    @action(detail=False, methods=['get'], url_path='download-template')
+    def download_template(self, request):
+        """
+        Generates and downloads a clean Excel import template for Store Items.
+        """
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Store Items Import"
+
+        headers = [
+            "Item Code", "Item Name", "Category Name", "Unit", 
+            "Base Rate", "Reorder Level", "Default Status", "Weight (kg)", "Remark"
+        ]
+        ws.append(headers)
+
+        header_fill = PatternFill(start_color="EA580C", end_color="EA580C", fill_type="solid")
+        header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+        
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        sample_rows = [
+            ["IT101", "Fevicol SH 50kg Drum", "Adhesives & Glue", "kg", 185.00, 10.00, "charge", 50.0, "High strength wood glue"],
+            ["IT102", "Sandpaper 120 Grit Sheet", "Abrasives & Sanding", "pcs", 12.50, 100.00, "charge", 0.05, "Waterproof silicon carbide paper"],
+            ["IT103", "NC Clear Thinner 20L", "Chemicals & Thinners", "ltr", 110.00, 15.00, "charge", 18.0, "Fast drying lacquer thinner"],
+            ["IT104", "Antique Brass Drop Handle 96mm", "Hardware & Fittings", "pcs", 45.00, 50.00, "charge", 0.12, "Cast brass vintage finish handle"],
+            ["IT105", "Masking Tape 2 inch Roll", "Packaging & Tapes", "roll", 35.00, 25.00, "free", 0.1, "General masking tape for polishing"]
+        ]
+
+        for r in sample_rows:
+            ws.append(r)
+
+        col_widths = [15, 32, 22, 10, 15, 15, 16, 14, 35]
+        for idx, width in enumerate(col_widths, 1):
+            col_letter = get_column_letter(idx)
+            ws.column_dimensions[col_letter].width = width
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename=Store_Item_Master_Import_Template.xlsx'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import-excel')
+    def import_excel(self, request):
+        """
+        Imports Store Items from an uploaded Excel or CSV file.
+        Checks for duplicates by item_code and item_name, skipping duplicate records.
+        """
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'detail': 'No file uploaded. Please upload a valid .xlsx, .xls, or .csv file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = file_obj.name.lower()
+        rows_data = []
+
+        try:
+            if filename.endswith('.csv'):
+                decoded_file = file_obj.read().decode('utf-8-sig')
+                io_string = io.StringIO(decoded_file)
+                reader = csv.DictReader(io_string)
+                for r in reader:
+                    rows_data.append(r)
+            else:
+                wb = openpyxl.load_workbook(file_obj, data_only=True)
+                ws = wb.active
+                headers = [str(cell.value or '').strip() for cell in ws[1]]
+                
+                header_map = {}
+                for idx, h in enumerate(headers):
+                    hl = h.lower().replace(' ', '_').replace('(', '').replace(')', '').replace('₹', '').replace('kg', '').strip('_')
+                    header_map[idx] = hl
+
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not any(row):
+                        continue
+                    row_dict = {}
+                    for idx, val in enumerate(row):
+                        key = header_map.get(idx)
+                        if key:
+                            row_dict[key] = val
+                    rows_data.append(row_dict)
+        except Exception as e:
+            return Response({'detail': f'Error reading Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not rows_data:
+            return Response({'detail': 'The uploaded Excel file contains no data rows.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_codes = set(StoreItem.objects.values_list('item_code', flat=True))
+        existing_names = set(StoreItem.objects.values_list('item_name', flat=True))
+        categories_map = {c.name.lower(): c for c in StoreItemCategory.objects.all()}
+
+        created_count = 0
+        skipped_count = 0
+        skipped_items = []
+
+        for idx, r in enumerate(rows_data, start=2):
+            item_code = str(r.get('item_code') or r.get('code') or f'IT{random.randint(100, 999)}').strip()
+            item_name = str(r.get('item_name') or r.get('name') or '').strip()
+
+            if not item_name:
+                continue
+
+            # Check Duplicate
+            if item_code in existing_codes or item_name.lower() in [n.lower() for n in existing_names]:
+                skipped_count += 1
+                skipped_items.append({'row': idx, 'item_code': item_code, 'item_name': item_name, 'reason': 'Duplicate Item Code or Name'})
+                continue
+
+            category_name = str(r.get('category_name') or r.get('category') or '').strip()
+            category_obj = None
+            if category_name:
+                category_obj = categories_map.get(category_name.lower())
+                if not category_obj:
+                    category_obj = StoreItemCategory.objects.create(name=category_name)
+                    categories_map[category_name.lower()] = category_obj
+
+            unit = str(r.get('unit') or 'pcs').strip()
+            try:
+                base_rate = Decimal(str(r.get('base_rate') or r.get('rate') or '0.00')).quantize(Decimal('0.01'))
+            except Exception:
+                base_rate = Decimal('0.00')
+
+            try:
+                reorder_level = Decimal(str(r.get('reorder_level') or '10.00')).quantize(Decimal('0.01'))
+            except Exception:
+                reorder_level = Decimal('10.00')
+
+            default_status = str(r.get('default_status') or 'charge').strip().lower()
+            if default_status not in ['charge', 'free']:
+                default_status = 'charge'
+
+            weight_val = None
+            raw_w = r.get('weight') or r.get('weight_kg')
+            if raw_w:
+                try:
+                    weight_val = Decimal(str(raw_w)).quantize(Decimal('0.01'))
+                except Exception:
+                    weight_val = None
+
+            remark = str(r.get('remark') or r.get('remarks') or '').strip()
+
+            new_item = StoreItem.objects.create(
+                item_code=item_code,
+                item_name=item_name,
+                category=category_obj,
+                unit=unit,
+                base_rate=base_rate,
+                current_rate=base_rate,
+                reorder_level=reorder_level,
+                default_status=default_status,
+                weight=weight_val,
+                remark=remark
+            )
+
+            existing_codes.add(item_code)
+            existing_names.add(item_name)
+            created_count += 1
+
+        return Response({
+            'detail': f'Import completed! {created_count} items created, {skipped_count} duplicate items skipped.',
+            'imported': created_count,
+            'duplicates_skipped': skipped_count,
+            'total_processed': len(rows_data),
+            'skipped_items': skipped_items
+        })
+
+
 
 class ContractorPersonViewSet(viewsets.ModelViewSet):
     queryset = ContractorPerson.objects.all()

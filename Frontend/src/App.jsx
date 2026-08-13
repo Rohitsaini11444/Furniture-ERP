@@ -29,6 +29,9 @@ import VendorManagement from './pages/VendorManagement';
 import RecordTaxInvoice from './pages/RecordTaxInvoice';
 import SupplierManagement from './pages/SupplierManagement';
 import StoreManagement from './pages/StoreManagement';
+import StoreItemMasterPage from './pages/StoreItemMasterPage';
+import StoreMaterialInPage from './pages/StoreMaterialInPage';
+import StoreDailyIssuePage from './pages/StoreDailyIssuePage';
 import Breadcrumbs from './components/Breadcrumbs';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
@@ -1442,6 +1445,10 @@ function AppLayout() {
             
             {/* Gate Entry, Store & Stock */}
             <Route path="/store-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreManagement /></ProtectedRoute>} />
+            <Route path="/store-management/material-in" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreMaterialInPage /></ProtectedRoute>} />
+            <Route path="/store-management/daily-issue" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreDailyIssuePage /></ProtectedRoute>} />
+            <Route path="/store-management/item-master/new" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreItemMasterPage /></ProtectedRoute>} />
+            <Route path="/store-management/item-master/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoreItemMasterPage /></ProtectedRoute>} />
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Stock /></ProtectedRoute>} />
@@ -1463,7 +1470,7 @@ function AppLayout() {
               path="/production-pipeline"
               element={
                 <ProtectedRoute>
-                  <ProductionPipeline />
+                  <Stock />
                 </ProtectedRoute>
               }
             />
@@ -1471,7 +1478,7 @@ function AppLayout() {
               path="/sanding"
               element={
                 <ProtectedRoute>
-                  <ProductionPipeline />
+                  <Stock />
                 </ProtectedRoute>
               }
             />

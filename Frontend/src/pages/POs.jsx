@@ -4,7 +4,8 @@ import api from '../api/axios';
 import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
-  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X
+  CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X,
+  Home, ChevronRight
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
@@ -984,84 +985,226 @@ function POs() {
   };
 
   return (
-    <div>
+    <div style={{ padding: '0 0 2rem' }}>
       <style>{`
-        .po-tabs-nav-bar {
+        .po-tabs-container {
           display: flex;
-          border-bottom: 1px solid #e2e8f0;
+          align-items: center;
+          background-color: #ffffff;
+          border-radius: 16px;
+          padding: 0.5rem 0.75rem;
+          border: 1px solid #f1f5f9;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
           margin-bottom: 1.5rem;
-          gap: 1.25rem;
+          gap: 1.5rem;
           overflow-x: auto;
-          white-space: nowrap;
-          -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
         }
-        .po-tabs-nav-bar::-webkit-scrollbar {
+        .po-tabs-container::-webkit-scrollbar {
           display: none;
         }
-        .po-tabs-nav-bar button {
-          flex-shrink: 0;
+        .po-tab-btn {
+          background: none;
+          border: none;
+          border-bottom: 3px solid transparent;
+          border-radius: 8px 8px 0 0;
+          color: #475569;
+          font-weight: 500;
+          padding: 0.65rem 1.1rem;
+          cursor: pointer;
+          font-size: 0.92rem;
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
           white-space: nowrap;
+          transition: all 0.15s ease-in-out;
+        }
+        .po-tab-btn.active-pos {
+          background-color: #e6f4f1;
+          border-bottom-color: #0d9488;
+          color: #0d9488;
+          font-weight: 700;
+        }
+        .po-tab-btn.active-gate {
+          background-color: #e6f4f1;
+          border-bottom-color: #0d9488;
+          color: #0d9488;
+          font-weight: 700;
+        }
+        .po-tab-btn.active-vendor {
+          background-color: #fef2f2;
+          border-bottom-color: #dc2626;
+          color: #dc2626;
+          font-weight: 700;
+        }
+        .po-tab-icon-box {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .po-main-banner {
+          background-color: #ffffff;
+          border-radius: 16px;
+          padding: 1.25rem 1.5rem;
+          border: 1px solid #f1f5f9;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .po-stat-grid-v2 {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 1.25rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .po-filter-card {
+          background-color: #ffffff;
+          border-radius: 16px;
+          padding: 0.85rem 1.25rem;
+          border: 1px solid #f1f5f9;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+          margin-bottom: 1.5rem;
+        }
+
+        .po-table-card {
+          background-color: #ffffff;
+          border-radius: 16px;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+          overflow: hidden;
+        }
+
+        .po-table-card table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .po-table-card th {
+          background-color: #f7f3ee !important;
+          color: #524b42;
+          font-size: 0.75rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 0.9rem 1rem;
+          border-bottom: 1px solid #e2e8f0;
+          text-align: left;
+        }
+
+        .po-table-card td {
+          padding: 0.95rem 1rem;
+          border-bottom: 1px solid #f1f5f9;
+          font-size: 0.88rem;
+          vertical-align: middle;
+        }
+
+        .po-table-card tr:last-child td {
+          border-bottom: none;
+        }
+
+        .po-table-card tr:hover td {
+          background-color: #fafaf9;
+        }
+
+        .po-action-pill-btn {
+          border-radius: 8px;
+          padding: 0.35rem 0.8rem;
+          font-size: 0.78rem;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          line-height: 1.2;
+        }
+
+        @media (max-width: 768px) {
+          .po-header-actions {
+            width: 100% !important;
+          }
+          .po-header-actions button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+          .po-stat-grid-v2 {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 0.75rem !important;
+          }
+          .po-filter-bar-inner {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.65rem !important;
+          }
+          .po-search-wrap {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          .po-filters-wrap {
+            width: 100% !important;
+            flex-direction: column !important;
+            gap: 0.5rem !important;
+          }
+          .po-filter-item {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+          .po-filter-item > div {
+            flex: 1 !important;
+          }
         }
       `}</style>
 
       {/* ── Module Tabs (PO Listing & Gate Entry & Vendor Management) ── */}
-      <div className="po-tabs-nav-bar">
+      <div className="po-tabs-container">
         <button
+          className={`po-tab-btn ${activeTab === 'pos' ? 'active-pos' : ''}`}
           onClick={() => { setActiveTab('pos'); setSearchParams({}); }}
-          style={{
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'pos' ? '3px solid #14b8a6' : '3px solid transparent',
-            color: activeTab === 'pos' ? '#14b8a6' : 'var(--text-muted)',
-            fontWeight: activeTab === 'pos' ? 600 : 500,
-            padding: '0.75rem 0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.95rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
         >
-          <FileText size={18} /> Purchase Orders Listing
+          <div className="po-tab-icon-box" style={{
+            backgroundColor: activeTab === 'pos' ? '#0d9488' : '#f1f5f9',
+            color: activeTab === 'pos' ? '#ffffff' : '#64748b'
+          }}>
+            <FileText size={16} />
+          </div>
+          Purchase Orders Listing
         </button>
 
         <button
+          className={`po-tab-btn ${activeTab === 'gate-entry' ? 'active-gate' : ''}`}
           onClick={() => { setActiveTab('gate-entry'); setSearchParams({ tab: 'gate-entry' }); }}
-          style={{
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'gate-entry' ? '3px solid #14b8a6' : '3px solid transparent',
-            color: activeTab === 'gate-entry' ? '#14b8a6' : 'var(--text-muted)',
-            fontWeight: activeTab === 'gate-entry' ? 600 : 500,
-            padding: '0.75rem 0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.95rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
         >
-          <ClipboardCheck size={18} /> Gate Entry & Material Receiving
+          <div className="po-tab-icon-box" style={{
+            backgroundColor: activeTab === 'gate-entry' ? '#0d9488' : '#f1f5f9',
+            color: activeTab === 'gate-entry' ? '#ffffff' : '#64748b'
+          }}>
+            <ClipboardCheck size={16} />
+          </div>
+          Gate Entry & Material Receiving
         </button>
 
         <button
+          className={`po-tab-btn ${activeTab === 'vendor-management' ? 'active-vendor' : ''}`}
           onClick={() => { setActiveTab('vendor-management'); setSearchParams({ tab: 'vendor-management' }); }}
-          style={{
-            background: 'none',
-            border: 'none',
-            borderBottom: activeTab === 'vendor-management' ? '3px solid #dc2626' : '3px solid transparent',
-            color: activeTab === 'vendor-management' ? '#dc2626' : 'var(--text-muted)',
-            fontWeight: activeTab === 'vendor-management' ? 600 : 500,
-            padding: '0.75rem 0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.95rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-          }}
         >
-          <TruckIcon size={18} /> Vendor / Supplier Management
+          <div className="po-tab-icon-box" style={{
+            backgroundColor: activeTab === 'vendor-management' ? '#dc2626' : '#f1f5f9',
+            color: activeTab === 'vendor-management' ? '#ffffff' : '#64748b'
+          }}>
+            <TruckIcon size={16} />
+          </div>
+          Vendor / Supplier Management
         </button>
       </div>
 
@@ -1071,103 +1214,230 @@ function POs() {
         <GateEntry />
       ) : (
         <>
-          <style>{`
-            @media (max-width: 768px) {
-              .po-header-actions {
-                width: 100% !important;
-                margin-top: 0.5rem !important;
-              }
-              .po-header-actions button {
-                width: 100% !important;
-                justify-content: center !important;
-              }
-              .po-stat-grid {
-                grid-template-columns: repeat(2, 1fr) !important;
-                gap: 0.75rem !important;
-              }
-              .po-filter-bar-inner {
-                flex-direction: column !important;
-                align-items: stretch !important;
-                gap: 0.65rem !important;
-              }
-              .po-search-wrap {
-                width: 100% !important;
-                max-width: 100% !important;
-                flex: none !important;
-              }
-              .po-search-wrap input {
-                height: 42px !important;
-                max-height: 42px !important;
-                box-sizing: border-box !important;
-                border-radius: 10px !important;
-              }
-              .po-filters-wrap {
-                width: 100% !important;
-                flex-direction: column !important;
-                gap: 0.5rem !important;
-              }
-              .po-filter-item {
-                width: 100% !important;
-                justify-content: space-between !important;
-              }
-              .po-filter-item > div {
-                flex: 1 !important;
-                width: auto !important;
-              }
-            }
-          `}</style>
-
-          {/* ── Page Header ── */}
-          <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', padding: '0 0.5rem 1rem' }}>
-            <div>
-              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShoppingBag size={28} color="#8b5a2b" style={{ flexShrink: 0 }} /> Purchase Orders & Gate Entry
-              </h2>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Supplier POs, material receipts, and quality check inspection
-              </p>
+          {/* ── Main Page Header Banner ── */}
+          <div className="po-main-banner">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                backgroundColor: '#f5eee6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <ShoppingBag size={26} color="#8b5a2b" />
+              </div>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
+                  Purchase Orders & Gate Entry
+                </h1>
+                <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.86rem', fontWeight: 450 }}>
+                  Supplier POs, material receipts, and quality check inspection
+                </p>
+              </div>
             </div>
             <div className="po-header-actions">
-              <button className="btn-primary" onClick={() => navigate('/pos/new')}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#8b5a2b', borderRadius: '10px' }}>
-                <Plus size={16}/> Create New PO
+              <button
+                onClick={() => navigate('/pos/new')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  backgroundColor: '#8b5a2b',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '0.65rem 1.35rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#754921'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8b5a2b'}
+              >
+                <Plus size={18} /> Create New PO
               </button>
             </div>
           </div>
 
-          {/* ── Stat Cards ── */}
-          <div className="po-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-            {[
-              { label: 'Total POs', value: stats.total, color: '#8b5a2b', bg: '#8b5a2b15' },
-              { label: 'Pending', value: stats.pending, color: '#d97706', bg: '#fef3c7' },
-              { label: 'Received', value: stats.received, color: '#1d4ed8', bg: '#dbeafe' },
-              { label: 'Total Value', value: `₹${stats.totalValue.toLocaleString('en-IN', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`, color: '#8b5a2b', bg: '#8b5a2b15' },
-            ].map(card => (
-              <div key={card.label} style={{ background: card.bg, borderRadius: '12px', padding: '1rem 1.25rem', border: `1px solid ${card.color}22` }}>
-                <div style={{ fontSize: '0.75rem', color: card.color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.label}</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: card.color, marginTop: '4px' }}>{card.value}</div>
+          {/* ── Stat Cards Grid (4 KPI Cards) ── */}
+          <div className="po-stat-grid-v2">
+            {/* Card 1: Total POs */}
+            <div style={{
+              backgroundColor: '#faf7f2',
+              borderRadius: '14px',
+              padding: '1.1rem 1.25rem',
+              border: '1px solid #eee7dd',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '1rem',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+            }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                backgroundColor: '#f0e6da',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <FileText size={20} color="#8b5a2b" />
               </div>
-            ))}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  TOTAL POs
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                  {stats.total}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', fontWeight: 500 }}>
+                  All Purchase Orders
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Pending */}
+            <div style={{
+              backgroundColor: '#fff8ed',
+              borderRadius: '14px',
+              padding: '1.1rem 1.25rem',
+              border: '1px solid #fde68a',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '1rem',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+            }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                backgroundColor: '#fef3c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <Clock size={20} color="#d97706" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  PENDING
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
+                  {stats.pending}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
+                  Awaiting Actions
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Received */}
+            <div style={{
+              backgroundColor: '#f0f6fe',
+              borderRadius: '14px',
+              padding: '1.1rem 1.25rem',
+              border: '1px solid #bfdbfe',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '1rem',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+            }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                backgroundColor: '#dbeafe',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <Package size={20} color="#1d4ed8" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  RECEIVED
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
+                  {stats.received}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
+                  Fully Received
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Total Value */}
+            <div style={{
+              backgroundColor: '#f0fdf4',
+              borderRadius: '14px',
+              padding: '1.1rem 1.25rem',
+              border: '1px solid #bbf7d0',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '1rem',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+            }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                backgroundColor: '#dcfce7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                fontSize: '1.25rem',
+                fontWeight: 800,
+                color: '#059669'
+              }}>
+                ₹
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  TOTAL VALUE
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                  ₹{stats.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#166534', marginTop: '4px', fontWeight: 500 }}>
+                  Across All POs
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── Filter Bar ── */}
-          <div className="filter-bar">
+          <div className="po-filter-card">
             <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-              <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 260px', minWidth: '200px', maxWidth: '380px' }}>
-                <Search size={15} className="filter-icon"/>
+              <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
+                <Search size={16} color="#94a3b8" />
                 <input
                   type="text"
-                  className="filter-input"
                   placeholder="Search by PO number or supplier..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ flex: 1, height: '42px', boxSizing: 'border-box', borderRadius: '10px' }}
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    width: '100%',
+                    fontSize: '0.88rem',
+                    color: '#1e293b'
+                  }}
                 />
               </div>
 
-              <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>STATUS:</span>
+              <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>STATUS:</span>
                   <div style={{ width: '165px' }}>
                     <StatusSelect
                       options={PO_STATUS_OPTIONS}
@@ -1178,8 +1448,8 @@ function POs() {
                   </div>
                 </div>
 
-                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span className="filter-label" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap' }}>ORDER BY:</span>
+                <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
                   <div style={{ width: '165px' }}>
                     <OrderBySelect
                       options={ORDER_OPTIONS_DATE_PONO}
@@ -1192,200 +1462,264 @@ function POs() {
             </div>
           </div>
 
-          {/* ── Desktop Table & Mobile Cards ── */}
+          {/* ── Desktop Table ── */}
           <div className="po-desktop-table">
-            <div className="table-container">
-              <table className="data-table">
-              <thead>
-                <tr>
-                  <th>PO Number</th>
-                  <th>Supplier</th>
-                  <th>Supervisor</th>
-                  <th>PO Date</th>
-                  <th>Due Date</th>
-                  <th>Items & Ordered Qty</th>
-                  <th>Total Amount</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <TableSkeleton rows={6} cols={9} hasImage={false} />
-                ) : filteredPOs.length === 0 ? (
+            <div className="po-table-card">
+              <table>
+                <thead>
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                      <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
-                      <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
-                      <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                        {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
-                      </div>
-                    </td>
+                    <th>PO NUMBER</th>
+                    <th>SUPPLIER</th>
+                    <th>SUPERVISOR</th>
+                    <th>PO DATE</th>
+                    <th>DUE DATE</th>
+                    <th>ITEMS & ORDERED QTY</th>
+                    <th>TOTAL AMOUNT</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
                   </tr>
-                ) : filteredPOs.map(p => {
-                  const isRecentlyVisited = String(p.id) === String(lastVisitedId);
-                  return (
-                    <tr
-                      key={p.id}
-                      ref={isRecentlyVisited ? setHighlightRef : null}
-                      onClick={() => navigate(`/pos/${p.id}`)}
-                      style={{ cursor: 'pointer', transition: 'background 0.15s' }}
-                      className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
-                      title="Click to view/edit"
-                    >
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#8b5a2b15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <FileText size={15} color="#8b5a2b"/>
-                          </div>
-                          <strong>{p.po_number}</strong>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <TableSkeleton rows={6} cols={9} hasImage={false} />
+                  ) : filteredPOs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+                        <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+                        <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                          {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
                         </div>
                       </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{p.supplier_detail?.name || '—'}</div>
-                      {p.supplier_detail?.state_name && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.supplier_detail.state_name}</div>
-                      )}
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                        {p.supervisor_detail?.full_name || p.supervisor_detail?.username || p.supervisor || '—'}
-                      </span>
-                    </td>
-                    <td>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                    <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                    <td>
-                      <span style={{ background: '#f1f5f9', borderRadius: '999px', padding: '3px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
-                        {(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} pcs)
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 700, color: '#8b5a2b' }}>{fmtINR(p.total_amount)}</td>
-                    <td><StatusBadge status={p.status}/></td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#14b8a6', borderColor: '#ccfbf1' }}
-                          onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
-                          title="Record Gate Entry QC Inspection"
-                        >
-                          <ClipboardCheck size={13}/> Gate Entry
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                          onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
-                        >
-                          <Eye size={13}/> Edit
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1d4ed8', borderColor: '#bfdbfe' }}
-                          onClick={e => handleDownloadPDF(p, e)}
-                          disabled={downloading === p.id}
-                          title="Download PDF"
-                        >
-                          <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
-                        </button>
-                        <button
-                          className="btn-secondary"
-                          style={{
-                            padding: '0.3rem 0.7rem',
-                            fontSize: '0.78rem',
-                            color: p.status === 'Cancelled' ? '#94a3b8' : '#d97706',
-                            borderColor: p.status === 'Cancelled' ? '#e2e8f0' : '#fde68a',
-                            backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fffbeb',
-                            cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
-                          }}
-                          onClick={e => handleCancelPO(p, e)}
-                          disabled={p.status === 'Cancelled'}
-                          title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
-                        >
-                          {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              </tbody>
-            </table>
+                    </tr>
+                  ) : filteredPOs.map(p => {
+                    const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+                    const totalQty = p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0);
+                    return (
+                      <tr
+                        key={p.id}
+                        ref={isRecentlyVisited ? setHighlightRef : null}
+                        onClick={() => navigate(`/pos/${p.id}`)}
+                        style={{ cursor: 'pointer', transition: 'background 0.15s' }}
+                        className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                        title="Click to view/edit"
+                      >
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '10px', background: '#f5eee6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <FileText size={16} color="#8b5a2b"/>
+                            </div>
+                            <strong style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, color: '#1e293b' }}>{p.supplier_detail?.name || '—'}</div>
+                          {p.supplier_detail?.state_name && (
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '1px' }}>{p.supplier_detail.state_name}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#2563eb' }}>
+                            {p.supervisor_detail?.full_name || p.supervisor_detail?.username || p.supervisor || '—'}
+                          </span>
+                        </td>
+                        <td style={{ color: '#475569', fontWeight: 500 }}>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                        <td style={{ color: '#475569', fontWeight: 500 }}>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                        <td>
+                          <span style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, color: '#334155' }}>
+                            {(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''} ({totalQty} pcs)
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.92rem' }}>{fmtINR(p.total_amount)}</td>
+                        <td><StatusBadge status={p.status}/></td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            <button
+                              className="po-action-pill-btn"
+                              style={{ backgroundColor: '#f0fdf4', border: '1px solid #a7f3d0', color: '#0d9488' }}
+                              onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                              title="Record Gate Entry QC Inspection"
+                            >
+                              <ClipboardCheck size={13}/> Gate Entry
+                            </button>
+                            <button
+                              className="po-action-pill-btn"
+                              style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', color: '#475569' }}
+                              onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
+                            >
+                              <Eye size={13}/> Edit
+                            </button>
+                            <button
+                              className="po-action-pill-btn"
+                              style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb' }}
+                              onClick={e => handleDownloadPDF(p, e)}
+                              disabled={downloading === p.id}
+                              title="Download PDF"
+                            >
+                              <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
+                            </button>
+                            <button
+                              className="po-action-pill-btn"
+                              style={{
+                                backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fff5f5',
+                                border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
+                                color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
+                                cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
+                              }}
+                              onClick={e => handleCancelPO(p, e)}
+                              disabled={p.status === 'Cancelled'}
+                              title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
+                            >
+                              <X size={13}/> {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
 
-      <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
-        {loading ? (
-          <CardSkeleton count={4} />
-        ) : filteredPOs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
-            <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
-          </div>
-        ) : filteredPOs.map(p => {
-          const isRecentlyVisited = String(p.id) === String(lastVisitedId);
-          return (
-            <div 
-              className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`} 
-              key={p.id} 
-              ref={isRecentlyVisited ? setHighlightRef : null}
-              onClick={() => navigate(`/pos/${p.id}`)} 
-              style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <FileText size={24} color="#8b5a2b"/>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>
-                      {p.po_number}
-                    </div>
-                    <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>
-                  </div>
-                </div>
-                
-                <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>TOTAL AMOUNT</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b' }}>
-                    {fmtINR(p.total_amount)}
-                  </div>
-                </div>
+            {/* Entry Count & Styled Pagination */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', padding: '0 0.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
+                Showing 1 to {filteredPOs.length} of {pos.length || filteredPOs.length} entries
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <button
-                  onClick={e => handleDownloadPDF(p, e)}
-                  disabled={downloading === p.id}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
                   style={{
-                    background: '#fff',
                     border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    padding: '0.75rem 0.5rem',
+                    backgroundColor: '#ffffff',
+                    color: '#64748b',
+                    borderRadius: '8px',
+                    width: '32px',
+                    height: '32px',
                     display: 'flex',
-                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '0.35rem',
-                    color: '#3b82f6',
-                    cursor: 'pointer',
-                    minWidth: '60px'
+                    cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                    opacity: currentPage <= 1 ? 0.5 : 1
                   }}
                 >
-                  <Download size={22}/>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{downloading === p.id ? '...' : 'PDF'}</span>
+                  &lt;
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    style={{
+                      border: 'none',
+                      backgroundColor: currentPage === pageNum ? '#8b5a2b' : '#ffffff',
+                      color: currentPage === pageNum ? '#ffffff' : '#64748b',
+                      borderRadius: '8px',
+                      width: '32px',
+                      height: '32px',
+                      fontWeight: 700,
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: currentPage === pageNum ? '0 2px 4px rgba(139, 90, 43, 0.2)' : 'none'
+                    }}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                    color: '#64748b',
+                    borderRadius: '8px',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                    opacity: currentPage >= totalPages ? 0.5 : 1
+                  }}
+                >
+                  &gt;
                 </button>
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      <Pagination 
-        currentPage={currentPage} 
-        totalPages={totalPages} 
-        onPageChange={setCurrentPage} 
-      />
+          {/* Mobile Cards fallback */}
+          <div className="po-mobile-cards" style={{ padding: '0 0.5rem' }}>
+            {loading ? (
+              <CardSkeleton count={4} />
+            ) : filteredPOs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
+                <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+              </div>
+            ) : filteredPOs.map(p => {
+              const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+              return (
+                <div
+                  className={`po-mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
+                  key={p.id}
+                  ref={isRecentlyVisited ? setHighlightRef : null}
+                  onClick={() => navigate(`/pos/${p.id}`)}
+                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <FileText size={24} color="#8b5a2b"/>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>
+                          {p.po_number}
+                        </div>
+                        <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>TOTAL AMOUNT</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b' }}>
+                        {fmtINR(p.total_amount)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', paddingLeft: '1rem' }}>
+                    <button
+                      onClick={e => handleDownloadPDF(p, e)}
+                      disabled={downloading === p.id}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '10px',
+                        padding: '0.75rem 0.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.35rem',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        minWidth: '60px'
+                      }}
+                    >
+                      <Download size={22}/>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{downloading === p.id ? '...' : 'PDF'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
     </div>

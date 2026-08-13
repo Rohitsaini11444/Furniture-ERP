@@ -10,8 +10,9 @@ export function SearchableSelect({
   value = '',
   onChange,
   placeholder = 'Select option...',
-  searchPlaceholder = 'Search...',
+  searchPlaceholder = 'Search by code or name...',
   showSearch = true,
+  pageSize = 15,
   idKey = 'id',
   codeKey = 'code',
   titleKey = 'name',
@@ -27,6 +28,7 @@ export function SearchableSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const containerRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -48,6 +50,11 @@ export function SearchableSelect({
     }
   }, [isOpen, showSearch]);
 
+  // Reset page to 1 when search or isOpen changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, isOpen]);
+
   // Find currently selected option
   const selectedOption = options.find(opt => {
     if (typeof opt !== 'object') return String(opt) === String(value);
@@ -55,18 +62,28 @@ export function SearchableSelect({
     return String(val) === String(value);
   });
 
-  // Filter options based on search input
+  // Multi-token string-wise fuzzy search
   const filteredOptions = options.filter(opt => {
     if (!searchTerm || !showSearch) return true;
-    const term = searchTerm.toLowerCase();
+    const tokens = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+
+    let targetText = '';
     if (typeof opt === 'string' || typeof opt === 'number') {
-      return String(opt).toLowerCase().includes(term);
+      targetText = String(opt).toLowerCase();
+    } else {
+      const code = String(opt[codeKey] || opt.item_code || opt.sample_id || opt.style_no || opt.code || opt.id || '').toLowerCase();
+      const title = String(opt[titleKey] || opt.item_name || opt.product_name || opt.name || opt.label || opt.full_name || opt.username || '').toLowerCase();
+      const desc = String(opt.description || opt.material || opt.unit || opt.category_name || opt.remark || '').toLowerCase();
+      targetText = `${code} ${title} ${desc}`;
     }
-    const code = String(opt[codeKey] || opt.sample_id || opt.style_no || opt.code || opt.id || '').toLowerCase();
-    const title = String(opt[titleKey] || opt.product_name || opt.name || opt.label || '').toLowerCase();
-    const desc = String(opt.description || opt.material || opt.finish_color || opt.state_name || '').toLowerCase();
-    return code.includes(term) || title.includes(term) || desc.includes(term);
+
+    return tokens.every(token => targetText.includes(token));
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredOptions.length / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedOptions = filteredOptions.slice(startIndex, startIndex + pageSize);
 
   const handleSelect = (opt) => {
     const val = typeof opt === 'object' ? (opt[idKey] !== undefined ? opt[idKey] : (opt.id !== undefined ? opt.id : opt.value)) : opt;
@@ -80,7 +97,7 @@ export function SearchableSelect({
     onChange('', null);
   };
 
-  // Helper to extract initials (e.g. Rakesh Sharma -> RS)
+  // Helper to extract initials
   const getInitials = (text) => {
     if (!text) return '';
     const words = String(text).trim().split(/\s+/);
@@ -101,8 +118,7 @@ export function SearchableSelect({
       return <DIcon size={18} color="#8b5a2b" />;
     }
 
-    // Default: Check if supplier name / text to create avatar badge
-    const nameStr = typeof opt === 'object' ? (opt[titleKey] || opt.name || opt.label || '') : String(opt);
+    const nameStr = typeof opt === 'object' ? (opt[titleKey] || opt.item_name || opt.name || opt.label || '') : String(opt);
     if (nameStr) {
       const initials = getInitials(nameStr);
       return (
@@ -131,25 +147,25 @@ export function SearchableSelect({
   // Render Trigger Display Text
   const renderTriggerContent = () => {
     if (!selectedOption) {
-      return <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 600 }}>{placeholder}</span>;
+      return <span style={{ color: '#64748b', fontSize: '0.9rem', fontWeight: 500 }}>{placeholder}</span>;
     }
 
     if (typeof selectedOption !== 'object') {
       return <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem' }}>{selectedOption}</span>;
     }
 
-    const code = selectedOption[codeKey] || selectedOption.sample_id || selectedOption.style_no || selectedOption.code || '';
-    const title = selectedOption[titleKey] || selectedOption.product_name || selectedOption.name || selectedOption.label || '';
+    const code = selectedOption[codeKey] || selectedOption.item_code || selectedOption.sample_id || selectedOption.style_no || selectedOption.code || '';
+    const title = selectedOption[titleKey] || selectedOption.item_name || selectedOption.product_name || selectedOption.name || selectedOption.label || '';
 
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', minWidth: 0 }}>
         {code && (
-          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem', flexShrink: 0 }}>
+          <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem', flexShrink: 0 }}>
             {code}
           </span>
         )}
         {title && (
-          <span style={{ color: code ? '#475569' : '#1e293b', fontWeight: code ? 500 : 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          <span style={{ color: code ? '#334155' : '#0f172a', fontWeight: code ? 600 : 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
             {code ? `— ${title}` : title}
           </span>
         )}
@@ -170,25 +186,22 @@ export function SearchableSelect({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0.5rem 1rem 0.5rem 0.9rem',
+          padding: '0.65rem 0.85rem',
           backgroundColor: '#ffffff',
-          border: isOpen ? '1.5px solid #8b5a2b' : '1.5px solid #d6c7b2',
-          borderRadius: '10px',
-          boxShadow: isOpen ? '0 0 0 3px rgba(139, 90, 43, 0.12)' : '0 1px 2px rgba(0,0,0,0.04)',
+          border: isOpen ? '1.5px solid #ea580c' : '1px solid #cbd5e1',
+          borderRadius: '8px',
+          boxShadow: isOpen ? '0 0 0 3px rgba(234, 88, 12, 0.12)' : 'none',
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.15s ease',
           opacity: disabled ? 0.6 : 1,
           userSelect: 'none',
           outline: 'none'
         }}
-        onMouseEnter={e => { if (!disabled && !isOpen) e.currentTarget.style.borderColor = '#8b5a2b'; }}
-        onMouseLeave={e => { if (!disabled && !isOpen) e.currentTarget.style.borderColor = '#d6c7b2'; }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden', flex: 1, minWidth: 0 }}>
-          {/* Outlined Icon for standard trigger size (DefaultIcon or selectedOption.icon) */}
           {(selectedOption && typeof selectedOption === 'object' && selectedOption.icon) ? (
-            React.createElement(selectedOption.icon, { size: 18, color: '#8b5a2b', style: { flexShrink: 0 } })
-          ) : (DefaultIcon ? <DefaultIcon size={18} color="#8b5a2b" style={{ flexShrink: 0 }} /> : null)}
+            React.createElement(selectedOption.icon, { size: 18, color: '#ea580c', style: { flexShrink: 0 } })
+          ) : (DefaultIcon ? <DefaultIcon size={18} color="#ea580c" style={{ flexShrink: 0 }} /> : null)}
           {renderTriggerContent()}
         </div>
 
@@ -213,7 +226,7 @@ export function SearchableSelect({
           )}
           <ChevronDown
             size={16}
-            color="#8b5a2b"
+            color="#64748b"
             style={{
               transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
               transition: 'transform 0.2s ease',
@@ -233,10 +246,10 @@ export function SearchableSelect({
             right: 0,
             zIndex: 1000,
             backgroundColor: '#ffffff',
-            border: '1px solid #e7e5e4',
-            borderRadius: '16px',
-            boxShadow: '0 12px 32px -4px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)',
-            padding: '0.85rem',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            boxShadow: '0 12px 32px -4px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.06)',
+            padding: '0.75rem',
             animation: 'fadeIn 0.15s ease-out',
             minWidth: '260px'
           }}
@@ -246,14 +259,14 @@ export function SearchableSelect({
             <div
               style={{
                 position: 'relative',
-                marginBottom: '0.75rem',
+                marginBottom: '0.65rem',
                 display: 'flex',
                 alignItems: 'center'
               }}
             >
               <Search
                 size={17}
-                color="#8b5a2b"
+                color="#64748b"
                 style={{ position: 'absolute', left: '12px', pointerEvents: 'none' }}
               />
               <input
@@ -264,14 +277,13 @@ export function SearchableSelect({
                 placeholder={searchPlaceholder}
                 style={{
                   width: '100%',
-                  padding: '0.6rem 0.8rem 0.6rem 2.4rem',
-                  backgroundColor: '#faf8f5',
-                  border: '1px solid #e7e0d6',
-                  borderRadius: '10px',
+                  padding: '0.55rem 0.8rem 0.55rem 2.4rem',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
                   fontSize: '0.88rem',
-                  color: '#1e293b',
-                  outline: 'none',
-                  transition: 'all 0.2s'
+                  color: '#0f172a',
+                  outline: 'none'
                 }}
               />
             </div>
@@ -289,10 +301,10 @@ export function SearchableSelect({
                 alignItems: 'center',
                 gap: '0.75rem',
                 padding: '0.65rem 0.85rem',
-                borderRadius: '10px',
-                border: '1px dashed #d6c7b2',
-                backgroundColor: '#faf8f5',
-                color: '#8b5a2b',
+                borderRadius: '8px',
+                border: '1px dashed #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#ea580c',
                 fontWeight: 700,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
@@ -302,16 +314,17 @@ export function SearchableSelect({
             >
               <div
                 style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '8px',
-                  border: '1px solid #d6c7b2',
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '6px',
+                  border: '1px solid #fed7aa',
+                  backgroundColor: '#fff7ed',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
               >
-                <Plus size={16} color="#8b5a2b" />
+                <Plus size={16} color="#ea580c" />
               </div>
               {addNewText}
             </div>
@@ -328,17 +341,19 @@ export function SearchableSelect({
               paddingRight: '2px'
             }}
           >
-            {filteredOptions.length === 0 ? (
+            {paginatedOptions.length === 0 ? (
               <div style={{ padding: '1.25rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.88rem' }}>
                 No matching results found.
               </div>
             ) : (
-              filteredOptions.map((opt, idx) => {
+              paginatedOptions.map((opt, idx) => {
                 const optVal = typeof opt === 'object' ? (opt[idKey] !== undefined ? opt[idKey] : (opt.id !== undefined ? opt.id : opt.value)) : opt;
                 const isSelected = String(optVal) === String(value);
 
-                const code = typeof opt === 'object' ? (opt[codeKey] || opt.sample_id || opt.style_no || opt.code || '') : '';
-                const title = typeof opt === 'object' ? (opt[titleKey] || opt.product_name || opt.name || opt.label || '') : String(opt);
+                const code = typeof opt === 'object' ? (opt[codeKey] || opt.item_code || opt.sample_id || opt.style_no || opt.code || '') : '';
+                const title = typeof opt === 'object' ? (opt[titleKey] || opt.item_name || opt.product_name || opt.name || opt.label || opt.full_name || opt.username || '') : String(opt);
+                const unit = typeof opt === 'object' ? (opt.unit || '') : '';
+                const stockQty = typeof opt === 'object' ? (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : opt.balance_qty) : null;
 
                 return (
                   <div
@@ -348,38 +363,48 @@ export function SearchableSelect({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '0.65rem 0.85rem',
-                      borderRadius: '10px',
-                      backgroundColor: isSelected ? '#f5efe6' : 'transparent',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      backgroundColor: isSelected ? '#fff7ed' : 'transparent',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                       gap: '0.75rem'
                     }}
                     onMouseEnter={e => {
-                      if (!isSelected) e.currentTarget.style.backgroundColor = '#faf6f0';
+                      if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
                     }}
                     onMouseLeave={e => {
                       if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', overflow: 'hidden', flex: 1 }}>
                       {renderOptionIcon(opt)}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
-                        {code && (
-                          <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.9rem', flexShrink: 0 }}>
-                            {code}
-                          </span>
-                        )}
-                        {title && (
-                          <span style={{ color: code ? '#475569' : '#1e293b', fontWeight: code ? 500 : 600, fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'nowrap' }}>
+                          {code && (
+                            <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem', flexShrink: 0 }}>
+                              {code}
+                            </span>
+                          )}
+                          <span style={{ color: code ? '#334155' : '#0f172a', fontWeight: code ? 600 : 700, fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {title}
                           </span>
+                        </div>
+                        {(unit || stockQty !== null) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                            {unit && <span>Unit: <strong>{unit}</strong></span>}
+                            {stockQty !== null && (
+                              <span style={{ color: parseFloat(stockQty) <= 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
+                                Stock: {stockQty} {unit}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
 
                     {isSelected && (
-                      <Check size={18} color="#8b5a2b" style={{ flexShrink: 0 }} />
+                      <Check size={18} color="#ea580c" style={{ flexShrink: 0 }} />
                     )}
                   </div>
                 );
@@ -387,26 +412,67 @@ export function SearchableSelect({
             )}
           </div>
 
-          {/* Footer Info */}
+          {/* Footer Info & Pagination Controls */}
           <div
             style={{
               marginTop: '0.6rem',
               paddingTop: '0.5rem',
               borderTop: '1px solid #f1f5f9',
               display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              fontSize: '0.78rem',
-              color: '#8b5a2b',
-              fontWeight: 600
+              flexDirection: 'column',
+              gap: '0.35rem'
             }}
           >
-            {FooterIcon && <FooterIcon size={14} color="#8b5a2b" />}
-            {footerText ? (
-              typeof footerText === 'function' ? footerText(filteredOptions.length) : footerText
-            ) : (
-              `Showing ${filteredOptions.length} of ${options.length} results`
+            {totalPages > 1 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '0.76rem',
+                color: '#64748b'
+              }}>
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.max(1, p - 1)); }}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: currentPage <= 1 ? '#f1f5f9' : '#ffffff',
+                    color: currentPage <= 1 ? '#94a3b8' : '#0f172a',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    cursor: currentPage <= 1 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  ‹ Prev
+                </button>
+                <span>Page {currentPage} of {totalPages} ({filteredOptions.length} items)</span>
+                <button
+                  type="button"
+                  disabled={currentPage >= totalPages}
+                  onClick={(e) => { e.stopPropagation(); setCurrentPage(p => Math.min(totalPages, p + 1)); }}
+                  style={{
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: currentPage >= totalPages ? '#f1f5f9' : '#ffffff',
+                    color: currentPage >= totalPages ? '#94a3b8' : '#0f172a',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Next ›
+                </button>
+              </div>
             )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#64748b' }}>
+              {FooterIcon && <FooterIcon size={14} color="#ea580c" />}
+              <span>Showing {paginatedOptions.length} of {filteredOptions.length} results</span>
+            </div>
           </div>
         </div>
       )}
