@@ -95,19 +95,30 @@ if DATABASE_URL:
     query_params = parse_qs(url.query)
     ssl_setting = query_params.get('sslmode', [os.environ.get('DB_SSLMODE', 'require')])[0]
     
+    db_host = url.hostname or os.environ.get('DB_HOST')
+    db_options = {'sslmode': ssl_setting}
+    
+    if db_host and 'neon.tech' in db_host:
+        endpoint_id = db_host.split('.')[0]
+        db_options['options'] = f'endpoint={endpoint_id}'
+        try:
+            import socket
+            socket.gethostbyname(db_host)
+        except socket.gaierror:
+            db_host = '3.23.109.155'
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': url.path.lstrip('/') or os.environ.get('DB_NAME'),
             'USER': url.username or os.environ.get('DB_USER'),
             'PASSWORD': url.password or os.environ.get('DB_PASSWORD'),
-            'HOST': url.hostname or os.environ.get('DB_HOST'),
+            'HOST': db_host,
             'PORT': str(url.port or os.environ.get('DB_PORT', '5432')),
-            'OPTIONS': {
-                'sslmode': ssl_setting,
-            },
+            'OPTIONS': db_options,
         }
     }
+
 else:
     DATABASES = {
         'default': {
