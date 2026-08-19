@@ -31,7 +31,8 @@
     <link rel="stylesheet" href="{% static "vendor/adminlte/css/adminlte.min.css" %}" id="adminlte-css">
 
     <!-- Bootswatch theme -->
-    <link rel="stylesheet" {% if jazzmin_ui.theme.name != 'default' %}href="{{ jazzmin_ui.theme.src }}"{% endif %} id="jazzmin-theme" data-theme-base="{% static 'vendor/bootswatch' %}" />
+    <link rel="stylesheet" {% if jazzmin_ui.theme.name != 'default' %}href="{{ jazzmin_ui.theme.src }}"{% endif %} id="jazzmin-theme" data-theme-base="{% get_static_prefix %}vendor/bootswatch" />
+
     {% if jazzmin_settings.show_theme_chooser %}
     <script>
         (function() {
