@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useLayoutEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Package, Layers, FileText, Calendar, UserCheck,
@@ -54,6 +54,45 @@ export default function StockDetails() {
   const navigate = useNavigate();
 
   const currentStage = STAGE_CONFIG[stageKey.toLowerCase()] || STAGE_CONFIG.raw;
+
+  // Sliding stage nav indicator state & refs
+  const stageTabRefs = useRef({});
+  const [stageIndicatorStyle, setStageIndicatorStyle] = useState({ opacity: 0 });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Measure active stage tab position
+  useLayoutEffect(() => {
+    const activeEl = stageTabRefs.current[currentStage.key];
+    if (activeEl) {
+      setStageIndicatorStyle({
+        width: `${activeEl.offsetWidth}px`,
+        transform: `translate3d(${activeEl.offsetLeft}px, 0, 0)`,
+        height: `${activeEl.offsetHeight}px`,
+        backgroundColor: currentStage.bgColor,
+        border: `2px solid ${currentStage.color}`,
+        opacity: 1
+      });
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [currentStage.key]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const activeEl = stageTabRefs.current[currentStage.key];
+      if (activeEl) {
+        setStageIndicatorStyle({
+          width: `${activeEl.offsetWidth}px`,
+          transform: `translate3d(${activeEl.offsetLeft}px, 0, 0)`,
+          height: `${activeEl.offsetHeight}px`,
+          backgroundColor: currentStage.bgColor,
+          border: `2px solid ${currentStage.color}`,
+          opacity: 1
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [currentStage.key]);
 
   const [loading, setLoading] = useState(true);
   const [breakdownData, setBreakdownData] = useState([]);
@@ -291,7 +330,13 @@ export default function StockDetails() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <button
               type="button"
-              onClick={fetchBreakdown}
+              className="btn-subtle-motion"
+              onClick={async () => {
+                setIsRefreshing(true);
+                await fetchBreakdown();
+                setTimeout(() => setIsRefreshing(false), 600);
+              }}
+              disabled={isRefreshing}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -302,15 +347,16 @@ export default function StockDetails() {
                 padding: '0.6rem 1rem',
                 borderRadius: '10px',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: isRefreshing ? 'not-allowed' : 'pointer',
                 fontSize: '0.88rem'
               }}
             >
-              <RefreshCw size={16} /> Refresh Data
+              <RefreshCw size={16} className={isRefreshing ? 'spin-once' : ''} /> Refresh Data
             </button>
 
             <button
               type="button"
+              className="btn-subtle-motion btn-action-export-csv"
               onClick={handleExportExcel}
               style={{
                 display: 'inline-flex',
@@ -334,36 +380,34 @@ export default function StockDetails() {
       )}
 
       {/* ── STAGE NAVIGATION TABS ── */}
-      <div style={{
-        display: 'flex',
-        gap: '0.75rem',
-        marginBottom: '1.5rem',
-        overflowX: 'auto',
-        paddingBottom: '4px',
-        WebkitOverflowScrolling: 'touch',
-        scrollbarWidth: 'none'
-      }}>
+      <div className="stock-details-nav-container">
+        {/* Sliding Indicator Backdrop */}
+        <div className="stock-details-sliding-indicator" style={stageIndicatorStyle} />
+
         {Object.values(STAGE_CONFIG).map(st => {
           const isActive = st.key === currentStage.key;
           return (
             <button
               key={st.key}
+              ref={el => stageTabRefs.current[st.key] = el}
               type="button"
               onClick={() => navigate(`/stock/details/${st.key}`)}
               style={{
+                position: 'relative',
+                zIndex: 2,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: isMobile ? '0.55rem 1rem' : '0.6rem 1.25rem',
                 borderRadius: '12px',
-                border: isActive ? `2px solid ${st.color}` : '1px solid #cbd5e1',
-                backgroundColor: isActive ? st.bgColor : '#ffffff',
+                border: 'none',
+                backgroundColor: 'transparent',
                 color: isActive ? st.color : '#475569',
                 fontWeight: isActive ? 800 : 600,
                 fontSize: isMobile ? '0.82rem' : '0.88rem',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
-                transition: 'all 0.2s',
+                transition: 'color 180ms ease',
                 flexShrink: 0
               }}
             >
@@ -379,37 +423,40 @@ export default function StockDetails() {
         })}
       </div>
 
-      {/* ── KPI OVERVIEW CARDS ── */}
-      {isMobile ? (
-        /* Mobile KPI Layout */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, lineHeight: 1.2 }}>
-                Total Stage Stock Quantity
+      {/* ── STAGE CONTENT WRAPPER ── */}
+      <div key={currentStage.key} className="stock-details-content-wrapper">
+
+        {/* ── KPI OVERVIEW CARDS ── */}
+        {isMobile ? (
+          /* Mobile KPI Layout */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
+              <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', animationDelay: '0ms' }}>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, lineHeight: 1.2 }}>
+                  Total Stage Stock Quantity
+                </div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: currentStage.color, marginTop: '6px' }}>
+                  {totalStockCount} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>pcs</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', lineHeight: 1.2 }}>
+                  Across physical inventory in stage
+                </div>
               </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: currentStage.color, marginTop: '6px' }}>
-                {totalStockCount} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>pcs</span>
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', lineHeight: 1.2 }}>
-                Across physical inventory in stage
+
+              <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', animationDelay: '30ms' }}>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, lineHeight: 1.2 }}>
+                  PO Batches
+                </div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
+                  {totalPoCount} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>Batches</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', lineHeight: 1.2 }}>
+                  Grouped by requesting supplier PO
+                </div>
               </div>
             </div>
 
-            <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, lineHeight: 1.2 }}>
-                PO Batches
-              </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', marginTop: '6px' }}>
-                {totalPoCount} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>Batches</span>
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '4px', lineHeight: 1.2 }}>
-                Grouped by requesting supplier PO
-              </div>
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+            <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 6px rgba(0,0,0,0.02)', animationDelay: '60ms' }}>
             <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
               Clearance Status
             </div>
@@ -424,7 +471,7 @@ export default function StockDetails() {
       ) : (
         /* Desktop KPI Overview Cards (3 Equal Columns) */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', animationDelay: '0ms' }}>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Total Stage Stock Quantity
             </div>
@@ -436,7 +483,7 @@ export default function StockDetails() {
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', animationDelay: '30ms' }}>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               PO Batches
             </div>
@@ -448,7 +495,7 @@ export default function StockDetails() {
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', animationDelay: '60ms' }}>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               Clearance Status
             </div>
@@ -476,7 +523,7 @@ export default function StockDetails() {
           gap: '0.75rem'
         }}>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div style={{ flex: 1, position: 'relative' }}>
+            <div className="stock-details-search-wrap" style={{ flex: 1, position: 'relative', borderRadius: '12px', overflow: 'hidden' }}>
               <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
@@ -498,6 +545,7 @@ export default function StockDetails() {
 
             <button
               type="button"
+              className="btn-subtle-motion"
               onClick={handleExportExcel}
               title="Filter / Export"
               style={{
@@ -553,7 +601,7 @@ export default function StockDetails() {
           alignItems: 'center',
           flexWrap: 'wrap'
         }}>
-          <div style={{ flex: 1, minWidth: '260px', position: 'relative' }}>
+          <div className="stock-details-search-wrap" style={{ flex: 1, minWidth: '260px', position: 'relative', borderRadius: '10px', overflow: 'hidden' }}>
             <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
@@ -637,12 +685,14 @@ export default function StockDetails() {
           {filteredBatches.map((batch, idx) => (
             <div
               key={idx}
+              className="stock-batch-card-animated"
               style={{
                 backgroundColor: '#ffffff',
                 borderRadius: '20px',
                 border: '1.5px solid #e2e8f0',
                 boxShadow: '0 4px 20px rgba(15, 23, 42, 0.04)',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                animationDelay: `${Math.min(idx * 35, 250)}ms`
               }}
             >
               {/* Batch Card Header */}
@@ -806,7 +856,7 @@ export default function StockDetails() {
                 </div>
               ) : (
                 /* Pristine Desktop Table View */
-                <div style={{ padding: '1.25rem', overflowX: 'auto' }}>
+                <div className="table-fade-slide-in" style={{ padding: '1.25rem', overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ backgroundColor: '#f1f5f9', color: '#475569', textAlign: 'left', borderBottom: '1.5px solid #cbd5e1' }}>
@@ -820,7 +870,14 @@ export default function StockDetails() {
                     </thead>
                     <tbody>
                       {batch.items_list.map((it, i) => (
-                        <tr key={i} style={{ borderBottom: i < batch.items_list.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                        <tr
+                          key={i}
+                          className="table-row-stagger"
+                          style={{
+                            borderBottom: i < batch.items_list.length - 1 ? '1px solid #e2e8f0' : 'none',
+                            animationDelay: `${Math.min(i * 20, 200)}ms`
+                          }}
+                        >
                           <td style={{ padding: '12px 14px', fontWeight: 800, color: currentStage.color }}>{it.style_no}</td>
                           <td style={{ padding: '12px 14px', color: '#1e293b', fontWeight: 600, maxWidth: '300px' }}>{it.item_name}</td>
                           <td style={{ padding: '12px 14px', color: '#334155' }}>{it.buyer_name}</td>
@@ -844,6 +901,7 @@ export default function StockDetails() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@
         id="sidebar-search-clear" 
         title="Clear Search" 
         style="position: absolute; right: 8px; background: none; border: none; color: #94a3b8; font-size: 15px; cursor: pointer; display: none; padding: 2px 6px;"
-        onclick="document.getElementById('sidebar-search-input').value=''; document.getElementById('sidebar-search-input').dispatchEvent(new Event('input'));"
+        onclick="sessionStorage.removeItem('django_admin_sidebar_query'); document.getElementById('sidebar-search-input').value=''; document.getElementById('sidebar-search-input').dispatchEvent(new Event('input'));"
       >×</button>
     </div>
     <div id="sidebar-search-count" style="font-size: 11px; color: #38bdf8; margin-top: 6px; padding-left: 4px; font-weight: 700; display: none;"></div>
@@ -75,8 +75,10 @@
           const query = this.value.trim().toLowerCase();
           
           if (query.length > 0) {
+            sessionStorage.setItem('django_admin_sidebar_query', query);
             clearBtn.style.display = 'block';
           } else {
+            sessionStorage.removeItem('django_admin_sidebar_query');
             clearBtn.style.display = 'none';
             countBadge.style.display = 'none';
           }
@@ -130,6 +132,13 @@
             countBadge.style.display = 'block';
           }
         });
+
+        // Restore saved query from sessionStorage across navigation
+        const savedQuery = sessionStorage.getItem('django_admin_sidebar_query');
+        if (savedQuery) {
+          input.value = savedQuery;
+          input.dispatchEvent(new Event('input'));
+        }
       }
 
       if (document.readyState === 'loading') {

@@ -23,10 +23,11 @@ from .views import (
     SampleBulkDeleteView, FinishBulkDeleteView,
     StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet,
     StoreStockSummaryView, MonthlyContractorBillingView,
-    DatabaseRelationshipsPDFView,
+    DatabaseRelationshipsPDFView, AuditLogViewSet,
 )
 
 router = DefaultRouter()
+router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 
 # Store Management Routes
 router.register(r'store/categories', StoreItemCategoryViewSet, basename='store-category')

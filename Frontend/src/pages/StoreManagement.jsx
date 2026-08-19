@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
@@ -6,13 +6,61 @@ import {
   DollarSign, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package
 } from 'lucide-react';
 import api from '../api/axios';
+import Pagination from '../components/Pagination';
 
 import StoreRateComparisonModal from '../components/StoreRateComparisonModal';
 import ContractorBillingStatementModal from '../components/ContractorBillingStatementModal';
+import StoreItemDetailModal from '../components/StoreItemDetailModal';
+import StoreCategoryModal from '../components/StoreCategoryModal';
+import StoreItemMasterModal from '../components/StoreItemMasterModal';
 
 export default function StoreManagement() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'contractors' | 'billing'
+
+  // Pagination states (20 entries per page)
+  const ITEMS_PER_PAGE = 20;
+  const [pageStockSummary, setPageStockSummary] = useState(1);
+  const [pageItemMaster, setPageItemMaster] = useState(1);
+  const [pageMaterialIn, setPageMaterialIn] = useState(1);
+  const [pageDailyIssue, setPageDailyIssue] = useState(1);
+  const [pageContractors, setPageContractors] = useState(1);
+  const [pageBilling, setPageBilling] = useState(1);
+
+  // Sliding nav indicator state & refs
+  const navTabRefs = React.useRef({});
+  const [navIndicatorStyle, setNavIndicatorStyle] = useState({ opacity: 0 });
+  const [isRefreshingSummary, setIsRefreshingSummary] = useState(false);
+
+  // Measure active module tab position
+  useLayoutEffect(() => {
+    const activeEl = navTabRefs.current[activeTab];
+    if (activeEl) {
+      setNavIndicatorStyle({
+        width: `${activeEl.offsetWidth}px`,
+        transform: `translate3d(${activeEl.offsetLeft}px, 0, 0)`,
+        height: `${activeEl.offsetHeight}px`,
+        opacity: 1
+      });
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const activeNavEl = navTabRefs.current[activeTab];
+      if (activeNavEl) {
+        setNavIndicatorStyle({
+          width: `${activeNavEl.offsetWidth}px`,
+          transform: `translate3d(${activeNavEl.offsetLeft}px, 0, 0)`,
+          height: `${activeNavEl.offsetHeight}px`,
+          opacity: 1
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeTab]);
 
   // Data states
   const [stockSummaryData, setStockSummaryData] = useState(null);
@@ -38,6 +86,11 @@ export default function StoreManagement() {
 
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
   const [selectedItemForRate, setSelectedItemForRate] = useState(null);
+
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedDetailItem, setSelectedDetailItem] = useState(null);
+
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   const [isMaterialInModalOpen, setIsMaterialInModalOpen] = useState(false);
   const [isDailyIssueModalOpen, setIsDailyIssueModalOpen] = useState(false);
@@ -100,6 +153,19 @@ export default function StoreManagement() {
     const matchesStatus = selectedStatus ? issue.status === selectedStatus : true;
     return matchesSearch && matchesContractor && matchesStatus;
   });
+
+  useEffect(() => {
+    setPageStockSummary(1);
+    setPageDailyIssue(1);
+  }, [searchQuery, selectedCategory, selectedContractorFilter, selectedStatus]);
+
+  // Paginated lists (20 per page)
+  const paginatedStockItems = filteredStockItems.slice((pageStockSummary - 1) * ITEMS_PER_PAGE, pageStockSummary * ITEMS_PER_PAGE);
+  const paginatedItemMaster = itemsList.slice((pageItemMaster - 1) * ITEMS_PER_PAGE, pageItemMaster * ITEMS_PER_PAGE);
+  const paginatedMaterialIn = materialInList.slice((pageMaterialIn - 1) * ITEMS_PER_PAGE, pageMaterialIn * ITEMS_PER_PAGE);
+  const paginatedDailyIssues = filteredDailyIssues.slice((pageDailyIssue - 1) * ITEMS_PER_PAGE, pageDailyIssue * ITEMS_PER_PAGE);
+  const paginatedContractors = contractors.slice((pageContractors - 1) * ITEMS_PER_PAGE, pageContractors * ITEMS_PER_PAGE);
+  const paginatedBillingContractors = contractors.slice((pageBilling - 1) * ITEMS_PER_PAGE, pageBilling * ITEMS_PER_PAGE);
 
   return (
     <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
@@ -174,6 +240,7 @@ export default function StoreManagement() {
         <div className="store-action-btns" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/store-management/material-in')}
+            className="btn-subtle-motion btn-action-material-in"
             style={{
               padding: '0.65rem 1.25rem',
               borderRadius: '10px',
@@ -195,6 +262,7 @@ export default function StoreManagement() {
 
           <button
             onClick={() => navigate('/store-management/daily-issue')}
+            className="btn-subtle-motion btn-action-daily-issue"
             style={{
               padding: '0.65rem 1.25rem',
               borderRadius: '10px',
@@ -216,6 +284,7 @@ export default function StoreManagement() {
 
           <button
             onClick={() => navigate('/store-management/item-master/new')}
+            className="btn-subtle-motion btn-action-new-item"
             style={{
               padding: '0.65rem 1.25rem',
               borderRadius: '10px',
@@ -244,7 +313,7 @@ export default function StoreManagement() {
           gap: '1rem'
         }}>
           {/* Card 1: Total Stock Qty */}
-          <div style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '0ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Inward Received Stock</span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -258,7 +327,7 @@ export default function StoreManagement() {
           </div>
 
           {/* Card 2: Total Issued Qty */}
-          <div style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '30ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Issued Stock Qty</span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#ffedd5', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -272,7 +341,7 @@ export default function StoreManagement() {
           </div>
 
           {/* Card 3: Balance Stock Qty */}
-          <div style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '60ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Balance Available Stock</span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -286,7 +355,7 @@ export default function StoreManagement() {
           </div>
 
           {/* Card 4: Inventory Valuation */}
-          <div style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '90ms' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase' }}>Inventory Valuation (₹)</span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -476,24 +545,20 @@ export default function StoreManagement() {
       </div>
 
       {/* Navigation Tabs Bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        backgroundColor: '#ffffff',
-        padding: '0.5rem',
-        borderRadius: '12px',
-        border: '1px solid #e2e8f0',
-        marginBottom: '1.5rem',
-        overflowX: 'auto'
-      }}>
+      <div className="store-module-nav-container">
+        {/* Sliding Indicator Backdrop */}
+        <div className="store-nav-sliding-indicator" style={navIndicatorStyle} />
+
         <button
+          ref={el => navTabRefs.current['stock-summary'] = el}
           onClick={() => setActiveTab('stock-summary')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'stock-summary' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'stock-summary' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -501,7 +566,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <Layers size={16} />
@@ -509,12 +575,15 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['item-master'] = el}
           onClick={() => setActiveTab('item-master')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'item-master' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'item-master' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -522,7 +591,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <Tag size={16} />
@@ -530,12 +600,15 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['material-in'] = el}
           onClick={() => setActiveTab('material-in')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'material-in' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'material-in' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -543,7 +616,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <ArrowDownRight size={16} />
@@ -551,12 +625,15 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['daily-issue'] = el}
           onClick={() => setActiveTab('daily-issue')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'daily-issue' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'daily-issue' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -564,7 +641,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <ArrowUpRight size={16} />
@@ -572,12 +650,15 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['contractors'] = el}
           onClick={() => setActiveTab('contractors')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'contractors' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'contractors' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -585,7 +666,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <Users size={16} />
@@ -593,12 +675,15 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['billing'] = el}
           onClick={() => setActiveTab('billing')}
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '0.65rem 1.25rem',
             borderRadius: '8px',
             border: 'none',
-            backgroundColor: activeTab === 'billing' ? '#8b5a2b' : 'transparent',
+            backgroundColor: 'transparent',
             color: activeTab === 'billing' ? '#ffffff' : '#64748b',
             fontWeight: 700,
             fontSize: '0.875rem',
@@ -606,7 +691,8 @@ export default function StoreManagement() {
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
           }}
         >
           <FileText size={16} />
@@ -615,47 +701,69 @@ export default function StoreManagement() {
       </div>
 
       {/* Main Content Sections based on Active Tab */}
+      <div key={activeTab} className="store-tab-content-wrapper">
 
-      {/* TAB 1: STOCK SUMMARY */}
-      {activeTab === 'stock-summary' && (
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '400px' }}>
-              <Search size={18} color="#94a3b8" />
-              <input
-                type="text"
-                placeholder="Search store items by code or name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9rem' }}
-              />
+        {/* TAB 1: STOCK SUMMARY */}
+        {activeTab === 'stock-summary' && (
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '400px', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.4rem 0.75rem' }}>
+                <Search size={18} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search store items by code or name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9rem' }}
+                />
+              </div>
+              <button
+                className="btn-subtle-motion"
+                onClick={async () => {
+                  setIsRefreshingSummary(true);
+                  await fetchBaselineData();
+                  setTimeout(() => setIsRefreshingSummary(false), 600);
+                }}
+                disabled={isRefreshingSummary}
+                style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: isRefreshingSummary ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+              >
+                <RefreshCw size={14} className={isRefreshingSummary ? 'spin-once' : ''} /> Refresh Summary
+              </button>
             </div>
-            <button
-              onClick={fetchBaselineData}
-              style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
-            >
-              <RefreshCw size={14} /> Refresh Summary
-            </button>
-          </div>
 
-          {/* Desktop Table View */}
-          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                <tr>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Code</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Name</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0284c7', backgroundColor: '#f0f9ff' }}>Stock Qty (Inward)</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#ea580c', backgroundColor: '#fff7ed' }}>Issued Qty</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a', backgroundColor: '#f0fdf4' }}>Balance Qty</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#334155' }}>Rate (₹)</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Units</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>Total Value (₹)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStockItems.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: item.is_low_stock ? '#fff1f2' : 'transparent' }}>
+            {/* Desktop Table View */}
+            <div className="desktop-table-view table-fade-slide-in" style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  <tr>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Code</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Name</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0284c7', backgroundColor: '#f0f9ff' }}>Stock Qty (Inward)</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#ea580c', backgroundColor: '#fff7ed' }}>Issued Qty</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a', backgroundColor: '#f0fdf4' }}>Balance Qty</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#334155' }}>Rate (₹)</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Units</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>Total Value (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedStockItems.map((item, idx) => (
+                    <tr
+                      key={idx}
+                      className="table-row-stagger"
+                      onClick={() => {
+                        const fullItem = itemsList.find(i => i.id === item.id || i.item_code === item.item_code) || item;
+                        setSelectedDetailItem(fullItem);
+                        setIsDetailModalOpen(true);
+                      }}
+                      title="Click to view full item details and image"
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: item.is_low_stock ? '#fff1f2' : 'transparent',
+                        animationDelay: `${Math.min(idx * 20, 200)}ms`,
+                        cursor: 'pointer'
+                      }}
+                    >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
                       {item.item_name}
@@ -685,12 +793,16 @@ export default function StoreManagement() {
             </table>
           </div>
 
-          {/* Mobile Stock Item Cards List (Image 2 Screenshot) */}
+          {/* Mobile Stock Item Cards List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
-            {filteredStockItems.map((item, idx) => (
+            {paginatedStockItems.map((item, idx) => (
               <div
                 key={idx}
-                onClick={() => navigate(`/store-management/item-master/edit/${item.id}`)}
+                onClick={() => {
+                  const fullItem = itemsList.find(i => i.id === item.id || i.item_code === item.item_code) || item;
+                  setSelectedDetailItem(fullItem);
+                  setIsDetailModalOpen(true);
+                }}
                 style={{
                   backgroundColor: item.is_low_stock ? '#fff8f8' : '#ffffff',
                   border: item.is_low_stock ? '1.5px solid #fecaca' : '1px solid #f1f5f9',
@@ -782,6 +894,14 @@ export default function StoreManagement() {
               </div>
             ))}
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageStockSummary}
+              totalPages={Math.ceil(filteredStockItems.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageStockSummary}
+            />
+          </div>
         </div>
       )}
 
@@ -792,12 +912,20 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Item Master Catalog & Historical Rate Tracker
             </h3>
-            <button
-              onClick={() => { setSelectedItemForEdit(null); setIsItemModalOpen(true); }}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Plus size={16} /> Add Store Item
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={() => setIsCategoryModalOpen(true)}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #d6c7b2', backgroundColor: '#faf6f0', color: '#8b5a2b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Tag size={16} /> Add Category
+              </button>
+              <button
+                onClick={() => { setSelectedItemForEdit(null); setIsItemModalOpen(true); }}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Plus size={16} /> Add Store Item
+              </button>
+            </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -815,8 +943,13 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {itemsList.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                {paginatedItemMaster.map((item, idx) => (
+                  <tr
+                    key={idx}
+                    onClick={() => { setSelectedDetailItem(item); setIsDetailModalOpen(true); }}
+                    title="Click to view full details and image"
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
+                  >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{item.item_name}</td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{item.category_name || '-'}</td>
@@ -837,18 +970,17 @@ export default function StoreManagement() {
                         {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
                       </span>
                     </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                         <button
-                          onClick={() => { setSelectedItemForRate(item); setIsRateModalOpen(true); }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
                           title="View Rate Comparison & Revise Rate"
                           style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                         >
                           <TrendingUp size={14} /> Compare Rate
                         </button>
-
                         <button
-                          onClick={() => navigate(`/store-management/item-master/edit/${item.id}`)}
+                          onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
                           title="Edit Item Master"
                           style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer' }}
                         >
@@ -860,6 +992,14 @@ export default function StoreManagement() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageItemMaster}
+              totalPages={Math.ceil(itemsList.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageItemMaster}
+            />
           </div>
         </div>
       )}
@@ -896,7 +1036,7 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {materialInList.map((row, idx) => (
+                {paginatedMaterialIn.map((row, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.month_year || 'Jul-26'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>{row.inward_date}</td>
@@ -914,6 +1054,14 @@ export default function StoreManagement() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageMaterialIn}
+              totalPages={Math.ceil(materialInList.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageMaterialIn}
+            />
           </div>
         </div>
       )}
@@ -951,7 +1099,7 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredDailyIssues.map((row, idx) => (
+                {paginatedDailyIssues.map((row, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.voucher_no}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{row.contractor_name}</td>
@@ -984,6 +1132,14 @@ export default function StoreManagement() {
               </tbody>
             </table>
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageDailyIssue}
+              totalPages={Math.ceil(filteredDailyIssues.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageDailyIssue}
+            />
+          </div>
         </div>
       )}
 
@@ -1008,7 +1164,7 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {contractors.map((c, idx) => {
+                {paginatedContractors.map((c, idx) => {
                   const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
                   return (
                     <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -1034,6 +1190,14 @@ export default function StoreManagement() {
               </tbody>
             </table>
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageContractors}
+              totalPages={Math.ceil(contractors.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageContractors}
+            />
+          </div>
         </div>
       )}
 
@@ -1047,7 +1211,7 @@ export default function StoreManagement() {
           </div>
 
           <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-            {contractors.map((c, idx) => (
+            {paginatedBillingContractors.map((c, idx) => (
               <div key={idx} style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -1075,8 +1239,17 @@ export default function StoreManagement() {
               </div>
             ))}
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageBilling}
+              totalPages={Math.ceil(contractors.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageBilling}
+            />
+          </div>
         </div>
       )}
+      </div>
 
       {/* MODALS */}
       <StoreRateComparisonModal
@@ -1091,6 +1264,34 @@ export default function StoreManagement() {
         onClose={() => setIsBillingModalOpen(false)}
         contractor={selectedContractorForBill}
         initialMonth={monthFilter}
+      />
+
+      <StoreItemDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        item={selectedDetailItem}
+        onEdit={(itemToEdit) => {
+          setSelectedItemForEdit(itemToEdit);
+          setIsItemModalOpen(true);
+        }}
+      />
+
+      <StoreCategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSuccess={(newCat) => {
+          setCategories(prev => [...prev, newCat]);
+          fetchBaselineData();
+        }}
+      />
+
+      <StoreItemMasterModal
+        isOpen={isItemModalOpen}
+        onClose={() => setIsItemModalOpen(false)}
+        item={selectedItemForEdit}
+        categories={categories}
+        onSuccess={fetchBaselineData}
+        onCategoryAdded={(newCat) => setCategories(prev => [...prev, newCat])}
       />
     </div>
   );

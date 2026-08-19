@@ -1,35 +1,72 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Upload, Package, ImageIcon, Layers, Trash2, CheckCircle2 } from 'lucide-react';
 
 /**
- * Premium Custom File Upload Component — Mobile-responsive
+ * Premium Custom File Upload Component — Mobile-responsive & Drag and Drop supported
  */
 export function CustomFileUpload({
   label = 'Upload File',
   subLabel = null,
   multiple = false,
-  accept = 'image/jpeg,image/png,image/webp',
+  accept = 'image/jpeg,image/png,image/webp,image/*',
   icon: CustomIcon = null,
   newFiles = [],
   existingFiles = [],
   singleFile = null,
-  onChange,
-  onRemoveNew,
-  onRemoveExisting,
+  preview = null,        // Legacy support
+  existingUrl = null,    // Legacy support
+  onChange = null,
+  onFileSelect = null,   // Legacy support
+  onRemoveNew = null,
+  onRemoveExisting = null,
   maxSizeMB = 5,
 }) {
   const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
   const IconComponent = CustomIcon || (multiple ? ImageIcon : Package);
 
-  const handleFileChange = (e) => {
+  // Normalize single file or preview URL
+  const effectiveSingleFile = singleFile || preview || existingUrl;
+
+  const triggerChange = (selectedFiles) => {
+    const handler = onChange || onFileSelect;
+    if (!handler) return;
+    if (multiple) {
+      handler(selectedFiles);
+    } else {
+      handler(selectedFiles[0] || null);
+    }
+  };
+
+  const handleFileInputChange = (e) => {
     const selected = Array.from(e.target.files || []);
     if (selected.length === 0) return;
-    if (multiple) {
-      onChange(selected);
-    } else {
-      onChange(selected[0]);
-    }
+    triggerChange(selected);
     e.target.value = '';
+  };
+
+  // Drag and Drop Event Handlers
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      triggerChange(droppedFiles);
+    }
   };
 
   const formatFileSize = (bytes) => {
@@ -47,7 +84,7 @@ export function CustomFileUpload({
 
   const totalCount = multiple
     ? existingFiles.length + newFiles.length
-    : (singleFile ? 1 : 0);
+    : (effectiveSingleFile ? 1 : 0);
   const hasContent = totalCount > 0;
 
   return (
@@ -193,21 +230,25 @@ export function CustomFileUpload({
         type="file"
         multiple={multiple}
         accept={accept}
-        onChange={handleFileChange}
+        onChange={handleFileInputChange}
         style={{ display: 'none' }}
       />
 
-      {/* Main Container */}
+      {/* Main Dropzone Container */}
       <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
-          border: '1.5px solid #e7e0d6',
-          backgroundColor: '#ffffff',
+          border: isDragging ? '2px dashed #8b5a2b' : '1.5px solid #e7e0d6',
+          backgroundColor: isDragging ? '#faf6f0' : '#ffffff',
           borderRadius: '16px',
           overflow: 'hidden',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          boxShadow: isDragging ? '0 4px 12px rgba(139, 90, 43, 0.15)' : '0 1px 4px rgba(0,0,0,0.04)',
+          transition: 'all 0.2s ease',
         }}
       >
-        {/* ── Header Row ── */}
+        {/* Header Row */}
         <div
           className="cfu-header"
           style={{ borderBottom: hasContent ? '1px solid #f1ece5' : 'none' }}
@@ -219,7 +260,7 @@ export function CustomFileUpload({
               </div>
             )}
             <div style={{ color: '#78716c', fontSize: '0.78rem', fontWeight: 500, lineHeight: 1.4 }}>
-              {subLabel || `JPG, PNG or WEBP (Max. ${maxSizeMB}MB${multiple ? ' each' : ''})`}
+              {subLabel || `Drag & Drop or browse JPG, PNG, WEBP (Max. ${maxSizeMB}MB${multiple ? ' each' : ''})`}
             </div>
           </div>
 
@@ -229,11 +270,11 @@ export function CustomFileUpload({
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
           >
             <Upload size={14} color="#8b5a2b" />
-            Browse
+            Browse File
           </button>
         </div>
 
-        {/* ── File Cards List ── */}
+        {/* File Cards List */}
         {multiple ? (
           <>
             {existingFiles.map((img, idx) => {
@@ -273,6 +314,7 @@ export function CustomFileUpload({
 
             {!hasContent && (
               <div
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -280,7 +322,8 @@ export function CustomFileUpload({
                   justifyContent: 'center',
                   padding: '1.75rem 1rem',
                   gap: '0.6rem',
-                  color: '#94a3b8',
+                  color: isDragging ? '#8b5a2b' : '#94a3b8',
+                  cursor: 'pointer',
                 }}
               >
                 <div
@@ -288,7 +331,7 @@ export function CustomFileUpload({
                     width: '48px',
                     height: '48px',
                     borderRadius: '14px',
-                    backgroundColor: '#f4ece1',
+                    backgroundColor: isDragging ? '#f5efe6' : '#f4ece1',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -296,8 +339,12 @@ export function CustomFileUpload({
                 >
                   <IconComponent size={24} color="#8b5a2b" />
                 </div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 500, textAlign: 'center', color: '#94a3b8' }}>
-                  No files chosen. Click <strong>Browse</strong> to add images.
+                <div style={{ fontSize: '0.85rem', fontWeight: 500, textAlign: 'center' }}>
+                  {isDragging ? (
+                    <strong style={{ color: '#8b5a2b' }}>Drop your image file here</strong>
+                  ) : (
+                    <span>Drag & Drop image here, or click <strong>Browse File</strong></span>
+                  )}
                 </div>
               </div>
             )}
@@ -306,7 +353,7 @@ export function CustomFileUpload({
             <div className="cfu-footer">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#78716c', fontSize: '0.78rem', fontWeight: 500 }}>
                 <Layers size={13} color="#8b5a2b" />
-                <span>You can select multiple files</span>
+                <span>Drag & drop files or browse to select</span>
               </div>
               {totalCount > 0 && (
                 <div className="cfu-badge">
@@ -317,31 +364,37 @@ export function CustomFileUpload({
           </>
         ) : (
           <>
-            {singleFile ? (
+            {effectiveSingleFile ? (
               <>
                 <FileCard
                   preview={
-                    typeof singleFile === 'string'
-                      ? singleFile
-                      : singleFile instanceof File
-                        ? URL.createObjectURL(singleFile)
+                    typeof effectiveSingleFile === 'string'
+                      ? effectiveSingleFile
+                      : effectiveSingleFile instanceof File
+                        ? URL.createObjectURL(effectiveSingleFile)
                         : null
                   }
                   name={
-                    typeof singleFile === 'string'
-                      ? singleFile.split('/').pop()
-                      : singleFile?.name || 'image'
+                    typeof effectiveSingleFile === 'string'
+                      ? effectiveSingleFile.split('/').pop()
+                      : effectiveSingleFile?.name || 'Selected Image'
                   }
                   ext={
                     getFileExt(
-                      typeof singleFile === 'string'
-                        ? singleFile.split('/').pop()
-                        : singleFile?.name || ''
+                      typeof effectiveSingleFile === 'string'
+                        ? effectiveSingleFile.split('/').pop()
+                        : effectiveSingleFile?.name || ''
                     )
                   }
-                  meta={singleFile instanceof File ? formatFileSize(singleFile.size) : ''}
+                  meta={effectiveSingleFile instanceof File ? formatFileSize(effectiveSingleFile.size) : 'Uploaded'}
                   isLast
-                  onRemove={() => onRemoveNew && onRemoveNew(null)}
+                  onRemove={
+                    onRemoveNew
+                      ? () => onRemoveNew(null)
+                      : (onChange || onFileSelect)
+                        ? () => triggerChange([])
+                        : null
+                  }
                 />
                 <div
                   style={{
@@ -350,15 +403,33 @@ export function CustomFileUpload({
                     backgroundColor: '#faf8f5',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.4rem',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <CheckCircle2 size={14} color="#16a34a" />
-                  <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600 }}>File selected</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <CheckCircle2 size={14} color="#16a34a" />
+                    <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600 }}>Image ready for save</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#8b5a2b',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Change Image
+                  </button>
                 </div>
               </>
             ) : (
               <div
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -366,7 +437,8 @@ export function CustomFileUpload({
                   justifyContent: 'center',
                   padding: '1.75rem 1rem',
                   gap: '0.6rem',
-                  color: '#94a3b8',
+                  color: isDragging ? '#8b5a2b' : '#94a3b8',
+                  cursor: 'pointer',
                 }}
               >
                 <div
@@ -374,7 +446,7 @@ export function CustomFileUpload({
                     width: '48px',
                     height: '48px',
                     borderRadius: '14px',
-                    backgroundColor: '#f4ece1',
+                    backgroundColor: isDragging ? '#f5efe6' : '#f4ece1',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -382,8 +454,12 @@ export function CustomFileUpload({
                 >
                   <IconComponent size={24} color="#8b5a2b" />
                 </div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 500, textAlign: 'center', color: '#94a3b8' }}>
-                  No file chosen. Click <strong>Browse</strong> to upload.
+                <div style={{ fontSize: '0.85rem', fontWeight: 500, textAlign: 'center' }}>
+                  {isDragging ? (
+                    <strong style={{ color: '#8b5a2b' }}>Drop your image file here</strong>
+                  ) : (
+                    <span>Drag & Drop image here, or click <strong>Browse File</strong></span>
+                  )}
                 </div>
               </div>
             )}
@@ -394,7 +470,7 @@ export function CustomFileUpload({
   );
 }
 
-// ── Individual file card ────────────────────────────────────────────────────
+// ── Individual file card component ─────────────────────────────────────────
 function FileCard({ preview, name, ext, meta, isLast, onRemove }) {
   return (
     <div
@@ -416,7 +492,7 @@ function FileCard({ preview, name, ext, meta, isLast, onRemove }) {
         )}
       </div>
 
-      {/* File info — min-width:0 ensures text ellipsis works inside flex */}
+      {/* File info */}
       <div className="cfu-info">
         <div className="cfu-name-row">
           <ImageIcon size={14} color="#8b5a2b" style={{ flexShrink: 0 }} />
@@ -431,7 +507,7 @@ function FileCard({ preview, name, ext, meta, isLast, onRemove }) {
 
       {/* Actions */}
       <div className="cfu-actions">
-        <div className="cfu-check">
+        <div className="cfu-check" title="Ready to upload">
           <CheckCircle2 size={14} color="#16a34a" />
         </div>
         {onRemove && (

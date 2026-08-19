@@ -9,7 +9,8 @@ from .models import (
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
     GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
-    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus,
+    AuditLog
 )
 
 
@@ -1186,6 +1187,20 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
         if obj.contractor:
             return obj.contractor.get_full_name() or obj.contractor.username
         return ""
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    user_display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = '__all__'
+
+    def get_user_display_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return obj.username or "System"
+
 
 
 

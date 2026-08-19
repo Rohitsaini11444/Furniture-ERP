@@ -53,7 +53,7 @@ from .models import (
     StorePurchaseOrder, StorePurchaseOrderItem, Supplier, SupplierDebitNote,
     SupplierDebitNoteItem, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     SupplierPOItemDefectImage, SupplierTaxInvoice, SupplierTaxInvoiceItem,
-    UnitWorkReallocation, User, UserSession
+    UnitWorkReallocation, User, UserSession, AuditLog, AuditAction
 )
 from .pagination import OptionalPagination
 from .permissions import (
@@ -83,7 +83,7 @@ from .serializers import (
     SupplierPOListSerializer, SupplierPOSerializer, SupplierSerializer,
     SupplierTaxInvoiceItemSerializer, SupplierTaxInvoiceSerializer,
     UnitWorkReallocationSerializer, UserMinimalSerializer, UserSerializer,
-    UserSessionSerializer
+    UserSessionSerializer, AuditLogSerializer
 )
 
 
@@ -5369,6 +5369,87 @@ class DatabaseRelationshipsPDFView(APIView):
                 {'detail': f'Failed to generate database relationships PDF: {str(err)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+# ─── Global Audit Log System ──────────────────────────────────────────────────
+
+def log_audit_event(user, action, module_name, model_name, object_id='', object_repr='', changes=None, file_info=None, reason=None, request=None):
+    """
+    Helper utility to log audit events into the unified AuditLog table.
+    """
+    from .middleware import get_client_ip, get_user_agent
+    ip_addr = get_client_ip(request)
+    user_agent = get_user_agent(request)
+    
+    username = 'System'
+    role = 'system'
+    if user and getattr(user, 'is_authenticated', False):
+        username = user.get_full_name() or user.username
+        role = getattr(user, 'role', 'user')
+
+    return AuditLog.objects.create(
+        user=user if user and getattr(user, 'is_authenticated', False) else None,
+        username=username,
+        user_role=role,
+        ip_address=ip_addr,
+        user_agent=user_agent[:500] if user_agent else '',
+        action=action,
+        module_name=module_name,
+        model_name=model_name,
+        object_id=str(object_id) if object_id else '',
+        object_repr=str(object_repr)[:250] if object_repr else '',
+        changes=changes or {},
+        file_info=file_info or {},
+        reason=reason or ''
+    )
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only viewset for inspecting global audit logs. Restricted to Admin role.
+    Supports filtering by user, module, action, search query, and date range.
+    """
+    queryset = AuditLog.objects.all()
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+    pagination_class = OptionalPagination
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        
+        user_id = self.request.query_params.get('user')
+        if user_id:
+            qs = qs.filter(user_id=user_id)
+
+        module_name = self.request.query_params.get('module')
+        if module_name:
+            qs = qs.filter(module_name__iexact=module_name)
+
+        action = self.request.query_params.get('action')
+        if action:
+            qs = qs.filter(action=action)
+
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(username__icontains=search) |
+                Q(object_repr__icontains=search) |
+                Q(module_name__icontains=search) |
+                Q(model_name__icontains=search) |
+                Q(reason__icontains=search) |
+                Q(ip_address__icontains=search)
+            )
+
+        start_date = self.request.query_params.get('start_date')
+        if start_date:
+            qs = qs.filter(timestamp__date__gte=start_date)
+
+        end_date = self.request.query_params.get('end_date')
+        if end_date:
+            qs = qs.filter(timestamp__date__lte=end_date)
+
+        return qs
+
 
 
 

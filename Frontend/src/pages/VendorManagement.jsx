@@ -173,6 +173,16 @@ export default function VendorManagement() {
   const yellowCount = pos.filter(p => p.color_status === 'yellow').length;
   const greenCount = pos.filter(p => p.color_status === 'green').length;
 
+  // Pagination State (20 POs per page)
+  const ITEMS_PER_PAGE = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterTab, selectedSupplier]);
+
+  const paginatedPos = filteredPos.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
   return (
     <div style={{ paddingBottom: '3rem' }}>
       <style>{`
@@ -383,6 +393,7 @@ export default function VendorManagement() {
         }}>
           {/* Card 1 */}
           <div
+            className="stat-card-animated"
             onClick={() => setFilterTab('all')}
             style={{
               backgroundColor: '#ffffff',
@@ -391,7 +402,8 @@ export default function VendorManagement() {
               padding: '1.1rem',
               cursor: 'pointer',
               boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
+              animationDelay: '100ms'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -406,6 +418,7 @@ export default function VendorManagement() {
 
           {/* Card 2 */}
           <div
+            className="stat-card-animated"
             onClick={() => setFilterTab('red')}
             style={{
               backgroundColor: '#fef2f2',
@@ -414,7 +427,8 @@ export default function VendorManagement() {
               padding: '1.1rem',
               cursor: 'pointer',
               boxShadow: '0 2px 6px rgba(220, 38, 38, 0.1)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
+              animationDelay: '150ms'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -429,6 +443,7 @@ export default function VendorManagement() {
 
           {/* Card 3 */}
           <div
+            className="stat-card-animated"
             onClick={() => setFilterTab('yellow')}
             style={{
               backgroundColor: '#fefce8',
@@ -437,7 +452,8 @@ export default function VendorManagement() {
               padding: '1.1rem',
               cursor: 'pointer',
               boxShadow: '0 2px 6px rgba(217, 119, 6, 0.1)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
+              animationDelay: '200ms'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -452,6 +468,7 @@ export default function VendorManagement() {
 
           {/* Card 4 */}
           <div
+            className="stat-card-animated"
             onClick={() => setFilterTab('green')}
             style={{
               backgroundColor: '#f0fdf4',
@@ -460,7 +477,8 @@ export default function VendorManagement() {
               padding: '1.1rem',
               cursor: 'pointer',
               boxShadow: '0 2px 6px rgba(22, 163, 74, 0.1)',
-              transition: 'transform 0.2s'
+              transition: 'transform 0.2s',
+              animationDelay: '250ms'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -475,7 +493,7 @@ export default function VendorManagement() {
         </div>
 
         {/* Desktop Search & Filters Bar */}
-        <div style={{
+        <div className="filter-bar-animated" style={{
           backgroundColor: '#ffffff',
           border: '1px solid #e2e8f0',
           borderRadius: '12px',
@@ -560,8 +578,8 @@ export default function VendorManagement() {
             <p style={{ fontSize: '0.85rem' }}>Try clearing filters or search query.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {filteredPos.map(po => {
+          <div className="table-fade-slide-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {paginatedPos.map((po, idx) => {
               const isRed = po.color_status === 'red';
               const isYellow = po.color_status === 'yellow';
               const isGreen = po.color_status === 'green';
@@ -609,13 +627,15 @@ export default function VendorManagement() {
               return (
                 <div
                   key={po.id}
+                  className="table-row-stagger"
                   style={{
                     backgroundColor: '#ffffff',
                     border: '1px solid #e2e8f0',
                     borderRadius: '12px',
                     padding: '0.95rem 1.25rem',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.015)',
-                    transition: 'all 0.15s ease-in-out'
+                    transition: 'all 0.15s ease-in-out',
+                    animationDelay: `${Math.min(idx * 30, 300)}ms`
                   }}
                 >
                   <div style={{
@@ -876,6 +896,11 @@ export default function VendorManagement() {
             })}
           </div>
         )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(filteredPos.length / ITEMS_PER_PAGE)}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
@@ -1041,7 +1066,7 @@ export default function VendorManagement() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {filteredPos.map(po => {
+            {paginatedPos.map(po => {
               const isRed = po.color_status === 'red';
               const isYellow = po.color_status === 'yellow';
               const isGreen = po.color_status === 'green';
@@ -1288,6 +1313,11 @@ export default function VendorManagement() {
             })}
           </div>
         )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={Math.ceil(filteredPos.length / ITEMS_PER_PAGE)}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* ── SHARED EXTENSION MODAL ───────────────────────────────────────────── */}

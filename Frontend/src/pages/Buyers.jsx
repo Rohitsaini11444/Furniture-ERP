@@ -313,46 +313,137 @@ function Buyers() {
             </div>
           </div>
 
+          {/* Tab Navigation CSS animations */}
+          <style>{`
+            @keyframes buyerTabMotion {
+              0% {
+                opacity: 0;
+                transform: translateY(10px) scale(0.995);
+              }
+              100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+              }
+            }
+            .buyer-tab-animated {
+              animation: buyerTabMotion 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            .buyer-tab-btn {
+              background: none;
+              border: none;
+              color: var(--text-muted);
+              font-weight: 500;
+              padding: 0.75rem 0.5rem;
+              cursor: pointer;
+              font-size: 0.95rem;
+              white-space: nowrap;
+              position: relative;
+              transition: color 0.2s ease, font-weight 0.2s ease;
+            }
+            .buyer-tab-btn.active {
+              color: #8b5a2b;
+              font-weight: 700;
+            }
+            .buyer-tab-btn::after {
+              content: '';
+              position: absolute;
+              bottom: -1px;
+              left: 0;
+              right: 0;
+              height: 3px;
+              background-color: #8b5a2b;
+              border-radius: 3px 3px 0 0;
+              transform: scaleX(0);
+              transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .buyer-tab-btn.active::after {
+              transform: scaleX(1);
+            }
+          `}</style>
+
           {/* Tab Navigation */}
           <div style={{
             display: 'flex',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: '2px solid #f1f5f9',
             marginBottom: '1.5rem',
             overflowX: 'auto',
             gap: '2rem'
           }}>
             {[
               { id: 'Overview', label: 'Overview' },
-              { id: 'Buyer Master', label: `Buyer Master (${buyerDetails.buyerMasters.length > 0 ? 1 : 0})` },
+              { id: 'Buyer Master', label: `Buyer Master (${buyerDetails.buyerMasters.length})` },
               { id: 'PI', label: `PI (${buyerDetails.buyerPIs.length})` },
               { id: 'PO', label: `PO (${buyerDetails.pos.length})` }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: activeTab === tab.id ? '3px solid #8b5a2b' : '3px solid transparent',
-                  color: activeTab === tab.id ? '#8b5a2b' : 'var(--text-muted)',
-                  fontWeight: activeTab === tab.id ? 600 : 500,
-                  padding: '0.75rem 0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s'
-                }}
+                className={`buyer-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
               >
                 {tab.label}
               </button>
             ))}
           </div>
 
-          {/* Loader or Content */}
+          {/* Hollow Skeleton Loader or Animated Content */}
           {loadingDetails ? (
-            <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>Loading buyer details...</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '0.5rem' }}>
+              {/* 4 Overview Stat Cards Skeleton */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '1.5rem'
+              }}>
+                {[1, 2, 3, 4].map(idx => (
+                  <div key={idx} style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '12px', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '1rem', border: '1px solid #f1f5f9' }}>
+                    <div className="skeleton-thumb" style={{ width: '48px', height: '48px', borderRadius: '10px', flexShrink: 0 }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', flex: 1 }}>
+                      <div className="skeleton-box" style={{ width: '65%', height: '0.85rem' }} />
+                      <div className="skeleton-box" style={{ width: '35%', height: '1.3rem' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Overview Grid Skeleton */}
+              <div className="buyer-detail-grid">
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                    <div className="skeleton-box" style={{ width: '180px', height: '1.2rem' }} />
+                    <div className="skeleton-box" style={{ width: '80px', height: '1rem' }} />
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th><div className="skeleton-box" style={{ width: '80px', height: '0.9rem' }} /></th>
+                          <th><div className="skeleton-box" style={{ width: '100px', height: '0.9rem' }} /></th>
+                          <th><div className="skeleton-box" style={{ width: '70px', height: '0.9rem' }} /></th>
+                          <th><div className="skeleton-box" style={{ width: '90px', height: '0.9rem' }} /></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <TableSkeleton rows={4} cols={4} />
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+                  <div className="skeleton-box" style={{ width: '140px', height: '1.2rem', marginBottom: '1.5rem' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+                    {[1, 2, 3, 4, 5].map(idx => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f8fafc', paddingBottom: '0.6rem' }}>
+                        <div className="skeleton-box" style={{ width: '40%', height: '0.9rem' }} />
+                        <div className="skeleton-box" style={{ width: '30%', height: '0.9rem' }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
-            <div>
+            <div key={activeTab} className="buyer-tab-animated">
               {/* TAB 1: OVERVIEW */}
               {activeTab === 'Overview' && (
                 <div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
@@ -52,6 +52,63 @@ function Stock() {
   const [showOriginModal, setShowOriginModal] = useState(false);
   const [activeStageKey, setActiveStageKey] = useState('raw');
   const [activeStageTitle, setActiveStageTitle] = useState('Raw Stock');
+
+  // Sliding Indicator State for Factory Units & Stock Navigation
+  const unitTabRefs = React.useRef({});
+  const [unitIndicatorStyle, setUnitIndicatorStyle] = useState({ opacity: 0 });
+
+  const navTabRefs = React.useRef({});
+  const [navIndicatorStyle, setNavIndicatorStyle] = useState({ opacity: 0 });
+
+  // Measure active Factory Unit tab position
+  useLayoutEffect(() => {
+    const activeEl = unitTabRefs.current[selectedUnitId];
+    if (activeEl) {
+      setUnitIndicatorStyle({
+        width: `${activeEl.offsetWidth}px`,
+        transform: `translate3d(${activeEl.offsetLeft}px, ${activeEl.offsetTop}px, 0)`,
+        height: `${activeEl.offsetHeight}px`,
+        opacity: 1
+      });
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [selectedUnitId, units, stockItems]);
+
+  // Measure active Stock Navigation sub-tab position
+  useLayoutEffect(() => {
+    const activeEl = navTabRefs.current[activeTab];
+    if (activeEl) {
+      setNavIndicatorStyle({
+        width: `${activeEl.offsetWidth}px`,
+        transform: `translate3d(${activeEl.offsetLeft}px, 0, 0)`,
+        opacity: 1
+      });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const activeUnitEl = unitTabRefs.current[selectedUnitId];
+      if (activeUnitEl) {
+        setUnitIndicatorStyle({
+          width: `${activeUnitEl.offsetWidth}px`,
+          transform: `translate3d(${activeUnitEl.offsetLeft}px, ${activeUnitEl.offsetTop}px, 0)`,
+          height: `${activeUnitEl.offsetHeight}px`,
+          opacity: 1
+        });
+      }
+      const activeNavEl = navTabRefs.current[activeTab];
+      if (activeNavEl) {
+        setNavIndicatorStyle({
+          width: `${activeNavEl.offsetWidth}px`,
+          transform: `translate3d(${activeNavEl.offsetLeft}px, 0, 0)`,
+          opacity: 1
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [selectedUnitId, activeTab]);
 
   // Modal State for Stage Batch Job Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -584,6 +641,7 @@ function Stock() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
+                className="btn-subtle-motion"
                 onClick={() => navigate('/units')}
                 style={{
                   backgroundColor: '#ffffff',
@@ -605,6 +663,7 @@ function Stock() {
 
               <button
                 type="button"
+                className="btn-subtle-motion"
                 onClick={handleDownloadExcel}
                 style={{
                   backgroundColor: '#ffffff',
@@ -626,6 +685,7 @@ function Stock() {
 
               <button
                 type="button"
+                className="btn-subtle-motion"
                 onClick={openCreateModal}
                 style={{
                   backgroundColor: '#5c3a21',
@@ -660,28 +720,28 @@ function Stock() {
               Factory Unit
             </div>
             
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-              paddingBottom: '2px'
-            }}>
+            <div className="unit-tab-container">
+              {/* Hardware-Accelerated Sliding Indicator Backdrop */}
+              <div className="unit-tab-sliding-indicator" style={unitIndicatorStyle} />
+
               <button
+                key="all"
+                ref={el => unitTabRefs.current['all'] = el}
                 type="button"
                 onClick={() => setSelectedUnitId('all')}
                 style={{
+                  position: 'relative',
+                  zIndex: 2,
                   padding: '0.5rem 1rem',
                   borderRadius: '8px',
                   border: 'none',
-                  backgroundColor: selectedUnitId === 'all' ? '#5c3a21' : '#ffffff',
+                  backgroundColor: 'transparent',
                   color: selectedUnitId === 'all' ? '#ffffff' : '#78716c',
                   fontWeight: selectedUnitId === 'all' ? 750 : 500,
                   fontSize: '0.83rem',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
-                  boxShadow: selectedUnitId === 'all' ? '0 2px 4px rgba(92, 58, 33, 0.2)' : 'none'
+                  transition: 'color 180ms ease'
                 }}
               >
                 All Units ({stockItems.length})
@@ -694,18 +754,22 @@ function Stock() {
                 return (
                   <button
                     key={u.id}
+                    ref={el => unitTabRefs.current[u.id] = el}
                     type="button"
                     onClick={() => setSelectedUnitId(u.id)}
                     style={{
+                      position: 'relative',
+                      zIndex: 2,
                       padding: '0.5rem 1rem',
                       borderRadius: '8px',
-                      border: isSel ? 'none' : '1px solid #e7e5e4',
-                      backgroundColor: isSel ? '#5c3a21' : '#ffffff',
+                      border: isSel ? 'none' : '1px solid transparent',
+                      backgroundColor: 'transparent',
                       color: isSel ? '#ffffff' : '#78716c',
                       fontWeight: isSel ? 750 : 500,
                       fontSize: '0.83rem',
                       cursor: 'pointer',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      transition: 'color 180ms ease'
                     }}
                   >
                     {u.name} ({uStockCount})
@@ -744,6 +808,7 @@ function Stock() {
             }}>
               {/* Stage 1: Raw Stock */}
               <div
+                className="stock-stage-card-animated stock-stage-card-interactive"
                 onClick={() => navigate('/stock/details/raw')}
                 style={{
                   backgroundColor: '#ffffff',
@@ -752,7 +817,7 @@ function Stock() {
                   border: '2px solid #38bdf8',
                   boxShadow: '0 2px 10px rgba(56, 189, 248, 0.08)',
                   cursor: 'pointer',
-                  transition: 'transform 0.15s, boxShadow 0.15s'
+                  animationDelay: '100ms'
                 }}
               >
                 <div>
@@ -781,6 +846,7 @@ function Stock() {
 
               {/* Stage 2: Sanded Stock */}
               <div
+                className="stock-stage-card-animated stock-stage-card-interactive"
                 onClick={() => navigate('/stock/details/sanded')}
                 style={{
                   backgroundColor: '#ffffff',
@@ -789,7 +855,7 @@ function Stock() {
                   border: '2px solid #f59e0b',
                   boxShadow: '0 2px 10px rgba(245, 158, 11, 0.08)',
                   cursor: 'pointer',
-                  transition: 'transform 0.15s, boxShadow 0.15s'
+                  animationDelay: '135ms'
                 }}
               >
                 <div>
@@ -818,6 +884,7 @@ function Stock() {
 
               {/* Stage 3: Polished Stock */}
               <div
+                className="stock-stage-card-animated stock-stage-card-interactive"
                 onClick={() => navigate('/stock/details/polished')}
                 style={{
                   backgroundColor: '#ffffff',
@@ -826,7 +893,7 @@ function Stock() {
                   border: '2px solid #8b5cf6',
                   boxShadow: '0 2px 10px rgba(139, 92, 246, 0.08)',
                   cursor: 'pointer',
-                  transition: 'transform 0.15s, boxShadow 0.15s'
+                  animationDelay: '170ms'
                 }}
               >
                 <div>
@@ -855,6 +922,7 @@ function Stock() {
 
               {/* Stage 4: Finished Goods */}
               <div
+                className="stock-stage-card-animated stock-stage-card-interactive"
                 onClick={() => navigate('/stock/details/packaged')}
                 style={{
                   backgroundColor: '#ffffff',
@@ -863,7 +931,7 @@ function Stock() {
                   border: '2px solid #10b981',
                   boxShadow: '0 2px 10px rgba(16, 185, 129, 0.08)',
                   cursor: 'pointer',
-                  transition: 'transform 0.15s, boxShadow 0.15s'
+                  animationDelay: '205ms'
                 }}
               >
                 <div>
@@ -900,7 +968,7 @@ function Stock() {
             marginBottom: '1.75rem'
           }}>
             {/* Card 1 */}
-            <div style={{
+            <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
               borderRadius: '14px',
               padding: '1.1rem 1.35rem',
@@ -908,7 +976,8 @@ function Stock() {
               display: 'flex',
               alignItems: 'center',
               gap: '1rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              animationDelay: '100ms'
             }}>
               <div style={{
                 width: '44px',
@@ -934,7 +1003,7 @@ function Stock() {
             </div>
 
             {/* Card 2 */}
-            <div style={{
+            <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
               borderRadius: '14px',
               padding: '1.1rem 1.35rem',
@@ -942,7 +1011,8 @@ function Stock() {
               display: 'flex',
               alignItems: 'center',
               gap: '1rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              animationDelay: '150ms'
             }}>
               <div style={{
                 width: '44px',
@@ -968,7 +1038,7 @@ function Stock() {
             </div>
 
             {/* Card 3 */}
-            <div style={{
+            <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
               borderRadius: '14px',
               padding: '1.1rem 1.35rem',
@@ -976,7 +1046,8 @@ function Stock() {
               display: 'flex',
               alignItems: 'center',
               gap: '1rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              animationDelay: '200ms'
             }}>
               <div style={{
                 width: '44px',
@@ -1003,20 +1074,18 @@ function Stock() {
           </div>
 
           {/* ── Main Navigation Sub-Tabs ── */}
-          <div style={{
-            display: 'flex',
-            gap: '1.5rem',
-            borderBottom: '2px solid #e7e5e4',
-            marginBottom: '1.25rem',
-            overflowX: 'auto'
-          }}>
+          <div className="stock-nav-container">
+            {/* Sliding Underline Indicator */}
+            <div className="stock-nav-sliding-underline" style={navIndicatorStyle} />
+
             <button
+              ref={el => navTabRefs.current['stock'] = el}
               onClick={() => setActiveTab('stock')}
               style={{
+                position: 'relative',
                 padding: '0.65rem 0.25rem',
                 border: 'none',
                 background: 'none',
-                borderBottom: activeTab === 'stock' ? '3px solid #5c3a21' : '3px solid transparent',
                 fontWeight: activeTab === 'stock' ? 750 : 500,
                 color: activeTab === 'stock' ? '#5c3a21' : '#78716c',
                 fontSize: '0.9rem',
@@ -1024,19 +1093,21 @@ function Stock() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.45rem',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                transition: 'color 180ms ease'
               }}
             >
               <Boxes size={17} /> Stock Levels
             </button>
 
             <button
+              ref={el => navTabRefs.current['sanding'] = el}
               onClick={() => setActiveTab('sanding')}
               style={{
+                position: 'relative',
                 padding: '0.65rem 0.25rem',
                 border: 'none',
                 background: 'none',
-                borderBottom: activeTab === 'sanding' ? '3px solid #5c3a21' : '3px solid transparent',
                 fontWeight: activeTab === 'sanding' ? 750 : 500,
                 color: activeTab === 'sanding' ? '#5c3a21' : '#78716c',
                 fontSize: '0.9rem',
@@ -1044,19 +1115,21 @@ function Stock() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.45rem',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                transition: 'color 180ms ease'
               }}
             >
               <Wrench size={17} /> Sanding Stage ({getJobsByStage('sanding').length})
             </button>
 
             <button
+              ref={el => navTabRefs.current['polishing'] = el}
               onClick={() => setActiveTab('polishing')}
               style={{
+                position: 'relative',
                 padding: '0.65rem 0.25rem',
                 border: 'none',
                 background: 'none',
-                borderBottom: activeTab === 'polishing' ? '3px solid #5c3a21' : '3px solid transparent',
                 fontWeight: activeTab === 'polishing' ? 750 : 500,
                 color: activeTab === 'polishing' ? '#5c3a21' : '#78716c',
                 fontSize: '0.9rem',
@@ -1064,19 +1137,21 @@ function Stock() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.45rem',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                transition: 'color 180ms ease'
               }}
             >
               <Palette size={17} /> Polishing Stage ({getJobsByStage('polishing').length})
             </button>
 
             <button
+              ref={el => navTabRefs.current['packaging'] = el}
               onClick={() => setActiveTab('packaging')}
               style={{
+                position: 'relative',
                 padding: '0.65rem 0.25rem',
                 border: 'none',
                 background: 'none',
-                borderBottom: activeTab === 'packaging' ? '3px solid #5c3a21' : '3px solid transparent',
                 fontWeight: activeTab === 'packaging' ? 750 : 500,
                 color: activeTab === 'packaging' ? '#5c3a21' : '#78716c',
                 fontSize: '0.9rem',
@@ -1084,7 +1159,8 @@ function Stock() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.45rem',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                transition: 'color 180ms ease'
               }}
             >
               <PackageCheck size={17} /> Packaging Stage ({getJobsByStage('packaging').length})
@@ -1092,12 +1168,13 @@ function Stock() {
 
             {isSupervisor && (
               <button
+                ref={el => navTabRefs.current['qc'] = el}
                 onClick={() => setActiveTab('qc')}
                 style={{
+                  position: 'relative',
                   padding: '0.65rem 0.25rem',
                   border: 'none',
                   background: 'none',
-                  borderBottom: activeTab === 'qc' ? '3px solid #5c3a21' : '3px solid transparent',
                   fontWeight: activeTab === 'qc' ? 750 : 500,
                   color: activeTab === 'qc' ? '#5c3a21' : '#78716c',
                   fontSize: '0.9rem',
@@ -1105,7 +1182,8 @@ function Stock() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.45rem',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  transition: 'color 180ms ease'
                 }}
               >
                 <ClipboardCheck size={17} /> QC Requests ({qcPendingJobs.length})
@@ -1125,7 +1203,7 @@ function Stock() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
               
               {/* Left Search Bar */}
-              <div style={{
+              <div className="stock-search-input-wrap" style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.6rem',
@@ -1192,49 +1270,71 @@ function Stock() {
             </div>
           </div>
 
-          {/* ── TAB CONTENT 1: Inventory Stock Items Table ── */}
-          {activeTab === 'stock' && (
-            <div className="po-desktop-table">
-              <div style={{
-                backgroundColor: '#ffffff',
-                borderRadius: '14px',
-                border: '1px solid #e7e5e4',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                overflow: 'hidden'
-              }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e7e5e4' }}>
-                      <th style={{ padding: '0.9rem 1rem', width: '40px' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedRowIds.size === unitFilteredStock.length && unitFilteredStock.length > 0}
-                          onChange={toggleSelectAll}
-                        />
-                      </th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ITEM / PRODUCT NAME</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QUANTITY</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>UNIT PRICE</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>LOCATION</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>BUYER REF</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <TableSkeleton rows={6} cols={9} hasImage={false} />
-                    ) : unitFilteredStock.length === 0 ? (
-                      <tr>
-                        <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: '#78716c' }}>
-                          <Package size={32} style={{ marginBottom: '0.5rem', color: '#d6d3d1' }} />
-                          <div style={{ fontWeight: 600 }}>No stock items found.</div>
-                        </td>
+          {/* ── TAB CONTENT WRAPPER ── */}
+          <div key={activeTab} className="stock-tab-content-wrapper">
+            {/* ── TAB CONTENT 1: Inventory Stock Items Table ── */}
+            {activeTab === 'stock' && (
+              <div className="po-desktop-table table-fade-slide-in">
+                <div style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: '14px',
+                  border: '1px solid #e7e5e4',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  overflow: 'hidden'
+                }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e7e5e4' }}>
+                        <th style={{ padding: '0.9rem 1rem', width: '40px' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRowIds.size === unitFilteredStock.length && unitFilteredStock.length > 0}
+                            onChange={toggleSelectAll}
+                          />
+                        </th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ITEM / PRODUCT NAME</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QUANTITY</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>UNIT PRICE</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>LOCATION</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>BUYER REF</th>
+                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
                       </tr>
-                    ) : (
-                      unitFilteredStock.map((item) => (
-                        <tr key={item.id} style={{ borderBottom: '1px solid #f5f5f4' }}>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <TableSkeleton rows={6} cols={9} hasImage={false} />
+                      ) : unitFilteredStock.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: '#78716c' }}>
+                            <div style={{
+                              width: '56px',
+                              height: '56px',
+                              borderRadius: '50%',
+                              backgroundColor: '#f5f5f4',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              margin: '0 auto 1rem auto',
+                              color: '#a8a29e'
+                            }}>
+                              <Package size={28} />
+                            </div>
+                            <div style={{ fontWeight: 750, fontSize: '1rem', color: '#1c1917', marginBottom: '0.35rem' }}>No stock items found</div>
+                            <div style={{ fontSize: '0.84rem', color: '#78716c' }}>Try adjusting your search terms or filters to find what you're looking for.</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        unitFilteredStock.map((item, idx) => (
+                          <tr
+                            key={item.id}
+                            className="table-row-stagger"
+                            style={{
+                              borderBottom: '1px solid #f5f5f4',
+                              animationDelay: `${Math.min(idx * 25, 250)}ms`
+                            }}
+                          >
                           <td style={{ padding: '0.85rem 1rem' }}>
                             <input
                               type="checkbox"
@@ -1595,6 +1695,7 @@ function Stock() {
               </div>
             </div>
           )}
+          </div>
         </>
       )}
 

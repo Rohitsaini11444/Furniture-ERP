@@ -14,6 +14,8 @@ class RoleChoices(models.TextChoices):
     ADMIN = 'admin', 'Admin'
     SUPERVISOR = 'supervisor', 'Supervisor'
     CONTRACTOR = 'contractor', 'Contractor'
+    STORE_MANAGER = 'store_manager', 'Store Manager'
+    MERCHANT = 'merchant', 'Merchant'
 
 
 class BatchCategory(models.TextChoices):
@@ -1205,6 +1207,63 @@ class StoreDailyIssue(models.Model):
 
     def __str__(self):
         return f"Issue #{self.voucher_no} - {self.contractor.username} - {self.item.item_name} ({self.qty})"
+
+
+# ─── Global Enterprise Audit Trail Model ──────────────────────────────────────
+
+class AuditAction(models.TextChoices):
+    CREATE = 'CREATE', 'Created Record'
+    UPDATE = 'UPDATE', 'Updated Record'
+    DELETE = 'DELETE', 'Deleted Record'
+    LOGIN = 'LOGIN', 'Logged In'
+    LOGOUT = 'LOGOUT', 'Logged Out'
+    EXPORT = 'EXPORT', 'Exported Excel/PDF'
+    IMPORT = 'IMPORT', 'Imported Excel'
+    DOWNLOAD = 'DOWNLOAD', 'Downloaded File'
+
+
+class AuditLog(models.Model):
+    """
+    Unified Global Audit Log table tracking all system activities, data mutations,
+    file downloads, excel exports, and authentication events across the ERP.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # User Context
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    username = models.CharField(max_length=150, default='system', verbose_name="User Name")
+    user_role = models.CharField(max_length=50, default='system', verbose_name="User Role")
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP Address")
+    user_agent = models.TextField(blank=True, null=True, verbose_name="User Agent / Device")
+    
+    # Action Details
+    action = models.CharField(max_length=30, choices=AuditAction.choices, default=AuditAction.UPDATE)
+    module_name = models.CharField(max_length=100, db_index=True, verbose_name="ERP Module")
+    model_name = models.CharField(max_length=100, db_index=True, verbose_name="Model Name")
+    object_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Record ID")
+    object_repr = models.CharField(max_length=255, blank=True, null=True, verbose_name="Record Name / Summary")
+    
+    # Field Diffs & Payloads
+    changes = models.JSONField(default=dict, blank=True, verbose_name="Field Diffs")
+    file_info = models.JSONField(default=dict, blank=True, verbose_name="File Attachment Info")
+    reason = models.TextField(blank=True, null=True, verbose_name="Audit Note / Reason")
+    
+    # Timestamp
+    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Global Audit Log"
+        verbose_name_plural = "Global Audit Logs"
+        indexes = [
+            models.Index(fields=['user', '-timestamp']),
+            models.Index(fields=['module_name', '-timestamp']),
+            models.Index(fields=['action', '-timestamp']),
+        ]
+
+    def __str__(self):
+        return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] {self.username} ({self.action}) on {self.module_name} - {self.object_repr}"
+
 
 
 

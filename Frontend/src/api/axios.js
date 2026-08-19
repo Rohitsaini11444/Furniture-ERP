@@ -1,9 +1,7 @@
 import axios from 'axios';
 
-// Dynamically target local dev server or live pythonanywhere backend
-const API_BASE = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? '/api'
-  : 'https://rohitsaini.pythonanywhere.com/api';
+// Environment-driven API base URL (defaults to '/api' for Vite dev proxy)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,

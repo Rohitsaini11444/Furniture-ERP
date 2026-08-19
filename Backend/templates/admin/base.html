@@ -681,9 +681,11 @@
         const query = this.value.trim().toLowerCase();
 
         if (query.length > 0) {
+          sessionStorage.setItem('django_admin_sidebar_query', query);
           if (searchIcon) searchIcon.style.display = 'none';
           if (clearIcon) clearIcon.style.display = 'inline-block';
         } else {
+          sessionStorage.removeItem('django_admin_sidebar_query');
           if (searchIcon) searchIcon.style.display = 'inline-block';
           if (clearIcon) clearIcon.style.display = 'none';
           if (countBadge) countBadge.style.display = 'none';
@@ -744,6 +746,21 @@
           }
         }
       });
+
+      if (clearIcon) {
+        clearIcon.addEventListener('click', function() {
+          sessionStorage.removeItem('django_admin_sidebar_query');
+          searchInput.value = '';
+          searchInput.dispatchEvent(new Event('input'));
+        });
+      }
+
+      // Restore saved query from sessionStorage across page navigations
+      const savedQuery = sessionStorage.getItem('django_admin_sidebar_query');
+      if (savedQuery) {
+        searchInput.value = savedQuery;
+        searchInput.dispatchEvent(new Event('input'));
+      }
     }
 
     if (document.readyState === 'loading') {

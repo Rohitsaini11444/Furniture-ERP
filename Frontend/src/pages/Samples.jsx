@@ -1321,15 +1321,20 @@ function Samples() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map(s => {
+                  filtered.map((s, idx) => {
                     const isRecentlyVisited = String(s.id) === String(lastVisitedId);
                     return (
                       <tr
                         key={s.id}
                         ref={isRecentlyVisited ? setHighlightRef : null}
                         onClick={() => selectionMode ? toggleSelectRow(s.id) : openEditModal(s)}
-                        style={{ cursor: 'pointer', backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : undefined, transition: 'background 0.15s' }}
-                        className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                        style={{
+                          cursor: 'pointer',
+                          backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : undefined,
+                          transition: 'background 0.15s',
+                          animationDelay: `${Math.min(idx * 30, 300)}ms`
+                        }}
+                        className={`table-row-stagger table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                       >
                         {selectionMode && (
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>

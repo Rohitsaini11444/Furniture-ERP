@@ -32,6 +32,7 @@ import StoreManagement from './pages/StoreManagement';
 import StoreItemMasterPage from './pages/StoreItemMasterPage';
 import StoreMaterialInPage from './pages/StoreMaterialInPage';
 import StoreDailyIssuePage from './pages/StoreDailyIssuePage';
+import AuditTrailPage from './pages/AuditTrailPage';
 import Breadcrumbs from './components/Breadcrumbs';
 
 import pinkcityLogo from "./assets/pinkcity_logo.png";
@@ -1014,13 +1015,7 @@ function Navbar() {
                    <span className="navbar-username">{user.full_name || user.username}</span>
                 </div>
 
-                {/* Store Management link */}
-                <Link to="/store-management" className="navbar-icon-btn" title="Store Management" onClick={() => setMobileMenuOpen(false)}>
-                  <Warehouse size={18} color="#ea580c" />
-                  <span className="navbar-mobile-label">Store Management</span>
-                </Link>
-
-                {/* Admin link */}
+                 {/* Admin links */}
                 {isAdmin && (
                   <Link to="/users" className="navbar-icon-btn" title="User Management" onClick={() => setMobileMenuOpen(false)}>
                     <Users size={18} color="#64748b" />
@@ -1493,6 +1488,14 @@ function AppLayout() {
             />
 
             {/* Admin only */}
+            <Route
+              path="/audit-trail"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AuditTrailPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/users"
               element={

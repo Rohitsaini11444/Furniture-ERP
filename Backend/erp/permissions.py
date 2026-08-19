@@ -61,3 +61,28 @@ class IsAdminOrSandingSupervisor(BasePermission):
         if user.role == 'admin':
             return True
         return user.role == 'supervisor' and user.batch_category == 'sanding'
+
+
+class IsStoreManager(BasePermission):
+    """Allow access to Admin or Store Manager users."""
+    message = "Access restricted to Admin or Store Manager users."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.role in ('admin', 'store_manager')
+        )
+
+
+class IsMerchant(BasePermission):
+    """Allow access to Admin or Merchant users."""
+    message = "Access restricted to Admin or Merchant users."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.role in ('admin', 'merchant')
+        )
+

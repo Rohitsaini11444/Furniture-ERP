@@ -1,17 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import {
-  Users, UserPlus, Edit2, Trash2, X, ChevronDown,
-  Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor, UserCheck,
+  Users, UserPlus, Edit2, Trash2, X, ChevronDown, Key, Search, Warehouse,
+  Shield, Briefcase, Hammer, CheckCircle, AlertCircle, Monitor, UserCheck, ShoppingBag, Eye, EyeOff
 } from 'lucide-react';
 import { TableSkeleton } from '../components/TableSkeleton';
 import CustomSelect from '../components/CustomSelect';
+import Pagination from '../components/Pagination';
 
 const ROLE_CONFIG = {
-  admin:      { label: 'Admin',      color: '#8b5a2b', badge: 'admin-badge' },
-  supervisor: { label: 'Supervisor', color: '#a855f7', badge: 'supervisor-badge' },
-  contractor: { label: 'Contractor', color: '#22c55e', badge: 'contractor-badge' },
+  admin:         { label: 'Admin',         color: '#8b5a2b', badge: 'admin-badge',         icon: Shield },
+  supervisor:    { label: 'Supervisor',    color: '#a855f7', badge: 'supervisor-badge',    icon: Briefcase },
+  contractor:    { label: 'Contractor',    color: '#22c55e', badge: 'contractor-badge',    icon: Hammer },
+  store_manager: { label: 'Store Manager', color: '#ea580c', badge: 'store-manager-badge', icon: Warehouse },
+  merchant:      { label: 'Merchant',      color: '#2563eb', badge: 'merchant-badge',      icon: ShoppingBag },
 };
 
 const BATCH_LABELS = {
@@ -23,7 +26,7 @@ const EMPTY_FORM = {
   role: 'supervisor', batch_category: '', supervisor: '', password: '', is_active: true,
 };
 
-function UserManagement() {
+export default function UserManagement() {
   const { isAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
@@ -34,7 +37,15 @@ function UserManagement() {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [filterRole, setFilterRole] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  // Password Reset Modal state
+  const [resetPassUser, setResetPassUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetFeedback, setResetFeedback] = useState(null);
+  const [resetting, setResetting] = useState(false);
+  const [showPassText, setShowPassText] = useState(false);
 
   // Profile Image crop states
   const [selectedImgFile, setSelectedImgFile] = useState(null);
@@ -45,12 +56,11 @@ function UserManagement() {
 
   // Active Devices State
   const [activeDevices, setActiveDevices] = useState([]);
-  const [showDevicesModal, setShowDevicesModal] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
       api.get('/auth/devices/')
-        .then(res => setActiveDevices(res.data))
+        .then(res => setActiveDevices(res.data || []))
         .catch(err => console.error("Failed to load devices", err));
     }
   }, [isAdmin]);
@@ -60,7 +70,7 @@ function UserManagement() {
     try {
       const params = filterRole ? { role: filterRole, nopage: true } : { nopage: true };
       const res = await api.get('/users/', { params });
-      setUsers(res.data.results || res.data);
+      setUsers(res.data.results || res.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -71,11 +81,37 @@ function UserManagement() {
   const fetchSupervisors = async () => {
     try {
       const res = await api.get('/users/supervisors/', { params: { nopage: true } });
-      setSupervisors(res.data.results || res.data);
+      setSupervisors(res.data.results || res.data || []);
     } catch (err) {
       console.error(err);
     }
   };
+
+  // Filtered Users List based on role and search query
+  const filteredUsers = useMemo(() => {
+    return users.filter(u => {
+      const matchesRole = !filterRole || u.role === filterRole;
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || (
+        u.username.toLowerCase().includes(q) ||
+        (u.first_name || '').toLowerCase().includes(q) ||
+        (u.last_name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.phone || '').toLowerCase().includes(q)
+      );
+      return matchesRole && matchesSearch;
+    });
+  }, [users, filterRole, searchQuery]);
+
+  // Pagination State (20 per page)
+  const ITEMS_PER_PAGE = 20;
+  const [pageUser, setPageUser] = useState(1);
+
+  useEffect(() => {
+    setPageUser(1);
+  }, [filterRole, searchQuery]);
+
+  const paginatedUsers = filteredUsers.slice((pageUser - 1) * ITEMS_PER_PAGE, pageUser * ITEMS_PER_PAGE);
 
   useEffect(() => { fetchUsers(); }, [filterRole]);
   useEffect(() => { fetchSupervisors(); }, []);
@@ -92,12 +128,6 @@ function UserManagement() {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
-  };
-
-  const handleCropComplete = (blob, previewUrl) => {
-    setCroppedImageBlob(blob);
-    setCropPreviewUrl(previewUrl);
-    setShowCropper(false);
   };
 
   const openCreate = () => {
@@ -199,6 +229,41 @@ function UserManagement() {
     }
   };
 
+  // Toggle active/inactive status instantly
+  const handleToggleActive = async (user) => {
+    try {
+      const updated = !user.is_active;
+      await api.patch(`/users/${user.id}/`, { is_active: updated });
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: updated } : u));
+    } catch (err) {
+      console.error("Failed to toggle status", err);
+    }
+  };
+
+  // Quick Password Reset
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 4) {
+      setResetFeedback({ type: 'error', msg: 'Password must be at least 4 characters long.' });
+      return;
+    }
+    setResetting(true);
+    setResetFeedback(null);
+    try {
+      await api.patch(`/users/${resetPassUser.id}/`, { password: newPassword });
+      setResetFeedback({ type: 'success', msg: `Password updated successfully for ${resetPassUser.username}.` });
+      setTimeout(() => {
+        setResetPassUser(null);
+        setNewPassword('');
+        setResetFeedback(null);
+      }, 1500);
+    } catch (err) {
+      setResetFeedback({ type: 'error', msg: 'Failed to reset password. Please try again.' });
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleDelete = async (user) => {
     try {
       await api.delete(`/users/${user.id}/`);
@@ -210,9 +275,11 @@ function UserManagement() {
   };
 
   const groupedUsers = {
-    admin: users.filter((u) => u.role === 'admin'),
-    supervisor: users.filter((u) => u.role === 'supervisor'),
-    contractor: users.filter((u) => u.role === 'contractor'),
+    admin:         users.filter((u) => u.role === 'admin'),
+    supervisor:    users.filter((u) => u.role === 'supervisor'),
+    contractor:    users.filter((u) => u.role === 'contractor'),
+    store_manager: users.filter((u) => u.role === 'store_manager'),
+    merchant:      users.filter((u) => u.role === 'merchant'),
   };
 
   if (!isAdmin) {
@@ -226,146 +293,347 @@ function UserManagement() {
   }
 
   return (
-    <div className="um-container">
+    <div className="um-container" style={{ padding: '1.25rem 0', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header */}
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 className="um-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <UserCheck size={28} color="#0284c7" style={{ flexShrink: 0 }} /> User Management
+          <h1 className="um-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>
+            <UserCheck size={28} color="#0284c7" style={{ flexShrink: 0 }} /> Enterprise User Control & Role Management
           </h1>
-          <p className="um-subtitle">Manage system users, roles, and assignments</p>
+          <p className="um-subtitle" style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            Manage user accounts, assign roles, toggle active status, and reset security credentials
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           {activeDevices.length > 0 && (
             <button 
-              className="btn-primary"
-              onClick={() => setShowDevicesModal(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+              className="btn-secondary"
+              title="Active session devices"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}
             >
               <Monitor size={16} />
-              Logged into {activeDevices.length} device{activeDevices.length > 1 ? 's' : ''}
+              {activeDevices.length} Active Device{activeDevices.length > 1 ? 's' : ''}
             </button>
           )}
-          <button className="btn-primary um-add-btn" onClick={openCreate}>
-            <UserPlus size={16} />
-            Add User
+          <button className="btn-primary um-add-btn" onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1.1rem' }}>
+            <UserPlus size={18} />
+            + Add New User
           </button>
         </div>
       </div>
 
-      {/* Stats Row */}
-      <div className="um-stats">
-        {Object.entries(groupedUsers).map(([role, list]) => (
-          <div key={role} className="um-stat-card" onClick={() => setFilterRole(role === filterRole ? '' : role)}>
-            <div className="um-stat-icon" style={{ backgroundColor: ROLE_CONFIG[role]?.color + '20' }}>
-              {role === 'admin' && <Shield size={20} color={ROLE_CONFIG[role]?.color} />}
-              {role === 'supervisor' && <Briefcase size={20} color={ROLE_CONFIG[role]?.color} />}
-              {role === 'contractor' && <Hammer size={20} color={ROLE_CONFIG[role]?.color} />}
+      {/* Role Stats Row */}
+      <div className="um-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {Object.entries(groupedUsers).map(([role, list]) => {
+          const cfg = ROLE_CONFIG[role] || { label: role, color: '#64748b', icon: Shield };
+          const IconComponent = cfg.icon;
+          const isSelected = filterRole === role;
+          return (
+            <div
+              key={role}
+              className={`um-stat-card ${isSelected ? 'active' : ''}`}
+              onClick={() => setFilterRole(isSelected ? '' : role)}
+              style={{
+                backgroundColor: '#ffffff',
+                padding: '1rem 1.1rem',
+                borderRadius: '14px',
+                border: isSelected ? `2px solid ${cfg.color}` : '1px solid #e2e8f0',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: isSelected ? `0 4px 12px ${cfg.color}30` : '0 1px 3px rgba(0,0,0,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.85rem'
+              }}
+            >
+              <div className="um-stat-icon" style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: cfg.color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <IconComponent size={20} color={cfg.color} />
+              </div>
+              <div>
+                <p className="um-stat-count" style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>{list.length}</p>
+                <p className="um-stat-label" style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>{cfg.label}s</p>
+              </div>
             </div>
-            <div>
-              <p className="um-stat-count">{list.length}</p>
-              <p className="um-stat-label">{ROLE_CONFIG[role]?.label}s</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Filter Bar */}
-      <div className="um-filter-bar">
-        <span className="um-filter-label">Filter by role:</span>
-        {['', 'admin', 'supervisor', 'contractor'].map((r) => (
-          <button
-            key={r || 'all'}
-            className={`um-filter-btn ${filterRole === r ? 'active' : ''}`}
-            onClick={() => setFilterRole(r)}
-          >
-            {r ? ROLE_CONFIG[r]?.label : 'All'}
-          </button>
-        ))}
+      {/* Filter & Keyword Search Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', backgroundColor: '#ffffff', padding: '1rem 1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '1.5rem' }}>
+        {/* Search */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '240px', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.45rem 0.75rem', backgroundColor: '#f8fafc' }}>
+          <Search size={16} color="#94a3b8" />
+          <input
+            type="text"
+            placeholder="Search by name, username, email, phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: '0.875rem' }}
+          />
+        </div>
+
+        {/* Role Filters */}
+        <div className="um-filter-bar" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Filter:</span>
+          {['', 'admin', 'supervisor', 'contractor', 'store_manager', 'merchant'].map((r) => {
+            const cfg = ROLE_CONFIG[r];
+            const isSel = filterRole === r;
+            return (
+              <button
+                key={r || 'all'}
+                className={`um-filter-btn ${isSel ? 'active' : ''}`}
+                onClick={() => setFilterRole(r)}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '20px',
+                  border: isSel ? `1.5px solid ${cfg ? cfg.color : '#8b5a2b'}` : '1px solid #cbd5e1',
+                  backgroundColor: isSel ? (cfg ? cfg.color + '15' : '#8b5a2b15') : '#ffffff',
+                  color: isSel ? (cfg ? cfg.color : '#8b5a2b') : '#475569',
+                  fontSize: '0.78rem',
+                  fontWeight: isSel ? 700 : 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {r ? cfg?.label : 'All Roles'}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Users Table */}
-      <div className="table-container">
+      <div className="table-container" style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
         <table className="data-table">
-          <thead>
+          <thead style={{ backgroundColor: '#faf8f5', borderBottom: '2px solid #e2e8f0' }}>
             <tr>
-              <th>Name</th>
+              <th>User Account</th>
               <th>Username</th>
               <th>Role</th>
-              <th>Batch / Supervisor</th>
-              <th>Email</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th>Assignment Details</th>
+              <th>Phone / Email</th>
+              <th>Status (Click Toggle)</th>
+              <th style={{ textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <TableSkeleton rows={6} cols={7} hasImage={false} />
-            ) : users.length === 0 ? (
-              <tr><td colSpan={7} className="um-empty">No users found.</td></tr>
+            ) : filteredUsers.length === 0 ? (
+              <tr><td colSpan={7} className="um-empty" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>No users found matching current filters.</td></tr>
             ) : (
-              users.map((u) => (
-                <tr key={u.id} className="smooth-fade-in">
-                  <td className="um-name-cell">
-                    <div className="um-avatar" style={{ backgroundColor: ROLE_CONFIG[u.role]?.color + '20' }}>
-                      {(u.first_name?.[0] || u.username[0]).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="um-full-name">{u.first_name} {u.last_name}</p>
-                      <p className="um-email-small">{u.email}</p>
-                    </div>
-                  </td>
-                  <td><code className="um-code">{u.username}</code></td>
-                  <td>
-                    <span className={`login-role-badge ${ROLE_CONFIG[u.role]?.badge}`}>
-                      {ROLE_CONFIG[u.role]?.label}
-                    </span>
-                  </td>
-                  <td>
-                    {u.role === 'supervisor' && u.batch_category && (
-                      <span className="um-batch-tag">{BATCH_LABELS[u.batch_category]}</span>
-                    )}
-                    {u.role === 'contractor' && u.supervisor_name && (
-                      <span className="um-supervisor-tag">{u.supervisor_name}</span>
-                    )}
-                    {u.role === 'contractor' && u.contractor_count !== null && (
-                      <span className="um-count-tag">{u.contractor_count} contractor{u.contractor_count !== 1 ? 's' : ''}</span>
-                    )}
-                  </td>
-                  <td>{u.email || '—'}</td>
-                  <td>
-                    <span className={`um-status ${u.is_active ? 'active' : 'inactive'}`}>
-                      {u.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="um-actions">
-                      <button className="um-action-btn edit" onClick={() => openEdit(u)} title="Edit">
-                        <Edit2 size={14} />
+              paginatedUsers.map((u) => {
+                const cfg = ROLE_CONFIG[u.role] || { label: u.role, color: '#64748b', badge: 'admin-badge' };
+                return (
+                  <tr key={u.id} className="smooth-fade-in" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td className="um-name-cell">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {u.profile_image ? (
+                          <img
+                            src={u.profile_image}
+                            alt={u.username}
+                            style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${cfg.color}`, flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div className="um-avatar" style={{ width: '38px', height: '38px', borderRadius: '50%', backgroundColor: cfg.color + '20', color: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>
+                            {(u.first_name?.[0] || u.username[0]).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="um-full-name" style={{ margin: 0, fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
+                            {u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}` : u.username}
+                          </p>
+                          <p className="um-email-small" style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>{u.email || 'No email'}</p>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td><code className="um-code" style={{ fontFamily: 'monospace', fontWeight: 600, color: '#334155' }}>{u.username}</code></td>
+
+                    <td>
+                      <span className={`login-role-badge ${cfg.badge}`}>
+                        {cfg.label}
+                      </span>
+                    </td>
+
+                    <td>
+                      {u.role === 'supervisor' && u.batch_category && (
+                        <span className="um-batch-tag">{BATCH_LABELS[u.batch_category] || u.batch_category}</span>
+                      )}
+                      {u.role === 'contractor' && u.supervisor_name && (
+                        <span className="um-supervisor-tag">{u.supervisor_name}</span>
+                      )}
+                      {u.role === 'store_manager' && (
+                        <span style={{ fontSize: '0.78rem', color: '#ea580c', fontWeight: 600 }}>Store Inventory Lead</span>
+                      )}
+                      {u.role === 'merchant' && (
+                        <span style={{ fontSize: '0.78rem', color: '#2563eb', fontWeight: 600 }}>Buyer Representative</span>
+                      )}
+                    </td>
+
+                    <td style={{ fontSize: '0.825rem', color: '#475569' }}>
+                      <div>{u.phone || '—'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{u.email || ''}</div>
+                    </td>
+
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(u)}
+                        title="Click to toggle Active/Inactive status"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                      >
+                        <span className={`um-status ${u.is_active ? 'active' : 'inactive'}`} style={{ cursor: 'pointer' }}>
+                          {u.is_active ? '● Active' : '○ Inactive'}
+                        </span>
                       </button>
-                      <button className="um-action-btn delete" onClick={() => setDeleteConfirm(u)} title="Delete">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                    </td>
+
+                    <td>
+                      <div className="um-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                        <button
+                          className="um-action-btn edit"
+                          onClick={() => openEdit(u)}
+                          title="Edit User Details"
+                          style={{ padding: '5px 8px', borderRadius: '6px', backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', cursor: 'pointer' }}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+
+                        <button
+                          className="um-action-btn"
+                          onClick={() => { setResetPassUser(u); setNewPassword(''); setResetFeedback(null); }}
+                          title="Reset Password"
+                          style={{ padding: '5px 8px', borderRadius: '6px', backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff', cursor: 'pointer' }}
+                        >
+                          <Key size={14} />
+                        </button>
+
+                        <button
+                          className="um-action-btn delete"
+                          onClick={() => setDeleteConfirm(u)}
+                          title="Delete User"
+                          style={{ padding: '5px 8px', borderRadius: '6px', backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
+
+        <div style={{ padding: '0.85rem 1.25rem' }}>
+          <Pagination
+            currentPage={pageUser}
+            totalPages={Math.ceil(filteredUsers.length / ITEMS_PER_PAGE) || 1}
+            onPageChange={setPageUser}
+          />
+        </div>
       </div>
+
+      {/* Password Reset Modal */}
+      {resetPassUser && (
+        <div className="modal-overlay" onClick={() => setResetPassUser(null)}>
+          <div className="modal-content" style={{ maxWidth: '420px', borderRadius: '16px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.1rem' }}>
+                <Key size={20} color="#7e22ce" /> Reset Password
+              </h2>
+              <button className="modal-close" onClick={() => setResetPassUser(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.25rem' }}>
+              <p style={{ fontSize: '0.875rem', color: '#475569', marginTop: 0 }}>
+                Set a new login password for <strong>{resetPassUser.full_name || resetPassUser.username}</strong> (<code>{resetPassUser.username}</code>).
+              </p>
+
+              {resetFeedback && (
+                <div className={`um-feedback ${resetFeedback.type}`} style={{ marginBottom: '1rem' }}>
+                  {resetFeedback.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                  {resetFeedback.msg}
+                </div>
+              )}
+
+              <form onSubmit={handleResetPassword}>
+                <div className="form-group" style={{ position: 'relative', marginBottom: '1.25rem' }}>
+                  <label className="form-label">New Password *</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPassText ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="form-input"
+                      placeholder="Enter new strong password"
+                      required
+                      style={{ paddingRight: '2.5rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassText(!showPassText)}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}
+                    >
+                      {showPassText ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="um-form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setResetPassUser(null)}>Cancel</button>
+                  <button type="submit" className="btn-primary" disabled={resetting} style={{ backgroundColor: '#7e22ce', borderColor: '#7e22ce' }}>
+                    {resetting ? 'Updating...' : 'Set New Password'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-content" style={{ maxWidth: '420px', borderRadius: '16px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ borderBottom: 'none' }}>
+              <h2 style={{ color: '#be123c', margin: 0, fontSize: '1.1rem' }}>Delete User Account?</h2>
+              <button className="modal-close" onClick={() => setDeleteConfirm(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '1rem 1.25rem 1.5rem 1.25rem' }}>
+              <p style={{ fontSize: '0.9rem', color: '#334155', marginTop: 0 }}>
+                Are you sure you want to delete user <strong>{deleteConfirm.username}</strong> ({deleteConfirm.first_name} {deleteConfirm.last_name})?
+              </p>
+              <p style={{ fontSize: '0.8rem', color: '#be123c', backgroundColor: '#fff1f2', padding: '0.75rem', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+                ⚠️ Warning: This operation will revoke all access rights and logged device sessions.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                <button className="btn-primary" style={{ backgroundColor: '#be123c', borderColor: '#be123c' }} onClick={() => handleDelete(deleteConfirm)}>
+                  Confirm Delete User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create / Edit Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '580px', borderRadius: '16px' }}>
             <div className="modal-header">
-              <h2>{editingUser ? 'Edit User' : 'Create New User'}</h2>
+              <h2>{editingUser ? 'Edit User Account' : 'Create New User Account'}</h2>
               <button className="modal-close" onClick={closeModal}><X size={20} /></button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
               {feedback && (
-                <div className={`um-feedback ${feedback.type}`}>
+                <div className={`um-feedback ${feedback.type}`} style={{ marginBottom: '1rem' }}>
                   {feedback.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                   {feedback.msg}
                 </div>
@@ -373,24 +641,24 @@ function UserManagement() {
               <form onSubmit={handleSave} className="um-form">
                 
                 {/* Profile Image Picker & Preview */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.5rem', gap: '0.5rem' }}>
-                  <div style={{ position: 'relative', width: '90px', height: '90px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1.25rem', gap: '0.4rem' }}>
+                  <div style={{ position: 'relative', width: '84px', height: '84px' }}>
                     <img 
-                      src={cropPreviewUrl || form.profile_image || 'https://via.placeholder.com/90?text=User'} 
+                      src={cropPreviewUrl || form.profile_image || 'https://via.placeholder.com/84?text=User'} 
                       alt="Profile" 
-                      style={{ width: '90px', height: '90px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #a855f7' }}
+                      style={{ width: '84px', height: '84px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #8b5a2b' }}
                     />
                     <label 
                       style={{ 
                         position: 'absolute', bottom: 0, right: 0, 
-                        backgroundColor: '#a855f7', color: '#fff', 
-                        width: '28px', height: '28px', borderRadius: '50%', 
+                        backgroundColor: '#8b5a2b', color: '#fff', 
+                        width: '26px', height: '26px', borderRadius: '50%', 
                         display: 'flex', alignItems: 'center', justifyContent: 'center', 
                         cursor: 'pointer', border: '2px solid #fff' 
                       }}
                       title="Upload Profile Image"
                     >
-                      <UserPlus size={14} />
+                      <UserPlus size={13} />
                       <input 
                         type="file" 
                         accept="image/*" 
@@ -399,10 +667,10 @@ function UserManagement() {
                       />
                     </label>
                   </div>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upload 1:1 Profile Picture</span>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Upload 1:1 Profile Picture</span>
                 </div>
 
-                <div className="um-form-row">
+                <div className="um-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div className="form-group">
                     <label className="form-label">First Name</label>
                     <input name="first_name" value={form.first_name} onChange={handleChange} className="form-input" placeholder="First name" />
@@ -412,28 +680,36 @@ function UserManagement() {
                     <input name="last_name" value={form.last_name} onChange={handleChange} className="form-input" placeholder="Last name" />
                   </div>
                 </div>
-                <div className="form-group">
+
+                <div className="form-group" style={{ marginTop: '0.75rem' }}>
                   <label className="form-label">Username *</label>
                   <input name="username" value={form.username} onChange={handleChange} className="form-input" placeholder="username" required />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input name="email" type="email" value={form.email} onChange={handleChange} className="form-input" placeholder="email@company.com" />
+
+                <div className="um-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Email</label>
+                    <input name="email" type="email" value={form.email} onChange={handleChange} className="form-input" placeholder="email@company.com" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Phone</label>
+                    <input name="phone" value={form.phone} onChange={handleChange} className="form-input" placeholder="+91 00000 00000" />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Phone</label>
-                  <input name="phone" value={form.phone} onChange={handleChange} className="form-input" placeholder="+91 00000 00000" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Role *</label>
+
+                <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                  <label className="form-label">Enterprise User Role *</label>
                   <CustomSelect name="role" value={form.role} onChange={handleChange} className="form-input">
-                    <option value="admin">Admin</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="contractor">Contractor</option>
+                    <option value="admin">Admin (Full System Access)</option>
+                    <option value="supervisor">Supervisor (Factory & Quality Lead)</option>
+                    <option value="contractor">Contractor (Worker Delegate)</option>
+                    <option value="store_manager">Store Manager (Inventory Lead)</option>
+                    <option value="merchant">Merchant (Buyer Representative)</option>
                   </CustomSelect>
                 </div>
+
                 {form.role === 'supervisor' && (
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginTop: '0.75rem' }}>
                     <label className="form-label">Batch Category *</label>
                     <CustomSelect name="batch_category" value={form.batch_category} onChange={handleChange} className="form-input">
                       <option value="">Select batch category</option>
@@ -444,8 +720,9 @@ function UserManagement() {
                     </CustomSelect>
                   </div>
                 )}
+
                 {form.role === 'contractor' && (
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginTop: '0.75rem' }}>
                     <label className="form-label">Supervisor *</label>
                     <CustomSelect name="supervisor" value={form.supervisor} onChange={handleChange} className="form-input">
                       <option value="">Select supervisor</option>
@@ -457,8 +734,9 @@ function UserManagement() {
                     </CustomSelect>
                   </div>
                 )}
-                <div className="form-group">
-                  <label className="form-label">{editingUser ? 'New Password (leave blank to keep)' : 'Password *'}</label>
+
+                <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                  <label className="form-label">{editingUser ? 'New Password (leave blank to keep current)' : 'Account Password *'}</label>
                   <input
                     name="password"
                     type="password"
@@ -469,16 +747,18 @@ function UserManagement() {
                     required={!editingUser}
                   />
                 </div>
-                <div className="form-group um-active-toggle">
-                  <label className="form-label">
+
+                <div className="form-group um-active-toggle" style={{ marginTop: '1rem' }}>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                     <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} />
-                    &nbsp; Active Account
+                    <strong>Active Account Status</strong>
                   </label>
                 </div>
-                <div className="um-form-actions">
+
+                <div className="um-form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
                   <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
                   <button type="submit" className="btn-primary" disabled={saving}>
-                    {saving ? 'Saving...' : editingUser ? 'Update User' : 'Create User'}
+                    {saving ? 'Saving...' : editingUser ? 'Update Account' : 'Create Account'}
                   </button>
                 </div>
               </form>
@@ -486,194 +766,6 @@ function UserManagement() {
           </div>
         </div>
       )}
-
-      {/* Delete Confirmation */}
-      {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="modal-content" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Delete User</h2>
-              <button className="modal-close" onClick={() => setDeleteConfirm(null)}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              <p>Are you sure you want to delete <strong>{deleteConfirm.first_name} {deleteConfirm.last_name} ({deleteConfirm.username})</strong>?</p>
-              <p style={{ color: '#ef4444', marginTop: '0.5rem', fontSize: '0.875rem' }}>This action cannot be undone.</p>
-              <div className="um-form-actions" style={{ marginTop: '1.5rem' }}>
-                <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-                <button className="btn-primary" style={{ backgroundColor: '#ef4444' }} onClick={() => handleDelete(deleteConfirm)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Cropper Overlay */}
-      {showCropper && (
-        <ImageCropper
-          src={imgToCrop}
-          onCrop={handleCropComplete}
-          onCancel={() => setShowCropper(false)}
-        />
-      )}
     </div>
   );
 }
-
-// ─── ImageCropper subcomponent (HTML5 Canvas crop 1:1) ───────────────────────
-
-function ImageCropper({ src, onCrop, onCancel }) {
-  const [zoom, setZoom] = useState(1);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const imgRef = React.useRef(null);
-
-  const handleMouseDown = (e) => {
-    setIsDragging(true);
-    setStartPos({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    setOffset({
-      x: e.clientX - startPos.x,
-      y: e.clientY - startPos.y
-    });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 1) {
-      setIsDragging(true);
-      setStartPos({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isDragging || e.touches.length !== 1) return;
-    setOffset({
-      x: e.touches[0].clientX - startPos.x,
-      y: e.touches[0].clientY - startPos.y
-    });
-  };
-
-  const handleApply = () => {
-    const img = imgRef.current;
-    if (!img) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 300;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-
-    const displayWidth = img.naturalWidth;
-    const displayHeight = img.naturalHeight;
-    const containerSize = 250;
-    const scaleFactor = Math.min(containerSize / displayWidth, containerSize / displayHeight);
-    
-    const baseW = displayWidth * scaleFactor;
-    const baseH = displayHeight * scaleFactor;
-    
-    const curW = baseW * zoom;
-    const curH = baseH * zoom;
-    
-    const xInContainer = (containerSize - curW) / 2 + offset.x;
-    const yInContainer = (containerSize - curH) / 2 + offset.y;
-    
-    const srcX = (25 - xInContainer) * (img.naturalWidth / curW);
-    const srcY = (25 - yInContainer) * (img.naturalHeight / curH);
-    
-    const srcW = 200 * (img.naturalWidth / curW);
-    const srcH = 200 * (img.naturalHeight / curH);
-
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, 300, 300);
-
-    canvas.toBlob((blob) => {
-      onCrop(blob, canvas.toDataURL('image/jpeg'));
-    }, 'image/jpeg', 0.9);
-  };
-
-  return (
-    <div className="modal-overlay" style={{ zIndex: 10000 }}>
-      <div className="modal-content" style={{ maxWidth: '350px', padding: '1.5rem' }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ marginBottom: '1rem', textAlign: 'center' }}>Crop Profile Picture (1:1)</h3>
-        
-        <div 
-          style={{
-            width: '250px',
-            height: '250px',
-            margin: '0 auto',
-            position: 'relative',
-            overflow: 'hidden',
-            backgroundColor: '#111',
-            borderRadius: '8px',
-            cursor: isDragging ? 'grabbing' : 'grab',
-            userSelect: 'none',
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleMouseUp}
-        >
-          <img
-            ref={imgRef}
-            src={src}
-            alt="Source"
-            draggable={false}
-            style={{
-              position: 'absolute',
-              width: 'auto',
-              height: 'auto',
-              maxWidth: '100%',
-              maxHeight: '100%',
-              top: '50%',
-              left: '50%',
-              transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-              transformOrigin: 'center center',
-              pointerEvents: 'none',
-            }}
-          />
-          <div 
-            style={{
-              position: 'absolute',
-              top: 0, left: 0, right: 0, bottom: 0,
-              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.65)',
-              borderRadius: '50%',
-              border: '2px solid #fff',
-              margin: '25px',
-              pointerEvents: 'none',
-            }}
-          />
-        </div>
-
-        <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Zoom:</label>
-          <input 
-            type="range" 
-            min="1" 
-            max="3" 
-            step="0.05" 
-            value={zoom} 
-            onChange={e => setZoom(parseFloat(e.target.value))} 
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'end', gap: '0.75rem' }}>
-          <button type="button" className="btn-secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={handleApply}>Crop & Save</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default UserManagement;

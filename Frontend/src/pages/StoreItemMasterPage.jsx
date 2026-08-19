@@ -7,6 +7,7 @@ import {
 import api from '../api/axios';
 import CustomFileUpload from '../components/CustomFileUpload';
 import SearchableSelect from '../components/SearchableSelect';
+import StoreCategoryModal from '../components/StoreCategoryModal';
 
 export default function StoreItemMasterPage() {
   const navigate = useNavigate();
@@ -19,6 +20,7 @@ export default function StoreItemMasterPage() {
   // Categories list
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   // Form Data State
   const [formData, setFormData] = useState({
@@ -96,11 +98,13 @@ export default function StoreItemMasterPage() {
     });
   };
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
+  const handleImageChange = (file) => {
     if (file) {
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+    } else {
+      setImageFile(null);
+      setImagePreview(null);
     }
   };
 
@@ -425,9 +429,29 @@ export default function StoreItemMasterPage() {
 
               {/* Category */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
-                  Category
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <label style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155', margin: 0 }}>
+                    Category
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryModalOpen(true)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#8b5a2b',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      padding: 0,
+                    }}
+                  >
+                    <Plus size={12} /> Add Category
+                  </button>
+                </div>
                 <SearchableSelect
                   options={categories}
                   value={formData.category}
@@ -590,10 +614,14 @@ export default function StoreItemMasterPage() {
               {/* Image Upload */}
               <div style={{ gridColumn: '1 / -1' }}>
                 <CustomFileUpload
-                  label="Item Image (Optional)"
+                  label="Item Image (Optional — Drag & Drop Supported)"
                   accept="image/*"
+                  singleFile={imageFile || imagePreview}
                   onChange={handleImageChange}
-                  preview={imagePreview}
+                  onRemoveNew={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                  }}
                 />
               </div>
             </div>
@@ -826,6 +854,16 @@ export default function StoreItemMasterPage() {
           </form>
         </div>
       )}
+
+      {/* Category Creation Modal */}
+      <StoreCategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSuccess={(newCat) => {
+          setCategories(prev => [...prev, newCat]);
+          setFormData(prev => ({ ...prev, category: newCat.id }));
+        }}
+      />
     </div>
   );
 }

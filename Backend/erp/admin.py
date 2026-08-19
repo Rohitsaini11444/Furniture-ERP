@@ -41,7 +41,7 @@ from .models import (
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     StockItem, ProductionJob, ProductionQCLog,
-    Notification, UserSession,
+    Notification, UserSession, AuditLog,
 )
 
 
@@ -426,4 +426,30 @@ class StoreDailyIssueAdmin(admin.ModelAdmin):
     list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'qty', 'rate', 'status', 'total_amount']
     list_filter = ['contractor', 'status', 'production_unit']
     search_fields = ['voucher_no', 'contractor_person_name', 'item__item_name']
+
+
+# ── Global Audit Log Admin Registration ─────────────────────────────────────
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ['timestamp', 'username', 'user_role', 'action', 'module_name', 'model_name', 'object_repr', 'ip_address']
+    list_filter = ['action', 'module_name', 'user_role', 'timestamp']
+    search_fields = ['username', 'object_repr', 'module_name', 'model_name', 'reason', 'ip_address']
+    readonly_fields = [
+        'id', 'user', 'username', 'user_role', 'ip_address', 'user_agent',
+        'action', 'module_name', 'model_name', 'object_id', 'object_repr',
+        'changes', 'file_info', 'reason', 'timestamp'
+    ]
+    date_hierarchy = 'timestamp'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return True
+
+
 

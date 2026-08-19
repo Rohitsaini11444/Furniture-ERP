@@ -20,6 +20,7 @@ const ALL_TILES = [
   { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={28} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
   { name: 'Production Pipeline',     icon: <Boxes size={28} />,         color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
   { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor'] },
+  { name: 'Audit Trail Logs',       icon: <ShieldCheck size={28} />,   color: '#dc2626', link: '/audit-trail',       roles: ['admin'] },
   { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
 ];
 
@@ -515,7 +516,12 @@ function Dashboard() {
         <h3 className="workflow-title" style={{ marginBottom: '1rem', marginTop: '0.5rem' }}>Modules Navigation & Management</h3>
         <div className="dashboard-grid">
           {visibleTiles.map((tile, index) => (
-            <Link key={index} to={tile.link} className={`dashboard-tile ${tile.link === '#' ? 'tile-disabled' : ''}`}>
+            <Link
+              key={index}
+              to={tile.link}
+              className={`dashboard-tile stat-card-animated ${tile.link === '#' ? 'tile-disabled' : ''}`}
+              style={{ animationDelay: `${Math.min(index * 40, 250)}ms` }}
+            >
               <div className="tile-icon" style={{ backgroundColor: tile.color }}>
                 {tile.icon}
               </div>
@@ -528,7 +534,7 @@ function Dashboard() {
       {/* KPI Cards Grid */}
       <div className="admin-kpi-grid">
         {/* KPI 1: Proforma Revenue */}
-        <div className="admin-kpi-card" style={{ '--kpi-color': '#10b981' }}>
+        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#10b981', animationDelay: '100ms' }}>
           <div className="kpi-header">
             <div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}>
               <DollarSign size={22} />
@@ -544,7 +550,7 @@ function Dashboard() {
         </div>
 
         {/* KPI 2: Active Purchase Orders */}
-        <div className="admin-kpi-card" style={{ '--kpi-color': '#14b8a6' }}>
+        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#14b8a6', animationDelay: '150ms' }}>
           <div className="kpi-header">
             <div className="kpi-icon-wrap" style={{ background: '#ccfbf1', color: '#0d9488' }}>
               <ClipboardList size={22} />
@@ -560,7 +566,7 @@ function Dashboard() {
         </div>
 
         {/* KPI 3: Total Buyers */}
-        <div className="admin-kpi-card" style={{ '--kpi-color': '#ec4899' }}>
+        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#ec4899', animationDelay: '200ms' }}>
           <div className="kpi-header">
             <div className="kpi-icon-wrap" style={{ background: '#fce7f3', color: '#db2777' }}>
               <Users size={22} />
@@ -576,7 +582,7 @@ function Dashboard() {
         </div>
 
         {/* KPI 4: Samples & Stock Catalog */}
-        <div className="admin-kpi-card" style={{ '--kpi-color': '#6366f1' }}>
+        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#6366f1', animationDelay: '250ms' }}>
           <div className="kpi-header">
             <div className="kpi-icon-wrap" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
               <Box size={22} />

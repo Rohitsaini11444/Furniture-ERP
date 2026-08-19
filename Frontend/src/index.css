@@ -843,9 +843,11 @@ select[multiple] option:checked {
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
-.admin-badge      { background: rgba(139,90,43,.15);  color: #8b5a2b; }
-.supervisor-badge { background: rgba(168,85,247,.15); color: #9333ea; }
-.contractor-badge { background: rgba(34,197,94,.15);  color: #16a34a; }
+.admin-badge         { background: rgba(139,90,43,.15);  color: #8b5a2b; }
+.supervisor-badge    { background: rgba(168,85,247,.15); color: #9333ea; }
+.contractor-badge    { background: rgba(34,197,94,.15);  color: #16a34a; }
+.store-manager-badge { background: rgba(234,88,12,.15);  color: #ea580c; }
+.merchant-badge      { background: rgba(37,99,235,.15);  color: #2563eb; }
 
 /* ═══════════════════════════════════════════════════════════════
    NAVBAR ADDITIONS
@@ -4712,3 +4714,507 @@ select.filter-input {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05) !important;
   transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODULE TAB SWITCHING & PAGE CONTENT MOTION SYSTEM
+═══════════════════════════════════════════════════════════════ */
+
+/* 1. Active Tab Moving Indicator */
+.po-tabs-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  margin-bottom: 1.5rem;
+  gap: 1.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.po-tab-sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 8px 8px 0 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              height 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 280ms ease,
+              border-color 280ms ease;
+  will-change: transform, width, height;
+}
+
+.po-tab-sliding-indicator.pos-theme,
+.po-tab-sliding-indicator.gate-theme {
+  background-color: #e6f4f1;
+  border-bottom: 3px solid #0d9488;
+}
+
+.po-tab-sliding-indicator.vendor-theme {
+  background-color: #fef2f2;
+  border-bottom: 3px solid #dc2626;
+}
+
+.po-tab-btn {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 3px solid transparent !important;
+  border-radius: 8px 8px 0 0;
+  color: #475569;
+  font-weight: 500;
+  padding: 0.65rem 1.1rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  white-space: nowrap;
+  transition: color 250ms ease, font-weight 250ms ease;
+}
+
+.po-tab-btn.active-pos,
+.po-tab-btn.active-gate {
+  color: #0d9488 !important;
+  font-weight: 700 !important;
+}
+
+.po-tab-btn.active-vendor {
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
+.po-tab-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 250ms ease, color 250ms ease;
+}
+
+/* 2. Page Content Transition Below Navigation */
+@keyframes tabContentEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.po-tab-content-wrapper {
+  animation: tabContentEntrance 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform;
+}
+
+/* 3. Banner / Heading Reveal */
+@keyframes bannerReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.banner-animated {
+  animation: bannerReveal 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 50ms;
+}
+
+/* 4. Statistic Cards Stagger Reveal */
+@keyframes statCardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-card-animated {
+  animation: statCardReveal 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 5. Filter / Search Section Reveal */
+@keyframes filterBarReveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filter-bar-animated {
+  animation: filterBarReveal 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 180ms;
+}
+
+/* 6. Table & Skeleton Fade/Slide Transition */
+@keyframes tableFadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.table-fade-slide-in {
+  animation: tableFadeSlideIn 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 7. Table Rows Entrance Stagger */
+@keyframes tableRowStagger {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.table-row-stagger {
+  animation: tableRowStagger 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 8. Universal Modal Pop-In System */
+@keyframes modalBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalContentPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-overlay {
+  animation: modalBackdropFade 180ms ease-out forwards;
+}
+
+.modal-content {
+  animation: modalContentPop 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 9. Stock Inventory Specific Motion Rules */
+.unit-tab-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  scroll-behavior: smooth;
+}
+
+.unit-tab-sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: #5c3a21;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(92, 58, 33, 0.2);
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.stock-nav-container {
+  position: relative;
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 2px solid #e7e5e4;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+}
+
+.stock-nav-sliding-underline {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  height: 3px;
+  background-color: #5c3a21;
+  border-radius: 3px 3px 0 0;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes stockTabContentEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stock-tab-content-wrapper {
+  animation: stockTabContentEntrance 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes stockStageCardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stock-stage-card-animated {
+  animation: stockStageCardEntrance 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stock-stage-card-interactive {
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+}
+
+.stock-stage-card-interactive:hover {
+  border-color: #5c3a21 !important;
+  box-shadow: 0 4px 14px rgba(92, 58, 33, 0.12) !important;
+}
+
+.stock-stage-card-interactive:active {
+  transform: translateY(1px);
+}
+
+.btn-subtle-motion {
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 100ms ease;
+}
+
+.btn-subtle-motion:hover {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+.btn-subtle-motion:active {
+  transform: translateY(1px);
+}
+
+.stock-search-input-wrap {
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.stock-search-input-wrap:focus-within {
+  border-color: #5c3a21 !important;
+  box-shadow: 0 0 0 3px rgba(92, 58, 33, 0.12) !important;
+}
+
+/* 10. Store Management Hub Specific Motion Rules */
+.store-module-nav-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #ffffff;
+  padding: 0.5rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.store-nav-sliding-indicator {
+  position: absolute;
+  top: 0.5rem;
+  left: 0;
+  height: calc(100% - 1rem);
+  background-color: #8b5a2b;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(139, 90, 43, 0.2);
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes storeTabContentEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.store-tab-content-wrapper {
+  animation: storeTabContentEntrance 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Primary Action Button Directional Micro-Interactions */
+.btn-action-material-in svg {
+  transition: transform 150ms ease;
+}
+.btn-action-material-in:hover svg {
+  transform: translate(2px, 2px);
+}
+
+.btn-action-daily-issue svg {
+  transition: transform 150ms ease;
+}
+.btn-action-daily-issue:hover svg {
+  transform: translate(2px, -2px);
+}
+
+.btn-action-new-item svg {
+  transition: transform 150ms ease;
+}
+.btn-action-new-item:hover svg {
+  transform: scale(1.15);
+}
+
+@keyframes spinOnce {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-once {
+  animation: spinOnce 600ms linear;
+}
+
+.store-search-wrap {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.store-search-wrap:focus-within {
+  border-color: #8b5a2b !important;
+  box-shadow: 0 0 0 3px rgba(139, 90, 43, 0.12) !important;
+}
+
+/* 11. Stock Details Specific Motion Rules */
+.stock-details-nav-container {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.stock-details-sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 12px;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), width 200ms cubic-bezier(0.16, 1, 0.3, 1), background-color 180ms ease, border-color 180ms ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes stockDetailsContentEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stock-details-content-wrapper {
+  animation: stockDetailsContentEntrance 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes batchCardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stock-batch-card-animated {
+  animation: batchCardEntrance 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.btn-action-export-csv svg {
+  transition: transform 150ms ease;
+}
+
+.btn-action-export-csv:hover svg {
+  transform: translateY(2px);
+}
+
+.stock-details-search-wrap {
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.stock-details-search-wrap:focus-within {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12) !important;
+}
+
+/* 12. Reduced Motion Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .po-tab-sliding-indicator,
+  .po-tab-content-wrapper,
+  .banner-animated,
+  .stat-card-animated,
+  .filter-bar-animated,
+  .table-fade-slide-in,
+  .table-row-stagger,
+  .modal-overlay,
+  .modal-content,
+  .unit-tab-sliding-indicator,
+  .stock-nav-sliding-underline,
+  .stock-tab-content-wrapper,
+  .stock-stage-card-animated,
+  .store-nav-sliding-indicator,
+  .store-tab-content-wrapper,
+  .stock-details-sliding-indicator,
+  .stock-details-content-wrapper,
+  .stock-batch-card-animated {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+

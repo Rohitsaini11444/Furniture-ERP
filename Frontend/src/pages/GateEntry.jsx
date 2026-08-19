@@ -1311,7 +1311,7 @@ export default function GateEntry() {
       )}
 
       {/* Page Header Banner */}
-      <div style={{
+      <div className="banner-animated" style={{
         backgroundColor: '#ffffff',
         borderRadius: '16px',
         padding: '1.25rem 1.5rem',
@@ -1380,7 +1380,7 @@ export default function GateEntry() {
         marginBottom: '1.5rem'
       }}>
         {/* Card 1: TOTAL ENTRIES */}
-        <div style={{
+        <div className="stat-card-animated" style={{
           backgroundColor: '#e6f7f3',
           borderRadius: '14px',
           padding: '1.1rem 1.25rem',
@@ -1388,7 +1388,8 @@ export default function GateEntry() {
           display: 'flex',
           alignItems: 'flex-start',
           gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
+          animationDelay: '100ms'
         }}>
           <div style={{
             width: '44px',
@@ -1416,7 +1417,7 @@ export default function GateEntry() {
         </div>
 
         {/* Card 2: PENDING */}
-        <div style={{
+        <div className="stat-card-animated" style={{
           backgroundColor: '#fff8ed',
           borderRadius: '14px',
           padding: '1.1rem 1.25rem',
@@ -1424,7 +1425,8 @@ export default function GateEntry() {
           display: 'flex',
           alignItems: 'flex-start',
           gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
+          animationDelay: '150ms'
         }}>
           <div style={{
             width: '44px',
@@ -1452,7 +1454,7 @@ export default function GateEntry() {
         </div>
 
         {/* Card 3: COMPLETED */}
-        <div style={{
+        <div className="stat-card-animated" style={{
           backgroundColor: '#f0f6fe',
           borderRadius: '14px',
           padding: '1.1rem 1.25rem',
@@ -1460,7 +1462,8 @@ export default function GateEntry() {
           display: 'flex',
           alignItems: 'flex-start',
           gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
+          animationDelay: '200ms'
         }}>
           <div style={{
             width: '44px',
@@ -1488,7 +1491,7 @@ export default function GateEntry() {
         </div>
 
         {/* Card 4: TODAY'S ENTRIES */}
-        <div style={{
+        <div className="stat-card-animated" style={{
           backgroundColor: '#faf5ff',
           borderRadius: '14px',
           padding: '1.1rem 1.25rem',
@@ -1496,7 +1499,8 @@ export default function GateEntry() {
           display: 'flex',
           alignItems: 'flex-start',
           gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)'
+          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
+          animationDelay: '250ms'
         }}>
           <div style={{
             width: '44px',
@@ -1525,7 +1529,7 @@ export default function GateEntry() {
       </div>
 
       {/* ── Filter Bar ── */}
-      <div style={{
+      <div className="filter-bar-animated" style={{
         backgroundColor: '#ffffff',
         borderRadius: '16px',
         padding: '0.85rem 1.25rem',
@@ -1566,7 +1570,7 @@ export default function GateEntry() {
       </div>
 
       {/* ── Desktop Data Table ── */}
-      <div className="po-desktop-table">
+      <div className="po-desktop-table table-fade-slide-in">
         <div style={{
           backgroundColor: '#ffffff',
           borderRadius: '16px',
@@ -1615,15 +1619,20 @@ export default function GateEntry() {
                     <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
                   </td>
                 </tr>
-              ) : filteredPOs.map(p => {
+              ) : filteredPOs.map((p, idx) => {
                 const isRecentlyVisited = String(p.id) === String(lastVisitedId);
                 return (
                   <tr
                     key={p.id}
                     ref={isRecentlyVisited ? setHighlightRef : null}
                     onClick={() => navigate(`/gate-entry/${p.id}`)}
-                    style={{ cursor: 'pointer', transition: 'background 0.15s', borderBottom: '1px solid #f1f5f9' }}
-                    className={`smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                    style={{
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                      borderBottom: '1px solid #f1f5f9',
+                      animationDelay: `${Math.min(idx * 30, 300)}ms`
+                    }}
+                    className={`table-row-stagger smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                   >
                     <td style={{ padding: '0.95rem 1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>

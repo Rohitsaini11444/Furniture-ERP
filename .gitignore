@@ -28,6 +28,8 @@ Backend/media/
 # Environment Variables
 .env
 *.env
+*.env*
+.env.*
 
 # Node & Frontend Build
 node_modules/
