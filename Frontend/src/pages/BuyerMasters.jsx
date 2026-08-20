@@ -271,7 +271,7 @@ function BuyerMasters() {
       .then(res => setBuyers(res.data))
       .catch(err => console.error(err));
 
-    api.get('/samples/', { params: { nopage: true } })
+    api.get('/samples/dropdown/')
       .then(res => setSamples(res.data))
       .catch(err => console.error(err));
 

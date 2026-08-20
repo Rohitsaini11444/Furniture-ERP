@@ -450,11 +450,15 @@ class POExtensionLogSerializer(serializers.ModelSerializer):
 
 
 def get_po_metrics(obj):
+    if hasattr(obj, '_cached_po_metrics'):
+        return obj._cached_po_metrics
+
     from datetime import date
     from decimal import Decimal
 
-    total_ordered = sum((it.quantity or Decimal('0')) for it in obj.items.all())
-    total_received = sum((it.passed_quantity or Decimal('0')) for it in obj.items.all())
+    items_list = list(obj.items.all()) if hasattr(obj, 'items') else []
+    total_ordered = sum((it.quantity or Decimal('0')) for it in items_list)
+    total_received = sum((it.passed_quantity or Decimal('0')) for it in items_list)
 
     today = date.today()
     days_remaining = None
@@ -468,12 +472,14 @@ def get_po_metrics(obj):
     else:
         color_status = 'yellow'
 
-    return {
+    metrics = {
         'total_ordered_qty': float(total_ordered),
         'total_received_qty': float(total_received),
         'days_remaining': days_remaining,
         'color_status': color_status,
     }
+    obj._cached_po_metrics = metrics
+    return metrics
 
 
 class SupplierPOItemMinimalSerializer(serializers.ModelSerializer):
@@ -525,7 +531,8 @@ class SupplierPOListSerializer(serializers.ModelSerializer):
 
     def get_total_amount(self, obj):
         from decimal import Decimal
-        return sum(item.amount or Decimal('0') for item in obj.items.all())
+        items_list = list(obj.items.all()) if hasattr(obj, 'items') else []
+        return sum(item.amount or Decimal('0') for item in items_list)
 
     def get_days_remaining(self, obj):
         return get_po_metrics(obj)['days_remaining']

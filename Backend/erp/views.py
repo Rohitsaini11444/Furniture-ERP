@@ -333,7 +333,7 @@ class SampleViewSet(viewsets.ModelViewSet):
     #     return qs
 
     def get_queryset(self):
-        qs = Sample.objects.select_related('buyer').prefetch_related('images').all()
+        qs = Sample.objects.select_related('buyer', 'finish').prefetch_related('images').all()
 
         buyer = self.request.query_params.get('buyer')
         material = self.request.query_params.get('material')
@@ -643,6 +643,13 @@ class SampleViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='dropdown')
+    def dropdown(self, request):
+        """GET /api/samples/dropdown/ — returns lightweight sample fields for dropdowns."""
+        qs = self.filter_queryset(self.get_queryset())
+        serializer = SampleDropdownSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
 
 class SampleImageViewSet(viewsets.ModelViewSet):
     """
@@ -719,7 +726,7 @@ class BuyerMasterFinishingImageViewSet(viewsets.ModelViewSet):
 
 
 class BuyerMasterViewSet(viewsets.ModelViewSet):
-    queryset = BuyerMaster.objects.select_related('buyer', 'sample').all()
+    queryset = BuyerMaster.objects.select_related('buyer', 'sample', 'sample__finish', 'sample__buyer').prefetch_related('finishing_images').all()
     permission_classes = [IsAuthenticated]
     pagination_class = OptionalPagination
 
@@ -1421,7 +1428,16 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
     Each PO goes to one supplier and has multiple line items
     referencing different buyer orders.
     """
-    queryset = SupplierPO.objects.select_related('supplier').prefetch_related('items__buyer').all()
+    queryset = SupplierPO.objects.select_related(
+        'supplier', 'supervisor', 'buyer_pi'
+    ).prefetch_related(
+        'items__buyer',
+        'extension_logs',
+        'supplier_history',
+        'supplier_history__previous_supplier',
+        'supplier_history__new_supplier',
+        'supplier_history__changed_by'
+    ).all()
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
