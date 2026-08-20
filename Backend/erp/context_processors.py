@@ -9,7 +9,7 @@ def admin_dashboard_stats(request):
     Context processor to supply real-time database metrics, 
     status breakdowns, and chart data to the Django Admin Dashboard.
     """
-    if not request.path.startswith('/admin/'):
+    if request.path.rstrip('/') != '/admin':
         return {}
 
     try:

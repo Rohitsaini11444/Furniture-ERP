@@ -108,6 +108,7 @@ class SampleImageInline(admin.TabularInline):
 @admin.register(Sample)
 class SampleAdmin(admin.ModelAdmin):
     list_display = ['sample_image_thumbnail', 'sample_id', 'style_no', 'product_name', 'buyer', 'material', 'finish_color', 'usd', 'cbm', 'vendor_name', 'created_at']
+    list_select_related = ['buyer']
     list_filter = ['buyer', 'material']
     search_fields = ['sample_id', 'style_no', 'product_name', 'vendor_name', 'material', 'finish_color']
     readonly_fields = ['main_image_preview']
@@ -120,14 +121,17 @@ class SampleAdmin(admin.ModelAdmin):
     ]
     inlines = [SampleImageInline]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('buyer').prefetch_related('images')
+
     def sample_image_thumbnail(self, obj):
         img_url = None
         if obj.image:
             img_url = obj.image.url
-        elif hasattr(obj, 'images') and obj.images.exists():
-            first_img = obj.images.first()
-            if first_img and first_img.image:
-                img_url = first_img.image.url
+        elif hasattr(obj, 'images'):
+            all_imgs = list(obj.images.all())
+            if all_imgs and all_imgs[0].image:
+                img_url = all_imgs[0].image.url
         
         if img_url:
             return format_html('<img src="{}" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; display: block;" />', img_url)

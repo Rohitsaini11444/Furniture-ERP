@@ -115,6 +115,7 @@ if DATABASE_URL:
             'PASSWORD': url.password or os.environ.get('DB_PASSWORD'),
             'HOST': db_host,
             'PORT': str(url.port or os.environ.get('DB_PORT', '5432')),
+            'CONN_MAX_AGE': 600,
             'OPTIONS': db_options,
         }
     }
@@ -128,6 +129,7 @@ else:
             'PASSWORD': os.environ.get('DB_PASSWORD'),
             'HOST': os.environ.get('DB_HOST'),
             'PORT': os.environ.get('DB_PORT', '5432'),
+            'CONN_MAX_AGE': 600,
             'OPTIONS': {
                 'sslmode': os.environ.get('DB_SSLMODE', 'disable'),
             },
