@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://rohitsaini.pythonanywhere.com/api/:path*"
+      "destination": "https://furniture-erp-vlzq.onrender.com/api/:path*"
     },
     {
       "source": "/media/:path*",
-      "destination": "https://rohitsaini.pythonanywhere.com/media/:path*"
+      "destination": "https://furniture-erp-vlzq.onrender.com/media/:path*"
     },
     {
       "source": "/:path*",
