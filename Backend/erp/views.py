@@ -31,7 +31,7 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.db.models import Case, DecimalField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models import Case, Count, DecimalField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
@@ -4339,6 +4339,34 @@ class ProductionUnitViewSet(viewsets.ModelViewSet):
     queryset = ProductionUnit.objects.all()
     serializer_class = ProductionUnitSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        sup_sub = Subquery(
+            User.objects.filter(production_unit=OuterRef('pk'), role='supervisor', is_active=True)
+            .values('production_unit')
+            .annotate(c=Count('id'))
+            .values('c')[:1],
+            output_field=IntegerField()
+        )
+        con_sub = Subquery(
+            User.objects.filter(production_unit=OuterRef('pk'), role='contractor', is_active=True)
+            .values('production_unit')
+            .annotate(c=Count('id'))
+            .values('c')[:1],
+            output_field=IntegerField()
+        )
+        stk_sub = Subquery(
+            StockItem.objects.filter(production_unit=OuterRef('pk'))
+            .values('production_unit')
+            .annotate(total=Sum('quantity'))
+            .values('total')[:1],
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+        return super().get_queryset().annotate(
+            annotated_supervisor_count=Coalesce(sup_sub, Value(0)),
+            annotated_contractor_count=Coalesce(con_sub, Value(0)),
+            annotated_stock_count=Coalesce(stk_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2)))
+        )
 
 
 class BuyerUnitAllocationViewSet(viewsets.ModelViewSet):

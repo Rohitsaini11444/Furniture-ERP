@@ -51,12 +51,18 @@ class ProductionUnitSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_supervisor_count(self, obj):
+        if hasattr(obj, 'annotated_supervisor_count'):
+            return obj.annotated_supervisor_count
         return obj.users.filter(role='supervisor', is_active=True).count()
 
     def get_contractor_count(self, obj):
+        if hasattr(obj, 'annotated_contractor_count'):
+            return obj.annotated_contractor_count
         return obj.users.filter(role='contractor', is_active=True).count()
 
     def get_stock_count(self, obj):
+        if hasattr(obj, 'annotated_stock_count'):
+            return float(obj.annotated_stock_count or 0.0)
         return sum(float(item.quantity or 0) for item in obj.stock_items.all())
 
 
