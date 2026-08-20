@@ -49,6 +49,7 @@ from .models import (
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'email', 'first_name', 'last_name', 'role', 'batch_category', 'production_unit', 'supervisor', 'is_staff', 'is_active']
+    list_select_related = ['production_unit', 'supervisor']
     list_filter = ['role', 'batch_category', 'production_unit', 'is_staff', 'is_active', 'is_superuser']
     search_fields = ['username', 'first_name', 'last_name', 'email', 'phone']
     fieldsets = BaseUserAdmin.fieldsets + (
@@ -158,6 +159,7 @@ class SampleAdmin(admin.ModelAdmin):
 @admin.register(SampleImage)
 class SampleImageAdmin(admin.ModelAdmin):
     list_display = ['sample_image_thumbnail', 'sample', 'image', 'uploaded_at']
+    list_select_related = ['sample']
     search_fields = ['sample__sample_id', 'sample__style_no']
     readonly_fields = ['image_preview']
     fields = ['sample', 'image_preview', 'image']
@@ -219,6 +221,7 @@ class BuyerMasterFinishingImageInline(admin.TabularInline):
 @admin.register(BuyerMaster)
 class BuyerMasterAdmin(admin.ModelAdmin):
     list_display = ['style_no', 'product_name', 'buyer', 'buyer_code', 'units', 'price_usd', 'total_amount', 'created_at']
+    list_select_related = ['buyer', 'sample']
     list_filter = ['buyer', 'wood_type']
     search_fields = ['style_no', 'product_name', 'buyer_code', 'buyer__name', 'wood_type', 'finish_color']
     inlines = [BuyerMasterFinishingImageInline]
@@ -226,6 +229,7 @@ class BuyerMasterAdmin(admin.ModelAdmin):
 @admin.register(BuyerMasterFinishingImage)
 class BuyerMasterFinishingImageAdmin(admin.ModelAdmin):
     list_display = ['buyer_master', 'uploaded_at']
+    list_select_related = ['buyer_master', 'buyer_master__buyer']
     search_fields = ['buyer_master__style_no', 'buyer_master__product_name']
 
 
@@ -257,6 +261,7 @@ class POSupplierHistoryAdmin(admin.ModelAdmin):
 @admin.register(SupplierPO)
 class SupplierPOAdmin(admin.ModelAdmin):
     list_display = ['po_number', 'po_date', 'supplier', 'production_unit', 'status', 'due_date', 'total_amount', 'created_at']
+    list_select_related = ['supplier', 'production_unit']
     list_filter = ['status', 'production_unit', 'supplier']
     search_fields = ['po_number', 'supplier__name', 'nku_refs', 'supervisor', 'remarks']
     inlines = [SupplierPOItemInline]
@@ -264,6 +269,7 @@ class SupplierPOAdmin(admin.ModelAdmin):
 @admin.register(SupplierPOItem)
 class SupplierPOItemAdmin(admin.ModelAdmin):
     list_display = ['supplier_po', 'description', 'quantity', 'passed_quantity', 'unit', 'rate', 'amount', 'buyer']
+    list_select_related = ['supplier_po', 'supplier_po__supplier', 'buyer']
     list_filter = ['unit', 'supplier_po__status']
     search_fields = ['supplier_po__po_number', 'description', 'buyer__name']
 
@@ -279,6 +285,7 @@ class SupplierPOItemDefectImageAdmin(admin.ModelAdmin):
 @admin.register(GateInwardReceipt)
 class GateInwardReceiptAdmin(admin.ModelAdmin):
     list_display = ['grn_number', 'round_number', 'supplier_invoice_no', 'supplier_po', 'po_item', 'receipt_date', 'passed_qty', 'rejected_qty', 'vehicle_no', 'driver_contact', 'inspected_by', 'created_at']
+    list_select_related = ['supplier_po', 'supplier_po__supplier', 'po_item', 'inspected_by']
     list_filter = ['round_number', 'receipt_date', 'inspected_by', 'supplier_po__supplier']
     search_fields = ['grn_number', 'supplier_invoice_no', 'challan_no', 'vehicle_no', 'driver_contact', 'supplier_po__po_number', 'notes']
 
@@ -290,6 +297,7 @@ class SupplierTaxInvoiceItemInline(admin.TabularInline):
 @admin.register(SupplierTaxInvoice)
 class SupplierTaxInvoiceAdmin(admin.ModelAdmin):
     list_display = ['invoice_no', 'invoice_date', 'supplier', 'delivery_note', 'despatched_through', 'total_amount', 'created_at']
+    list_select_related = ['supplier']
     list_filter = ['invoice_date', 'supplier']
     search_fields = ['invoice_no', 'supplier__name', 'delivery_note', 'despatch_document_no', 'despatched_through', 'destination']
     inlines = [SupplierTaxInvoiceItemInline]
@@ -308,6 +316,7 @@ class SupplierDebitNoteItemInline(admin.TabularInline):
 @admin.register(SupplierDebitNote)
 class SupplierDebitNoteAdmin(admin.ModelAdmin):
     list_display = ['vch_no', 'vch_date', 'supplier', 'status', 'holding_until', 'item_description', 'rejected_qty', 'total_amount', 'tally_synced', 'created_at']
+    list_select_related = ['supplier']
     list_filter = ['status', 'tally_synced', 'vch_date']
     search_fields = ['vch_no', 'supplier__name', 'original_inv_no', 'item_description', 'remarks']
     inlines = [SupplierDebitNoteItemInline]
@@ -367,6 +376,7 @@ class StockItemAdmin(admin.ModelAdmin):
 @admin.register(ProductionJob)
 class ProductionJobAdmin(admin.ModelAdmin):
     list_display = ['stage', 'status', 'style_no', 'item_name', 'contractor', 'assigned_by', 'production_unit', 'assigned_qty', 'passed_qty', 'rejected_qty', 'created_at']
+    list_select_related = ['contractor', 'assigned_by', 'production_unit']
     list_filter = ['stage', 'status', 'contractor', 'assigned_by', 'production_unit']
     search_fields = ['style_no', 'item_name', 'contractor__username', 'assigned_by__username']
 
@@ -381,12 +391,14 @@ class ProductionQCLogAdmin(admin.ModelAdmin):
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ['user', 'message', 'is_read', 'created_at']
+    list_select_related = ['user']
     list_filter = ['is_read']
     search_fields = ['user__username', 'message']
 
 @admin.register(UserSession)
 class UserSessionAdmin(admin.ModelAdmin):
     list_display = ['user', 'ip_address', 'is_active', 'last_activity', 'created_at']
+    list_select_related = ['user']
     list_filter = ['is_active']
     search_fields = ['user__username', 'ip_address', 'user_agent']
 
@@ -416,6 +428,7 @@ class StoreItemRateHistoryAdmin(admin.ModelAdmin):
 @admin.register(ContractorPerson)
 class ContractorPersonAdmin(admin.ModelAdmin):
     list_display = ['person_name', 'contractor', 'phone', 'is_active', 'created_at']
+    list_select_related = ['contractor']
     list_filter = ['contractor', 'is_active']
     search_fields = ['person_name', 'contractor__username']
 
