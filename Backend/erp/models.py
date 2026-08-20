@@ -1025,11 +1025,15 @@ class StoreItem(models.Model):
 
     @property
     def total_stock_qty(self):
+        if hasattr(self, 'inward_qty_sum') and self.inward_qty_sum is not None:
+            return Decimal(str(self.inward_qty_sum))
         inward = self.inward_entries.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
         return inward
 
     @property
     def total_issued_qty(self):
+        if hasattr(self, 'issued_qty_sum') and self.issued_qty_sum is not None:
+            return Decimal(str(self.issued_qty_sum))
         issued = self.daily_issues.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
         return issued
 

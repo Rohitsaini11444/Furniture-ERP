@@ -162,7 +162,7 @@ function Stock() {
       api.get('/production-units/'),
       isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] }),
       api.get('/buyers/', { params: { nopage: true } }),
-      api.get('/samples/', { params: { nopage: true } })
+      api.get('/samples/dropdown/')
     ])
       .then(([stockRes, jobsRes, unitRes, contractorRes, buyerRes, sampleRes]) => {
         const sData = stockRes.data.results || stockRes.data || [];

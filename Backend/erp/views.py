@@ -31,7 +31,8 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, DecimalField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
 
@@ -2189,7 +2190,7 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = ProductionJob.objects.select_related('stock_item', 'buyer_master', 'sample', 'buyer', 'contractor', 'assigned_by').all()
+        qs = ProductionJob.objects.select_related('stock_item', 'buyer_master', 'sample', 'buyer', 'contractor', 'assigned_by').prefetch_related('qc_logs', 'qc_logs__inspected_by').all()
         
         stage_param = self.request.query_params.get('stage')
         status_param = self.request.query_params.get('status')
@@ -4273,30 +4274,45 @@ class DashboardStatsView(APIView):
         polishing_pct = round((polishing_jobs / max(1, total_jobs)) * 100) if total_jobs > 0 else (round(sanding_pct * 0.88) if sanding_pct > 0 else 0)
         packaging_pct = round((stock_count / max(1, sample_count)) * 100) if sample_count > 0 else 0
 
-        qc_logs = ProductionQCLog.objects.all()
-        if qc_logs.exists():
-            passed_sum = sum(float(l.passed_qty or 0) for l in qc_logs)
-            rejected_sum = sum(float(l.rejected_qty or 0) for l in qc_logs)
-            tot_inspected = passed_sum + rejected_sum
+        qc_agg = ProductionQCLog.objects.aggregate(p=Sum('passed_qty'), r=Sum('rejected_qty'))
+        passed_sum = float(qc_agg['p'] or 0)
+        rejected_sum = float(qc_agg['r'] or 0)
+        tot_inspected = passed_sum + rejected_sum
+
+        if tot_inspected > 0 or ProductionQCLog.objects.exists():
             qc_pass_rate = round((passed_sum / tot_inspected) * 100, 1) if tot_inspected > 0 else 100.0
         else:
-            po_items = SupplierPOItem.objects.all()
-            tot_qty = sum(float(i.quantity or 0) for i in po_items)
-            pass_qty = sum(float(i.passed_quantity or 0) for i in po_items)
+            po_agg = SupplierPOItem.objects.aggregate(tot=Sum('quantity'), passed=Sum('passed_quantity'))
+            tot_qty = float(po_agg['tot'] or 0)
+            pass_qty = float(po_agg['passed'] or 0)
             if tot_qty > 0:
                 qc_pass_rate = round((pass_qty / tot_qty) * 100, 1)
             else:
                 qc_pass_rate = 100.0 if po_count > 0 else 0.0
 
-        recent_pos = SupplierPOSerializer(SupplierPO.objects.select_related('supplier').all()[:5], many=True).data
-        recent_pis = PerformaInvoiceSerializer(PerformaInvoice.objects.select_related('buyer').all()[:5], many=True).data
+        recent_pos_qs = SupplierPO.objects.select_related(
+            'supplier', 'supervisor', 'buyer_pi'
+        ).prefetch_related(
+            'items__buyer',
+            'extension_logs',
+            'supplier_history',
+            'supplier_history__previous_supplier',
+            'supplier_history__new_supplier',
+            'supplier_history__changed_by'
+        ).all()[:5]
+        recent_pos = SupplierPOSerializer(recent_pos_qs, many=True).data
+
+        recent_pis_qs = PerformaInvoice.objects.select_related('buyer').prefetch_related('items').all()[:5]
+        recent_pis = PerformaInvoiceSerializer(recent_pis_qs, many=True).data
+
+        total_pis_count = len(performa_invoices) + len(buyer_pis)
 
         return Response({
             'totalSamples': sample_count,
             'totalBuyers': buyer_count,
             'totalBuyerMasters': bm_count,
             'totalPOs': po_count,
-            'totalPIs': performa_invoices.count() + buyer_pis.count(),
+            'totalPIs': total_pis_count,
             'totalStockItems': stock_count,
             'pendingQcCount': pending_qc_count,
             'totalRevenueUSD': round(pi_total_usd, 2),
@@ -4892,12 +4908,29 @@ class StoreItemCategoryViewSet(viewsets.ModelViewSet):
 
 
 class StoreItemViewSet(viewsets.ModelViewSet):
-    queryset = StoreItem.objects.all()
+    queryset = StoreItem.objects.select_related('category').prefetch_related('rate_history').all()
     serializer_class = StoreItemSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = StoreItem.objects.all()
+        inward_sub = Subquery(
+            StoreMaterialIn.objects.filter(item=OuterRef('pk'))
+            .values('item')
+            .annotate(total=Sum('qty'))
+            .values('total')[:1],
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+        issued_sub = Subquery(
+            StoreDailyIssue.objects.filter(item=OuterRef('pk'))
+            .values('item')
+            .annotate(total=Sum('qty'))
+            .values('total')[:1],
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+        qs = StoreItem.objects.select_related('category').prefetch_related('rate_history').annotate(
+            inward_qty_sum=Coalesce(inward_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2))),
+            issued_qty_sum=Coalesce(issued_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2)))
+        ).all()
         category = self.request.query_params.get('category')
         search = self.request.query_params.get('search')
         status_param = self.request.query_params.get('default_status')
@@ -5425,10 +5458,11 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     Read-only viewset for inspecting global audit logs. Restricted to Admin role.
     Supports filtering by user, module, action, search query, and date range.
     """
-    queryset = AuditLog.objects.all()
+    queryset = AuditLog.objects.select_related('user').all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = OptionalPagination
+    ordering = ['-timestamp']
 
     def get_queryset(self):
         qs = super().get_queryset()
