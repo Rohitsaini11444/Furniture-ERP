@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
   const isContractor = user?.role === 'contractor';
+  const isStoreManager = user?.role === 'store_manager';
   const isSandingSupervisor = isSupervisor && user?.batch_category === 'sanding';
 
   const hasRole = (...roles) => roles.includes(user?.role);
@@ -64,13 +65,14 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, setUser, loading, error, setError,
       login, logout,
-      isAdmin, isSupervisor, isContractor, isSandingSupervisor,
+      isAdmin, isSupervisor, isContractor, isStoreManager, isSandingSupervisor,
       hasRole,
       isAuthenticated: !!user,
     }}>
       {children}
     </AuthContext.Provider>
   );
+
 }
 
 export function useAuth() {

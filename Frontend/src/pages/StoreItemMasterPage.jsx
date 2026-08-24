@@ -8,6 +8,7 @@ import api from '../api/axios';
 import CustomFileUpload from '../components/CustomFileUpload';
 import SearchableSelect from '../components/SearchableSelect';
 import StoreCategoryModal from '../components/StoreCategoryModal';
+import { FormSkeleton } from '../components/TableSkeleton';
 
 export default function StoreItemMasterPage() {
   const navigate = useNavigate();
@@ -370,8 +371,10 @@ export default function StoreItemMasterPage() {
         </div>
       )}
 
-      {/* ── TAB MODE 1: Manual Form Entry ── */}
-      {activeTab === 'form' && (
+      {/* ── Main Form or Import Card ── */}
+      {(loadingCategories || loading) ? (
+        <FormSkeleton fields={8} />
+      ) : activeTab === 'form' ? (
         <div style={{
           backgroundColor: '#ffffff',
           borderRadius: '16px',
@@ -676,10 +679,7 @@ export default function StoreItemMasterPage() {
             </div>
           </form>
         </div>
-      )}
-
-      {/* ── TAB MODE 2: Import Excel ── */}
-      {activeTab === 'import' && (
+      ) : (
         <div style={{
           backgroundColor: '#ffffff',
           borderRadius: '16px',

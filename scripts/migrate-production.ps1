@@ -2,7 +2,7 @@
 # INTENTIONAL PRODUCTION DATABASE MIGRATION SCRIPT
 # Project: Django ERP Furniture
 # ==============================================================================
-# Usage:
+# Usage from project root:
 #   .\scripts\migrate-production.ps1
 #
 # Or with temporary environment variable:
@@ -10,6 +10,19 @@
 #   .\scripts\migrate-production.ps1
 #   Remove-Item Env:DATABASE_URL
 # ==============================================================================
+
+# 1. Resolve Absolute Paths Independent of Working Directory
+$scriptDir  = $PSScriptRoot
+$repoRoot   = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
+$backendDir = Join-Path $repoRoot "Backend"
+$venvPython = Join-Path $backendDir "venv\Scripts\python.exe"
+$managePy   = Join-Path $backendDir "manage.py"
+
+if (Test-Path $venvPython) {
+    $pythonCmd = $venvPython
+} else {
+    $pythonCmd = "python"
+}
 
 Write-Host "======================================================================" -ForegroundColor Red
 Write-Host " [CRITICAL WARNING] PRODUCTION DATABASE MIGRATION" -ForegroundColor Yellow
@@ -19,7 +32,7 @@ Write-Host "This operation will alter tables and database schemas in PRODUCTION.
 Write-Host "======================================================================" -ForegroundColor Red
 Write-Host ""
 
-# 1. Require Explicit Human Confirmation
+# 2. Require Explicit Human Confirmation
 $confirmation = Read-Host "Type exactly 'MIGRATE-PRODUCTION' to proceed"
 
 if ($confirmation -ne "MIGRATE-PRODUCTION") {
@@ -27,8 +40,9 @@ if ($confirmation -ne "MIGRATE-PRODUCTION") {
     exit 1
 }
 
-# 2. Retrieve DATABASE_URL securely without printing or logging credentials
-$prodUrl = $env:DATABASE_URL
+# 3. Save Previous DATABASE_URL State & Retrieve Production DATABASE_URL
+$originalDbUrl = $env:DATABASE_URL
+$prodUrl       = $originalDbUrl
 
 if ([string]::IsNullOrWhiteSpace($prodUrl)) {
     Write-Host ""
@@ -43,39 +57,53 @@ if ([string]::IsNullOrWhiteSpace($prodUrl)) {
     exit 1
 }
 
-# 3. Set Temporary Environment Variable ONLY for the duration of migration execution
+# 4. Set Temporary Environment Variable ONLY for the duration of migration execution
 Write-Host ""
 Write-Host "[ACTION] Setting temporary DATABASE_URL for migration execution..." -ForegroundColor Cyan
-
 $env:DATABASE_URL = $prodUrl
 
+$pushedLocation  = $false
+$migrationFailed = $false
+
 try {
-    # Determine python executable path
-    $pythonCmd = "python"
-    if (Test-Path "Backend\venv\Scripts\python.exe") {
-        $pythonCmd = "Backend\venv\Scripts\python.exe"
-    }
+    Write-Host "[ACTION] Navigating to Backend directory: $backendDir" -ForegroundColor Cyan
+    Push-Location $backendDir
+    $pushedLocation = $true
 
     Write-Host "[ACTION] Executing: $pythonCmd manage.py migrate against Production..." -ForegroundColor Green
     
-    # Run django migrate from Backend directory
-    Push-Location "Backend"
-    & $pythonCmd manage.py migrate
-    Pop-Location
+    & $pythonCmd $managePy migrate
+    if ($LASTEXITCODE -ne 0) {
+        throw "Django migrate command failed with exit code $LASTEXITCODE"
+    }
 
     Write-Host ""
     Write-Host "[SUCCESS] Production migrations completed successfully!" -ForegroundColor Green
 }
 catch {
+    $migrationFailed = $true
     Write-Host ""
     Write-Host "[ERROR] Migration failed: $_" -ForegroundColor Red
 }
 finally {
-    # 4. ALWAYS Clean up and remove temporary DATABASE_URL environment variable
-    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    # Always pop directory location if pushed
+    if ($pushedLocation) {
+        Pop-Location
+    }
+
+    # Always restore original DATABASE_URL state
+    if ([string]::IsNullOrWhiteSpace($originalDbUrl)) {
+        Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    } else {
+        $env:DATABASE_URL = $originalDbUrl
+    }
     $prodUrl = $null
     
     Write-Host ""
     Write-Host "[CLEANUP] Temporary DATABASE_URL environment variable has been cleared." -ForegroundColor Cyan
     Write-Host "[VERIFY] Local environment is restored to localhost:5432 / erp_furniture_db." -ForegroundColor Green
+}
+
+if ($migrationFailed) {
+    exit 1
 }

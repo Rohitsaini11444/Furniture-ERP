@@ -3,20 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
-  DollarSign, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package
+  IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
+  ShieldAlert, Check, XCircle
 } from 'lucide-react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
+import { TableSkeleton, CardSkeleton, StatCardsSkeleton } from '../components/TableSkeleton';
 
 import StoreRateComparisonModal from '../components/StoreRateComparisonModal';
 import ContractorBillingStatementModal from '../components/ContractorBillingStatementModal';
 import StoreItemDetailModal from '../components/StoreItemDetailModal';
 import StoreCategoryModal from '../components/StoreCategoryModal';
 import StoreItemMasterModal from '../components/StoreItemMasterModal';
+import StoreMaterialReturnModal from '../components/StoreMaterialReturnModal';
+import StoreRequisitionModal from '../components/StoreRequisitionModal';
+import StoreStockAdjustmentModal from '../components/StoreStockAdjustmentModal';
+
 
 export default function StoreManagement() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'contractors' | 'billing'
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'material-returns' | 'requisitions' | 'adjustments' | 'contractors' | 'billing'
 
   // Pagination states (20 entries per page)
   const ITEMS_PER_PAGE = 20;
@@ -26,6 +34,8 @@ export default function StoreManagement() {
   const [pageDailyIssue, setPageDailyIssue] = useState(1);
   const [pageContractors, setPageContractors] = useState(1);
   const [pageBilling, setPageBilling] = useState(1);
+  const [pageRequisitions, setPageRequisitions] = useState(1);
+  const [pageAdjustments, setPageAdjustments] = useState(1);
 
   // Sliding nav indicator state & refs
   const navTabRefs = React.useRef({});
@@ -72,6 +82,9 @@ export default function StoreManagement() {
   const [productionUnits, setProductionUnits] = useState([]);
   const [materialInList, setMaterialInList] = useState([]);
   const [dailyIssuesList, setDailyIssuesList] = useState([]);
+  const [materialReturnsList, setMaterialReturnsList] = useState([]);
+  const [requisitionsList, setRequisitionsList] = useState([]);
+  const [stockAdjustmentsList, setStockAdjustmentsList] = useState([]);
 
   // Search & Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,6 +107,9 @@ export default function StoreManagement() {
 
   const [isMaterialInModalOpen, setIsMaterialInModalOpen] = useState(false);
   const [isDailyIssueModalOpen, setIsDailyIssueModalOpen] = useState(false);
+  const [isMaterialReturnModalOpen, setIsMaterialReturnModalOpen] = useState(false);
+  const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
+  const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
   const [selectedContractorForBill, setSelectedContractorForBill] = useState(null);
@@ -114,6 +130,9 @@ export default function StoreManagement() {
         api.get('/production-units/'),
         api.get('/store/material-in/'),
         api.get('/store/daily-issues/'),
+        api.get('/store/material-returns/'),
+        api.get('/store/requisitions/'),
+        api.get('/store/stock-adjustments/'),
       ]);
 
       if (results[0].status === 'fulfilled') setStockSummaryData(results[0].value.data);
@@ -125,12 +144,76 @@ export default function StoreManagement() {
       if (results[6].status === 'fulfilled') setProductionUnits(results[6].value.data.results || results[6].value.data || []);
       if (results[7].status === 'fulfilled') setMaterialInList(results[7].value.data.results || results[7].value.data || []);
       if (results[8].status === 'fulfilled') setDailyIssuesList(results[8].value.data.results || results[8].value.data || []);
+      if (results[9].status === 'fulfilled') setMaterialReturnsList(results[9].value.data.results || results[9].value.data || []);
+      if (results[10]?.status === 'fulfilled') setRequisitionsList(results[10].value.data.results || results[10].value.data || []);
+      if (results[11]?.status === 'fulfilled') setStockAdjustmentsList(results[11].value.data.results || results[11].value.data || []);
     } catch (err) {
       console.error('Failed to load store management baseline data', err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Admin Void Voucher Handler
+  const handleVoidVoucher = async (endpoint, id, voucherNo) => {
+    if (user?.role !== 'admin') {
+      alert('Only Admin users are authorized to void or delete store vouchers.');
+      return;
+    }
+
+    const reason = window.prompt(`[ADMIN VOID CONTROL] Enter audit reason for voiding Voucher #${voucherNo}:`, 'Admin Audit Reversal');
+    if (reason === null) return;
+
+    try {
+      await api.delete(`${endpoint}${id}/`, { data: { reason } });
+      alert(`Voucher #${voucherNo} voided successfully. Audit log recorded and store inventory balance recalculated.`);
+      fetchBaselineData();
+    } catch (err) {
+      console.error('Error voiding voucher:', err);
+      alert(err.response?.data?.detail || 'Failed to void voucher.');
+    }
+  };
+
+  // Requisition Action Handlers
+  const handleApproveRequisition = async (id) => {
+    try {
+      await api.post(`/store/requisitions/${id}/approve/`);
+      fetchBaselineData();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve requisition.');
+    }
+  };
+
+  const handleRejectRequisition = async (id) => {
+    const reason = window.prompt('Enter rejection reason:');
+    if (reason === null) return;
+    try {
+      await api.post(`/store/requisitions/${id}/reject/`, { reason });
+      fetchBaselineData();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reject requisition.');
+    }
+  };
+
+  // Stock Adjustment Action Handlers
+  const handleApproveAdjustment = async (id) => {
+    try {
+      await api.post(`/store/stock-adjustments/${id}/approve/`);
+      alert('Stock variance adjustment approved and store inventory synced!');
+      fetchBaselineData();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to approve adjustment.');
+    }
+  };
+
+  const handleRejectAdjustment = async (id) => {
+    try {
+      await api.post(`/store/stock-adjustments/${id}/reject/`);
+      fetchBaselineData();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to reject adjustment.');
+    }
+  };
 
   useEffect(() => {
     fetchBaselineData();
@@ -283,6 +366,28 @@ export default function StoreManagement() {
           </button>
 
           <button
+            onClick={() => navigate('/store-management/material-return')}
+            className="btn-subtle-motion btn-action-return"
+            style={{
+              padding: '0.65rem 1.25rem',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: '#d97706',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 6px -1px rgba(217, 119, 6, 0.2)'
+            }}
+          >
+            <Undo2 size={18} />
+            <span>Record Material Return</span>
+          </button>
+
+          <button
             onClick={() => navigate('/store-management/item-master/new')}
             className="btn-subtle-motion btn-action-new-item"
             style={{
@@ -305,8 +410,12 @@ export default function StoreManagement() {
         </div>
       </div>
 
-      {/* Desktop KPI Stats Cards Bar */}
-      <div className="desktop-only" style={{ marginBottom: '1.5rem' }}>
+      {/* Desktop & Mobile KPI Stats Cards Bar */}
+      {loading ? (
+        <StatCardsSkeleton count={4} />
+      ) : (
+        <>
+          <div className="desktop-only" style={{ marginBottom: '1.5rem' }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
@@ -359,7 +468,7 @@ export default function StoreManagement() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase' }}>Inventory Valuation (₹)</span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <DollarSign size={18} />
+                <IndianRupee size={18} />
               </div>
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5a2b', marginTop: '0.5rem' }}>
@@ -537,12 +646,11 @@ export default function StoreManagement() {
                 ₹{stockSummaryData ? stockSummaryData.total_inventory_valuation.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
               </div>
             </div>
-            <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '0.4rem', fontWeight: 500 }}>
-              Current Inventory Value
-            </div>
           </div>
         </div>
       </div>
+    </>
+  )}
 
       {/* Navigation Tabs Bar */}
       <div className="store-module-nav-container">
@@ -650,6 +758,81 @@ export default function StoreManagement() {
         </button>
 
         <button
+          ref={el => navTabRefs.current['material-returns'] = el}
+          onClick={() => setActiveTab('material-returns')}
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '0.65rem 1.25rem',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: activeTab === 'material-returns' ? '#ffffff' : '#64748b',
+            fontWeight: 700,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
+          }}
+        >
+          <Undo2 size={16} />
+          <span>Material Returns (Sheet 3)</span>
+        </button>
+
+        <button
+          ref={el => navTabRefs.current['requisitions'] = el}
+          onClick={() => setActiveTab('requisitions')}
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '0.65rem 1.25rem',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: activeTab === 'requisitions' ? '#ffffff' : '#64748b',
+            fontWeight: 700,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
+          }}
+        >
+          <FileText size={16} />
+          <span>Material Requisitions (MRN)</span>
+        </button>
+
+        <button
+          ref={el => navTabRefs.current['adjustments'] = el}
+          onClick={() => setActiveTab('adjustments')}
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '0.65rem 1.25rem',
+            borderRadius: '8px',
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: activeTab === 'adjustments' ? '#ffffff' : '#64748b',
+            fontWeight: 700,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
+          }}
+        >
+          <ShieldAlert size={16} />
+          <span>Stock Variance & Loss Logs</span>
+        </button>
+
+        <button
           ref={el => navTabRefs.current['contractors'] = el}
           onClick={() => setActiveTab('contractors')}
           style={{
@@ -747,7 +930,10 @@ export default function StoreManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedStockItems.map((item, idx) => (
+                  {loading ? (
+                    <TableSkeleton rows={8} cols={8} />
+                  ) :
+                    paginatedStockItems.map((item, idx) => (
                     <tr
                       key={idx}
                       className="table-row-stagger"
@@ -943,7 +1129,10 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedItemMaster.map((item, idx) => (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={8} />
+                ) :
+                  paginatedItemMaster.map((item, idx) => (
                   <tr
                     key={idx}
                     onClick={() => { setSelectedDetailItem(item); setIsDetailModalOpen(true); }}
@@ -1033,10 +1222,16 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Unit</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Bill Rate (₹)</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Amount (₹)</th>
+                  {user?.role === 'admin' && (
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Admin Controls</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {paginatedMaterialIn.map((row, idx) => (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={user?.role === 'admin' ? 11 : 10} />
+                ) :
+                  paginatedMaterialIn.map((row, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.month_year || 'Jul-26'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>{row.inward_date}</td>
@@ -1050,6 +1245,17 @@ export default function StoreManagement() {
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
                       ₹ {parseFloat(row.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
+                    {user?.role === 'admin' && (
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
+                          title="Void / Delete Inward Voucher (Admin Audit Trail)"
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Trash2 size={13} /> Void
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1096,10 +1302,16 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#9a3412' }}>Chargeable Total</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#9a3412' }}>Non-Chargeable Total</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#9a3412' }}>Unit #</th>
+                  {user?.role === 'admin' && (
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#9a3412' }}>Admin Controls</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {paginatedDailyIssues.map((row, idx) => (
+                {loading ? (
+                  <TableSkeleton rows={8} cols={user?.role === 'admin' ? 12 : 11} />
+                ) :
+                  paginatedDailyIssues.map((row, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.voucher_no}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{row.contractor_name}</td>
@@ -1127,6 +1339,17 @@ export default function StoreManagement() {
                       {parseFloat(row.non_chargeable_total) > 0 ? `₹ ${parseFloat(row.non_chargeable_total).toFixed(2)}` : '-'}
                     </td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.production_unit_name || '-'}</td>
+                    {user?.role === 'admin' && (
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
+                          title="Void / Delete Daily Issue Voucher (Admin Audit Trail)"
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Trash2 size={13} /> Void
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -1139,6 +1362,296 @@ export default function StoreManagement() {
               totalPages={Math.ceil(filteredDailyIssues.length / ITEMS_PER_PAGE)}
               onPageChange={setPageDailyIssue}
             />
+          </div>
+        </div>
+      )}
+
+      {/* TAB: MATERIAL RETURNS LOG */}
+      {activeTab === 'material-returns' && (
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                Store Material Returns Log (Sheet 3)
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                Unused stock returned by contractors credited back into Store Inventory
+              </p>
+            </div>
+            <button
+              onClick={() => setIsMaterialReturnModalOpen(true)}
+              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RotateCcw size={16} /> Record Material Return
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead style={{ backgroundColor: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
+                <tr>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Voucher No</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Return Date</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Contractor</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Item Code & Name</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Returned Qty</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Rate (₹)</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Total Value</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Credit Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableSkeleton rows={6} cols={8} />
+                ) : materialReturnsList.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      No material return vouchers recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  materialReturnsList.map((ret, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#b45309' }}>{ret.voucher_no}</td>
+                      <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{ret.return_date}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>{ret.contractor_name || 'Self'}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
+                        [{ret.item_code}] {ret.item_name}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
+                        +{ret.qty} {ret.unit}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', color: '#475569' }}>₹ {parseFloat(ret.rate || 0).toFixed(2)}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                        ₹ {parseFloat(ret.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: '12px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          backgroundColor: ret.status === 'charge' ? '#dcfce7' : '#f1f5f9',
+                          color: ret.status === 'charge' ? '#15803d' : '#64748b'
+                        }}>
+                          {ret.status === 'charge' ? 'Charge Credit' : 'Non-Charge'}
+                        </span>
+                      </td>
+                      {user?.role === 'admin' && (
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleVoidVoucher('/store/material-returns/', ret.id, ret.voucher_no)}
+                            title="Void / Delete Return Voucher (Admin Audit Trail)"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Trash2 size={13} /> Void
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: MATERIAL REQUISITION NOTES (MRN) */}
+      {activeTab === 'requisitions' && (
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                Store Material Requisitions (3-Step Indent Flow)
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                Supervisor material request ➔ Store Manager Approval ➔ Stock Issue
+              </p>
+            </div>
+            <button
+              onClick={() => setIsRequisitionModalOpen(true)}
+              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Plus size={16} /> New Material Requisition
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead style={{ backgroundColor: '#f0f9ff', borderBottom: '2px solid #bae6fd' }}>
+                <tr>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#0369a1' }}>Requisition No</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#0369a1' }}>Requested By</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#0369a1' }}>Store Item</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0369a1' }}>Requested Qty</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#0369a1' }}>Factory Unit</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>Status</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#0369a1' }}>Approval / Issue Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableSkeleton rows={6} cols={7} />
+                ) : requisitionsList.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      No material requisitions raised yet. Click "New Material Requisition" to create one.
+                    </td>
+                  </tr>
+                ) : (
+                  requisitionsList.map((mrn, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0284c7' }}>{mrn.requisition_no}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>{mrn.requested_by_name}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>[{mrn.item_code}] {mrn.item_name}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                        {mrn.requested_qty} {mrn.unit}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{mrn.production_unit_name || 'General Store'}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '0.3rem 0.75rem',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: mrn.status === 'approved' ? '#dcfce7' : mrn.status === 'rejected' ? '#fef2f2' : '#fef3c7',
+                          color: mrn.status === 'approved' ? '#15803d' : mrn.status === 'rejected' ? '#b91c1c' : '#b45309'
+                        }}>
+                          {mrn.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        {mrn.status === 'pending' && ['admin', 'store_manager'].includes(user?.role) ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => handleApproveRequisition(mrn.id)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <Check size={13} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectRequisition(mrn.id)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <XCircle size={13} /> Reject
+                            </button>
+                          </div>
+                        ) : mrn.status === 'approved' ? (
+                          <button
+                            onClick={() => navigate(`/store-management/daily-issue?item=${mrn.item}&qty=${mrn.requested_qty}`)}
+                            style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <ArrowUpRight size={14} /> Issue Material Stock
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                            {mrn.approved_by_name ? `By ${mrn.approved_by_name}` : '-'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: PHYSICAL STOCK VARIANCE LOGS */}
+      {activeTab === 'adjustments' && (
+        <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                Physical Stock Variance & Evaporation / Loss Logs
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                Record liquid evaporation, wastage, damage, or audit count adjustments (Requires Admin Approval)
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAdjustmentModalOpen(true)}
+              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <ShieldAlert size={16} /> Log Stock Variance
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead style={{ backgroundColor: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
+                <tr>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Adjustment No</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Logged By</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Item</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Type</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Qty Delta</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Reason / Audit Note</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Status</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Admin Approval</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableSkeleton rows={6} cols={8} />
+                ) : stockAdjustmentsList.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      No physical stock adjustments or evaporation loss logs recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  stockAdjustmentsList.map((adj, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#d97706' }}>{adj.adjustment_no}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>{adj.logged_by_name}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>[{adj.item_code}] {adj.item_name}</td>
+                      <td style={{ padding: '0.85rem 1rem', textTransform: 'capitalize', color: '#64748b' }}>{adj.adjustment_type.replace('_', ' ')}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: parseFloat(adj.quantity_delta) < 0 ? '#dc2626' : '#16a34a' }}>
+                        {parseFloat(adj.quantity_delta) > 0 ? `+${adj.quantity_delta}` : adj.quantity_delta}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>{adj.reason}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '0.3rem 0.75rem',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: adj.status === 'approved' ? '#dcfce7' : adj.status === 'rejected' ? '#fef2f2' : '#fef3c7',
+                          color: adj.status === 'approved' ? '#15803d' : adj.status === 'rejected' ? '#b91c1c' : '#b45309'
+                        }}>
+                          {adj.status === 'pending_admin' ? 'PENDING ADMIN' : adj.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        {adj.status === 'pending_admin' && user?.role === 'admin' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <button
+                              onClick={() => handleApproveAdjustment(adj.id)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <Check size={13} /> Approve
+                            </button>
+                            <button
+                              onClick={() => handleRejectAdjustment(adj.id)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <XCircle size={13} /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                            {adj.approved_by_name ? `By ${adj.approved_by_name}` : '-'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -1292,6 +1805,30 @@ export default function StoreManagement() {
         categories={categories}
         onSuccess={fetchBaselineData}
         onCategoryAdded={(newCat) => setCategories(prev => [...prev, newCat])}
+      />
+
+      <StoreMaterialReturnModal
+        isOpen={isMaterialReturnModalOpen}
+        onClose={() => setIsMaterialReturnModalOpen(false)}
+        onSuccess={fetchBaselineData}
+        initialContractors={contractors}
+        initialItems={itemsList}
+        initialUnits={productionUnits}
+      />
+
+      <StoreRequisitionModal
+        isOpen={isRequisitionModalOpen}
+        onClose={() => setIsRequisitionModalOpen(false)}
+        onSuccess={fetchBaselineData}
+        items={itemsList}
+        units={productionUnits}
+      />
+
+      <StoreStockAdjustmentModal
+        isOpen={isAdjustmentModalOpen}
+        onClose={() => setIsAdjustmentModalOpen(false)}
+        onSuccess={fetchBaselineData}
+        items={itemsList}
       />
     </div>
   );

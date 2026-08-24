@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import {
@@ -27,6 +28,7 @@ const EMPTY_FORM = {
 };
 
 export default function UserManagement() {
+  const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
@@ -308,8 +310,9 @@ export default function UserManagement() {
           {activeDevices.length > 0 && (
             <button 
               className="btn-secondary"
-              title="Active session devices"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem' }}
+              title="Click to view and manage all active session devices"
+              onClick={() => navigate('/active-devices')}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}
             >
               <Monitor size={16} />
               {activeDevices.length} Active Device{activeDevices.length > 1 ? 's' : ''}

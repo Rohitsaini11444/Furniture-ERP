@@ -5,7 +5,7 @@ import {
   Sparkles, Wrench, Package, Truck, Receipt, ArrowRight,
   Users, Layers, ClipboardList, ClipboardCheck, Warehouse,
   TrendingUp, TrendingDown, DollarSign, Activity, BarChart3,
-  PieChart, ShieldCheck, Plus, ExternalLink, Calendar, ArrowUpRight
+  PieChart, ShieldCheck, Plus, ExternalLink, Calendar, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -17,11 +17,11 @@ const ALL_TILES = [
   { name: 'Buyers',                  icon: <Users size={28} />,         color: '#ec4899', link: '/buyers',            roles: ['admin'] },
   { name: 'Buyer Master',            icon: <Layers size={28} />,        color: '#6366f1', link: '/buyer-masters',     roles: ['admin'] },
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={28} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },
-  { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={28} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
+  { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={28} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor', 'store_manager'] },
   { name: 'Production Pipeline',     icon: <Boxes size={28} />,         color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
-  { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor'] },
+  { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor', 'store_manager'] },
   { name: 'Audit Trail Logs',       icon: <ShieldCheck size={28} />,   color: '#dc2626', link: '/audit-trail',       roles: ['admin'] },
-  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
+  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor', 'store_manager'] },
 ];
 
 const WORKFLOW_STEPS = [
@@ -64,6 +64,274 @@ function AnimatedCounter({ value, duration = 1500, suffix = '', decimals = 0, st
   }, [value, duration, start]);
 
   return <span>{decimals > 0 ? count.toFixed(decimals) : Math.floor(count)}{suffix}</span>;
+}
+
+function InteractiveStoreChart({ storeData, startAnimation }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [animatedHeights, setAnimatedHeights] = useState([]);
+
+  const monthlyStoreMovement = [
+    { month: 'Jan', inward: 1250, outward: 820 },
+    { month: 'Feb', inward: 1480, outward: 950 },
+    { month: 'Mar', inward: 1920, outward: 1350 },
+    { month: 'Apr', inward: 1650, outward: 1100 },
+    { month: 'May', inward: 2200, outward: 1680 },
+    { month: 'Jun', inward: 1890, outward: 1420 },
+    { month: 'Jul', inward: 2650, outward: 1980 },
+    { month: 'Aug', inward: 2100, outward: 1540 }
+  ];
+
+  useEffect(() => {
+    if (startAnimation) {
+      setAnimatedHeights(monthlyStoreMovement.map(() => 0));
+      const timeouts = monthlyStoreMovement.map((d, idx) => {
+        return setTimeout(() => {
+          setAnimatedHeights(prev => {
+            const next = [...prev];
+            next[idx] = d.inward;
+            return next;
+          });
+        }, idx * 50);
+      });
+      return () => timeouts.forEach(clearTimeout);
+    } else {
+      setAnimatedHeights(monthlyStoreMovement.map(() => 0));
+    }
+  }, [startAnimation]);
+
+  const maxVal = Math.max(...monthlyStoreMovement.map(d => Math.max(d.inward, d.outward)), 1000);
+  const totalInward = storeData?.total_stock_qty || monthlyStoreMovement.reduce((s, d) => s + d.inward, 0);
+  const totalOutward = storeData?.total_issued_qty || monthlyStoreMovement.reduce((s, d) => s + d.outward, 0);
+  const balanceQty = storeData?.total_balance_qty || (totalInward - totalOutward);
+
+  const count = monthlyStoreMovement.length;
+  const svgWidth = 640;
+  const chartBottomY = 170;
+  const maxBarHeight = chartBottomY - 30;
+  const availableWidth = svgWidth - 80;
+  const groupWidth = Math.max(28, Math.min(48, Math.floor(availableWidth / count)));
+  const gap = (availableWidth - (count * groupWidth)) / Math.max(1, count - 1);
+  const startX = 40;
+
+  return (
+    <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
+      {/* Metric Badges */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+        gap: '0.6rem',
+        padding: '0.6rem 0.85rem',
+        backgroundColor: '#f8fafc',
+        borderRadius: '12px',
+        border: '1px solid #f1f5f9',
+        marginBottom: '0.75rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ArrowDownRight size={15} color="#0284c7" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Inward</div>
+            <strong style={{ fontSize: '0.88rem', color: '#0284c7', fontWeight: 800 }}>{totalInward.toLocaleString()} Pcs</strong>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#ffedd5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ArrowUpRight size={15} color="#ea580c" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total Issued</div>
+            <strong style={{ fontSize: '0.85rem', color: '#ea580c', fontWeight: 800 }}>{totalOutward.toLocaleString()} Pcs</strong>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Warehouse size={15} color="#16a34a" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Balance Stock</div>
+            <strong style={{ fontSize: '0.85rem', color: '#16a34a', fontWeight: 800 }}>{balanceQty.toLocaleString()} Pcs</strong>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <DollarSign size={15} color="#d97706" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Store Value</div>
+            <strong style={{ fontSize: '0.85rem', color: '#8b5a2b', fontWeight: 800 }}>₹{(storeData?.total_inventory_valuation || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* SVG Dual-Bar Interactive Chart */}
+      <div style={{ position: 'relative', width: '100%', height: '210px' }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${svgWidth} 200`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+          <defs>
+            <linearGradient id="inwardGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0284c7" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.4" />
+            </linearGradient>
+            <linearGradient id="outwardGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ea580c" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#fb923c" stopOpacity="0.4" />
+            </linearGradient>
+          </defs>
+
+          {[30, 75, 120, 170].map((y, i) => (
+            <line key={i} x1="20" y1={y} x2={svgWidth - 20} y2={y} stroke="#f1f5f9" strokeDasharray="4 4" strokeWidth="1" />
+          ))}
+
+          {monthlyStoreMovement.map((d, idx) => {
+            const groupX = startX + idx * (groupWidth + gap);
+            const singleBarWidth = Math.max(10, groupWidth / 2 - 2);
+            const inwardVal = animatedHeights[idx] !== undefined ? animatedHeights[idx] : 0;
+            const inwardHeight = Math.max(6, (inwardVal / maxVal) * maxBarHeight);
+            const inwardY = chartBottomY - inwardHeight;
+
+            const outwardHeight = Math.max(6, (d.outward / maxVal) * maxBarHeight);
+            const outwardY = chartBottomY - outwardHeight;
+            const isHovered = hoveredIndex === idx;
+
+            return (
+              <g
+                key={d.month + idx}
+                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* Column Highlight Backdrop */}
+                <rect
+                  x={groupX - 4}
+                  y={30}
+                  width={groupWidth + 8}
+                  height={maxBarHeight + 5}
+                  rx="8"
+                  fill={isHovered ? "#f1f5f9" : "transparent"}
+                  opacity={isHovered ? 0.65 : 0}
+                  style={{ transition: 'all 0.2s ease' }}
+                />
+
+                {/* Inward Bar (Blue) */}
+                <rect
+                  x={groupX}
+                  y={inwardY}
+                  width={singleBarWidth}
+                  height={inwardHeight}
+                  rx="4"
+                  fill="url(#inwardGrad)"
+                  opacity={hoveredIndex === null || isHovered ? 1 : 0.45}
+                  style={{ transition: 'all 0.2s ease' }}
+                />
+
+                {/* Outward Bar (Orange) */}
+                <rect
+                  x={groupX + singleBarWidth + 3}
+                  y={outwardY}
+                  width={singleBarWidth}
+                  height={outwardHeight}
+                  rx="4"
+                  fill="url(#outwardGrad)"
+                  opacity={hoveredIndex === null || isHovered ? 1 : 0.45}
+                  style={{ transition: 'all 0.2s ease' }}
+                />
+
+                {/* Month Label */}
+                <text
+                  x={groupX + groupWidth / 2}
+                  y={chartBottomY + 18}
+                  textAnchor="middle"
+                  fill={isHovered ? '#0f172a' : '#64748b'}
+                  fontSize="11"
+                  fontWeight={isHovered ? '800' : '600'}
+                >
+                  {d.month}
+                </text>
+
+                {/* Executive Floating Tooltip Card */}
+                {isHovered && (() => {
+                  const topY = Math.min(inwardY, outwardY);
+                  const tooltipWidth = 168;
+                  const tooltipHeight = 34;
+                  
+                  // Position tooltip safely above bar, ensuring it never clips top edge
+                  const tooltipY = Math.max(4, topY - 40);
+                  
+                  // Keep tooltip bounded inside SVG width
+                  const rawX = groupX + groupWidth / 2 - tooltipWidth / 2;
+                  const tooltipX = Math.max(10, Math.min(svgWidth - tooltipWidth - 10, rawX));
+
+                  return (
+                    <g style={{ transition: 'all 0.15s ease-out', pointerEvents: 'none' }}>
+                      {/* Dark Glass Card Pill */}
+                      <rect
+                        x={tooltipX}
+                        y={tooltipY}
+                        width={tooltipWidth}
+                        height={tooltipHeight}
+                        rx="8"
+                        fill="#0f172a"
+                        stroke="#334155"
+                        strokeWidth="1.2"
+                      />
+                      
+                      {/* Inward Metric Badge (Blue Dot + Text) */}
+                      <circle cx={tooltipX + 14} cy={tooltipY + 17} r="3.5" fill="#38bdf8" />
+                      <text
+                        x={tooltipX + 22}
+                        y={tooltipY + 21}
+                        fill="#e0f2fe"
+                        fontSize="10.5"
+                        fontWeight="700"
+                      >
+                        In: {d.inward.toLocaleString()}
+                      </text>
+
+                      {/* Vertical Separator */}
+                      <line
+                        x1={tooltipX + 84}
+                        y1={tooltipY + 9}
+                        x2={tooltipX + 84}
+                        y2={tooltipY + 25}
+                        stroke="#334155"
+                        strokeWidth="1"
+                      />
+
+                      {/* Outward Metric Badge (Orange Dot + Text) */}
+                      <circle cx={tooltipX + 96} cy={tooltipY + 17} r="3.5" fill="#fb923c" />
+                      <text
+                        x={tooltipX + 104}
+                        y={tooltipY + 21}
+                        fill="#ffedd5"
+                        fontSize="10.5"
+                        fontWeight="700"
+                      >
+                        Out: {d.outward.toLocaleString()}
+                      </text>
+                    </g>
+                  );
+                })()}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0284c7', fontWeight: 700 }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#0284c7' }} />
+          <span>Inward Received (Credit)</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#ea580c', fontWeight: 700 }}>
+          <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: '#ea580c' }} />
+          <span>Issued Outward (Debit)</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function InteractiveRevenueChart({ monthlyData, startAnimation }) {
@@ -303,8 +571,8 @@ function InteractiveRevenueChart({ monthlyData, startAnimation }) {
 }
 
 function Dashboard() {
-  const { user, isAdmin, isSupervisor, isContractor, isSandingSupervisor } = useAuth();
-  
+  const { user, isAdmin, isSupervisor, isContractor, isStoreManager, isSandingSupervisor } = useAuth();
+
   const [startChartAnimation, setStartChartAnimation] = useState(false);
   const chartsGridRef = React.useRef(null);
 
@@ -354,7 +622,7 @@ function Dashboard() {
       }
     };
   }, []);
-  
+
   const [stats, setStats] = useState({
     totalSamples: 0,
     totalBuyers: 0,
@@ -417,8 +685,15 @@ function Dashboard() {
     passRate: 98.4
   });
 
+  const [storeStats, setStoreStats] = useState(null);
+
   useEffect(() => {
     setLoading(true);
+    if (user?.role === 'store_manager') {
+      api.get('/store/stock-summary/')
+        .then(res => setStoreStats(res.data))
+        .catch(err => console.error('Failed to load store summary for dashboard:', err));
+    }
     api.get('/dashboard/stats/')
       .then((res) => {
         const d = res.data;
@@ -457,6 +732,7 @@ function Dashboard() {
 
   const getRoleWelcome = () => {
     if (isAdmin) return 'Executive ERP Control Center — Complete Operations & Analytics';
+    if (user?.role === 'store_manager') return 'Store Manager Portal — Inventory, Stock & Material Operations';
     if (isSandingSupervisor) return 'Sanding Supervisor — Workstation & Batch Control';
     if (isSupervisor) return `${user.batch_category?.charAt(0).toUpperCase() + user.batch_category?.slice(1)} Supervisor Portal`;
     if (isContractor) return 'Contractor Portal — Batch Assignments & Status';
@@ -496,18 +772,37 @@ function Dashboard() {
           Quick Action Shortcuts
         </h4>
         <div className="admin-quick-actions">
-          <Link to="/samples/new" className="quick-action-btn">
-            <Plus size={16} color="#22c55e" /> Add New Sample
-          </Link>
-          <Link to="/buyers" className="quick-action-btn">
-            <Users size={16} color="#ec4899" /> Add Buyer
-          </Link>
-          <Link to="/pos/new" className="quick-action-btn">
-            <ClipboardList size={16} color="#14b8a6" /> Create Supplier PO
-          </Link>
-          <Link to="/tools" className="quick-action-btn">
-            <Sparkles size={16} color="#8b5cf6" /> Generate PPT Presentation
-          </Link>
+          {user?.role === 'store_manager' ? (
+            <>
+              <Link to="/store-management/material-in" className="quick-action-btn">
+                <Plus size={16} color="#22c55e" /> Material Inward Entry
+              </Link>
+              <Link to="/store-management/daily-issue" className="quick-action-btn">
+                <Truck size={16} color="#ea580c" /> Record Daily Issue
+              </Link>
+              <Link to="/store-management/item-master/new" className="quick-action-btn">
+                <Warehouse size={16} color="#3b82f6" /> Add New Store Item
+              </Link>
+              <Link to="/store-management" className="quick-action-btn">
+                <Boxes size={16} color="#8b5cf6" /> Store Overview
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link to="/samples/new" className="quick-action-btn">
+                <Plus size={16} color="#22c55e" /> Add New Sample
+              </Link>
+              <Link to="/buyers" className="quick-action-btn">
+                <Users size={16} color="#ec4899" /> Add Buyer
+              </Link>
+              <Link to="/pos/new" className="quick-action-btn">
+                <ClipboardList size={16} color="#14b8a6" /> Create Supplier PO
+              </Link>
+              <Link to="/tools" className="quick-action-btn">
+                <Sparkles size={16} color="#8b5cf6" /> Generate PPT Presentation
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -533,152 +828,294 @@ function Dashboard() {
 
       {/* KPI Cards Grid */}
       <div className="admin-kpi-grid">
-        {/* KPI 1: Proforma Revenue */}
-        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#10b981', animationDelay: '100ms' }}>
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}>
-              <DollarSign size={22} />
+        {user?.role === 'store_manager' ? (
+          <>
+            {/* KPI 1: Inward Received Stock */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#0284c7', animationDelay: '100ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+                  <ArrowDownRight size={22} />
+                </div>
+                <span className="kpi-trend-badge" style={{ backgroundColor: '#e0f2fe', color: '#0284c7' }}>
+                  Stock Inward
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{(storeStats?.total_stock_qty || 0).toLocaleString()}</div>
+                <p className="kpi-title">Inward Received Inventory Stock</p>
+              </div>
             </div>
-            <span className="kpi-trend-badge">
-              <TrendingUp size={12} /> +18.4%
-            </span>
-          </div>
-          <div>
-            <div className="kpi-value">${stats.totalRevenueUSD.toLocaleString()}</div>
-            <p className="kpi-title">Proforma Invoiced Revenue</p>
-          </div>
-        </div>
 
-        {/* KPI 2: Active Purchase Orders */}
-        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#14b8a6', animationDelay: '150ms' }}>
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap" style={{ background: '#ccfbf1', color: '#0d9488' }}>
-              <ClipboardList size={22} />
+            {/* KPI 2: Issued Stock Qty */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#ea580c', animationDelay: '150ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#ffedd5', color: '#ea580c' }}>
+                  <ArrowUpRight size={22} />
+                </div>
+                <span className="kpi-trend-badge" style={{ backgroundColor: '#ffedd5', color: '#ea580c' }}>
+                  Outward Issues
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{(storeStats?.total_issued_qty || 0).toLocaleString()}</div>
+                <p className="kpi-title">Total Issued to Contractors</p>
+              </div>
             </div>
-            <span className="kpi-trend-badge">
-              <TrendingUp size={12} /> Live Active
-            </span>
-          </div>
-          <div>
-            <div className="kpi-value">{stats.totalPOs} POs</div>
-            <p className="kpi-title">Supplier Purchase Orders ({stats.pendingQcCount} Pending QC)</p>
-          </div>
-        </div>
 
-        {/* KPI 3: Total Buyers */}
-        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#ec4899', animationDelay: '200ms' }}>
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap" style={{ background: '#fce7f3', color: '#db2777' }}>
-              <Users size={22} />
+            {/* KPI 3: Available Store Balance */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#16a34a', animationDelay: '200ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
+                  <Warehouse size={22} />
+                </div>
+                <span className="kpi-trend-badge" style={{ backgroundColor: '#dcfce7', color: '#16a34a' }}>
+                  Store Available
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{(storeStats?.total_balance_qty || 0).toLocaleString()}</div>
+                <p className="kpi-title">Balance Available Stock in Store</p>
+              </div>
             </div>
-            <span className="kpi-trend-badge">
-              Active Export
-            </span>
-          </div>
-          <div>
-            <div className="kpi-value">{stats.totalBuyers} Clients</div>
-            <p className="kpi-title">Registered Buyer Accounts</p>
-          </div>
-        </div>
 
-        {/* KPI 4: Samples & Stock Catalog */}
-        <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#6366f1', animationDelay: '250ms' }}>
-          <div className="kpi-header">
-            <div className="kpi-icon-wrap" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
-              <Box size={22} />
+            {/* KPI 4: Inventory Valuation */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#8b5a2b', animationDelay: '250ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
+                  <DollarSign size={22} />
+                </div>
+                <span className="kpi-trend-badge" style={{ backgroundColor: '#fef3c7', color: '#d97706' }}>
+                  Valuation
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">₹ {(storeStats?.total_inventory_valuation || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                <p className="kpi-title">Current Store Inventory Valuation</p>
+              </div>
             </div>
-            <span className="kpi-trend-badge">
-              Catalog
-            </span>
-          </div>
-          <div>
-            <div className="kpi-value">{stats.totalSamples} Samples</div>
-            <p className="kpi-title">{stats.totalBuyerMasters} Buyer Master Styles</p>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* KPI 1: Proforma Revenue */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#10b981', animationDelay: '100ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}>
+                  <DollarSign size={22} />
+                </div>
+                <span className="kpi-trend-badge">
+                  <TrendingUp size={12} /> +18.4%
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">${stats.totalRevenueUSD.toLocaleString()}</div>
+                <p className="kpi-title">Proforma Invoiced Revenue</p>
+              </div>
+            </div>
+
+            {/* KPI 2: Active Purchase Orders */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#14b8a6', animationDelay: '150ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#ccfbf1', color: '#0d9488' }}>
+                  <ClipboardList size={22} />
+                </div>
+                <span className="kpi-trend-badge">
+                  <TrendingUp size={12} /> Live Active
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{stats.totalPOs} POs</div>
+                <p className="kpi-title">Supplier Purchase Orders ({stats.pendingQcCount} Pending QC)</p>
+              </div>
+            </div>
+
+            {/* KPI 3: Total Buyers */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#ec4899', animationDelay: '200ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#fce7f3', color: '#db2777' }}>
+                  <Users size={22} />
+                </div>
+                <span className="kpi-trend-badge">
+                  Active Export
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{stats.totalBuyers} Clients</div>
+                <p className="kpi-title">Registered Buyer Accounts</p>
+              </div>
+            </div>
+
+            {/* KPI 4: Samples & Stock Catalog */}
+            <div className="admin-kpi-card stat-card-animated" style={{ '--kpi-color': '#6366f1', animationDelay: '250ms' }}>
+              <div className="kpi-header">
+                <div className="kpi-icon-wrap" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
+                  <Box size={22} />
+                </div>
+                <span className="kpi-trend-badge">
+                  Catalog
+                </span>
+              </div>
+              <div>
+                <div className="kpi-value">{stats.totalSamples} Samples</div>
+                <p className="kpi-title">{stats.totalBuyerMasters} Buyer Master Styles</p>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Analytics Charts Grid */}
       <div className="admin-charts-grid" ref={chartsGridRef}>
-        {/* Chart 1: Revenue & Order Analytics */}
-
-        <div className="admin-chart-card">
-          <div className="admin-chart-header">
-            <h3 className="admin-chart-title">
-              <BarChart3 size={20} color="#8b5a2b" /> Order Revenue & Growth Analytics
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <CustomSelect
-                value={timeframe}
-                onChange={e => {
-                  const val = e.target ? e.target.value : e;
-                  setTimeframe(val);
-                }}
-                options={[
-                  { value: '2026', label: '2026 Monthly Trend' },
-                  { value: 'last6', label: 'Last 6 Months' },
-                  { value: 'ytd', label: 'Year To Date' }
-                ]}
-                style={{ width: '170px' }}
-              />
-            </div>
-          </div>
-          <InteractiveRevenueChart monthlyData={activeMonthlyData} startAnimation={startChartAnimation} />
-        </div>
-
-        {/* Chart 2: Manufacturing Pipeline Progress */}
-        <div className="admin-chart-card">
-          <div className="admin-chart-header">
-            <h3 className="admin-chart-title">
-              <Activity size={20} color="#3b82f6" /> Production Workflow Pipeline
-            </h3>
-            <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700 }}>
-              <AnimatedCounter value={pipelineMetrics.passRate} decimals={1} start={startChartAnimation} suffix="% QC Pass" />
-            </span>
-          </div>
-          
-          <div className="pipeline-progress-list" style={{ marginTop: '0.5rem' }}>
-            <div className="pipeline-item">
-              <div className="pipeline-item-label">
-                <span>Gate Entry & QC</span>
-                <span><AnimatedCounter value={pipelineMetrics.gateEntry} start={startChartAnimation} suffix="% Completed" /></span>
+        {user?.role === 'store_manager' ? (
+          <>
+            {/* Chart 1: Store Material In vs Daily Issue Analytics */}
+            <div className="admin-chart-card">
+              <div className="admin-chart-header">
+                <h3 className="admin-chart-title">
+                  <BarChart3 size={20} color="#ea580c" /> Store Material In vs Daily Issue Analytics
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#ea580c', fontWeight: 700 }}>
+                  Outward & Inward Ledger
+                </span>
               </div>
-              <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.gateEntry}%` : '0%', background: '#10b981', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
-              </div>
+              <InteractiveStoreChart storeData={storeStats} startAnimation={startChartAnimation} />
             </div>
 
-            <div className="pipeline-item">
-              <div className="pipeline-item-label">
-                <span>Sanding Batch</span>
-                <span><AnimatedCounter value={pipelineMetrics.sanding} start={startChartAnimation} suffix="% Completed" /></span>
+            {/* Chart 2: Store Category Distribution & Stock Health */}
+            <div className="admin-chart-card">
+              <div className="admin-chart-header">
+                <h3 className="admin-chart-title">
+                  <Warehouse size={20} color="#0284c7" /> Store Inventory & Category Health
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 700 }}>
+                  Active Stock Levels
+                </span>
               </div>
-              <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.sanding}%` : '0%', background: '#3b82f6', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+              
+              <div className="pipeline-progress-list" style={{ marginTop: '0.5rem' }}>
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Hardware & Metal Fittings</span>
+                    <span>85% Stocked</span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '85%' : '0%', background: '#0284c7', transition: 'width 1.5s ease' }} />
+                  </div>
+                </div>
+
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Timber & Teak Wood</span>
+                    <span>92% Stocked</span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '92%' : '0%', background: '#16a34a', transition: 'width 1.5s ease' }} />
+                  </div>
+                </div>
+
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Finishing Materials & Polish</span>
+                    <span>68% Stocked</span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '68%' : '0%', background: '#a855f7', transition: 'width 1.5s ease' }} />
+                  </div>
+                </div>
+
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Plywood & Panels</span>
+                    <span>78% Stocked</span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '78%' : '0%', background: '#ea580c', transition: 'width 1.5s ease' }} />
+                  </div>
+                </div>
               </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Chart 1: Revenue & Order Analytics */}
+            <div className="admin-chart-card">
+              <div className="admin-chart-header">
+                <h3 className="admin-chart-title">
+                  <BarChart3 size={20} color="#8b5a2b" /> Order Revenue & Growth Analytics
+                </h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CustomSelect
+                    value={timeframe}
+                    onChange={e => {
+                      const val = e.target ? e.target.value : e;
+                      setTimeframe(val);
+                    }}
+                    options={[
+                      { value: '2026', label: '2026 Monthly Trend' },
+                      { value: 'last6', label: 'Last 6 Months' },
+                      { value: 'ytd', label: 'Year To Date' }
+                    ]}
+                    style={{ width: '170px' }}
+                  />
+                </div>
+              </div>
+              <InteractiveRevenueChart monthlyData={activeMonthlyData} startAnimation={startChartAnimation} />
             </div>
 
-            <div className="pipeline-item">
-              <div className="pipeline-item-label">
-                <span>Polishing & Finish</span>
-                <span><AnimatedCounter value={pipelineMetrics.polishing} start={startChartAnimation} suffix="% Completed" /></span>
+            {/* Chart 2: Manufacturing Pipeline Progress */}
+            <div className="admin-chart-card">
+              <div className="admin-chart-header">
+                <h3 className="admin-chart-title">
+                  <Activity size={20} color="#3b82f6" /> Production Workflow Pipeline
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 700 }}>
+                  <AnimatedCounter value={pipelineMetrics.passRate} decimals={1} start={startChartAnimation} suffix="% QC Pass" />
+                </span>
               </div>
-              <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.polishing}%` : '0%', background: '#a855f7', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
-              </div>
-            </div>
+              
+              <div className="pipeline-progress-list" style={{ marginTop: '0.5rem' }}>
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Gate Entry & QC</span>
+                    <span><AnimatedCounter value={pipelineMetrics.gateEntry} start={startChartAnimation} suffix="% Completed" /></span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.gateEntry}%` : '0%', background: '#10b981', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  </div>
+                </div>
 
-            <div className="pipeline-item">
-              <div className="pipeline-item-label">
-                <span>Packaging & Export Stock</span>
-                <span><AnimatedCounter value={pipelineMetrics.packaging} start={startChartAnimation} suffix="% Completed" /></span>
-              </div>
-              <div className="pipeline-bar-track">
-                <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.packaging}%` : '0%', background: '#f59e0b', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Sanding Batch</span>
+                    <span><AnimatedCounter value={pipelineMetrics.sanding} start={startChartAnimation} suffix="% Completed" /></span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.sanding}%` : '0%', background: '#3b82f6', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  </div>
+                </div>
+
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Polishing & Finish</span>
+                    <span><AnimatedCounter value={pipelineMetrics.polishing} start={startChartAnimation} suffix="% Completed" /></span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.polishing}%` : '0%', background: '#a855f7', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  </div>
+                </div>
+
+                <div className="pipeline-item">
+                  <div className="pipeline-item-label">
+                    <span>Packaging & Export Stock</span>
+                    <span><AnimatedCounter value={pipelineMetrics.packaging} start={startChartAnimation} suffix="% Completed" /></span>
+                  </div>
+                  <div className="pipeline-bar-track">
+                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? `${pipelineMetrics.packaging}%` : '0%', background: '#f59e0b', transition: 'width 1.5s cubic-bezier(0.16, 1, 0.3, 1)' }} />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
 

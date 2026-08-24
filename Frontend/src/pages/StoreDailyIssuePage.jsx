@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
+import { FormSkeleton } from '../components/TableSkeleton';
 
 export default function StoreDailyIssuePage() {
   const navigate = useNavigate();
@@ -16,10 +17,26 @@ export default function StoreDailyIssuePage() {
   const [selectedItemObj, setSelectedItemObj] = useState(null);
   const [contractorPersonsList, setContractorPersonsList] = useState([]);
 
+  // Auto-calculate month_year string (e.g. "Aug-26") from date string
+  const getMonthYearFromDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[d.getMonth()];
+      const year = String(d.getFullYear()).slice(-2);
+      return `${month}-${year}`;
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const initialIssueDate = new Date().toISOString().split('T')[0];
+
   const [formData, setFormData] = useState({
     voucher_no: `VCH-${Math.floor(100 + Math.random() * 900)}`,
-    issue_date: new Date().toISOString().split('T')[0],
-    month_year: 'Jul-26',
+    issue_date: initialIssueDate,
+    month_year: getMonthYearFromDate(initialIssueDate),
     contractor: '',
     contractor_person: '',
     contractor_person_name: '',
@@ -91,6 +108,15 @@ export default function StoreDailyIssuePage() {
       setContractorPersonsList([]);
     }
   }, [formData.contractor, persons]);
+
+  const handleDateChange = (e) => {
+    const val = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      issue_date: val,
+      month_year: getMonthYearFromDate(val)
+    }));
+  };
 
   const handleContractorChange = (val) => {
     const cId = typeof val === 'object' ? val.id : val;
@@ -265,6 +291,9 @@ export default function StoreDailyIssuePage() {
       )}
 
       {/* Form Container */}
+      {loadingData ? (
+        <FormSkeleton fields={8} />
+      ) : (
       <div style={{
         backgroundColor: '#ffffff',
         borderRadius: '16px',
@@ -296,7 +325,7 @@ export default function StoreDailyIssuePage() {
               <input
                 type="date"
                 value={formData.issue_date}
-                onChange={(e) => setFormData({ ...formData, issue_date: e.target.value })}
+                onChange={handleDateChange}
                 required
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
               />
@@ -306,16 +335,23 @@ export default function StoreDailyIssuePage() {
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Billing Month / Year
               </label>
-              <select
+              <input
+                type="text"
                 value={formData.month_year}
-                onChange={(e) => setFormData({ ...formData, month_year: e.target.value })}
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
-              >
-                <option value="Jul-26">Jul-26</option>
-                <option value="Aug-26">Aug-26</option>
-                <option value="Sep-26">Sep-26</option>
-                <option value="Oct-26">Oct-26</option>
-              </select>
+                readOnly
+                disabled
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#64748b',
+                  fontWeight: 700,
+                  cursor: 'not-allowed',
+                  boxSizing: 'border-box'
+                }}
+              />
             </div>
           </div>
 
@@ -393,14 +429,14 @@ export default function StoreDailyIssuePage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Quantity Issued *
+                Quantity Issued ({formData.unit}) * {selectedItemObj && <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.8rem' }}>(Total Stock: {selectedItemObj.balance_stock_qty || 0} {selectedItemObj.unit})</span>}
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.qty}
                 onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
-                placeholder="0.00"
+                placeholder={selectedItemObj ? `Max available: ${selectedItemObj.balance_stock_qty || 0}` : "0.00"}
                 required
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
               />
@@ -414,10 +450,21 @@ export default function StoreDailyIssuePage() {
                 type="number"
                 step="0.01"
                 value={formData.rate}
-                onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                readOnly
+                disabled
                 placeholder="0.00"
                 required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontWeight: 700,
+                  cursor: 'not-allowed',
+                  boxSizing: 'border-box'
+                }}
               />
             </div>
 
@@ -427,9 +474,19 @@ export default function StoreDailyIssuePage() {
               </label>
               <select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                disabled
                 required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontWeight: 700,
+                  cursor: 'not-allowed',
+                  boxSizing: 'border-box'
+                }}
               >
                 <option value="charge">Chargeable (Debit Contractor Bill)</option>
                 <option value="free">Free (Company Store Expense)</option>
@@ -520,6 +577,7 @@ export default function StoreDailyIssuePage() {
 
         </form>
       </div>
+      )}
     </div>
   );
 }

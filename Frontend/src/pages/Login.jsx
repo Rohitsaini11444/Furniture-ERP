@@ -128,6 +128,7 @@ function Login() {
               <span className="login-role-badge admin-badge">Admin — Full Access</span>
               <span className="login-role-badge supervisor-badge">Supervisor — Batch Manage</span>
               <span className="login-role-badge contractor-badge">Contractor — View Only</span>
+              <span className="login-role-badge store-manager-badge" style={{ backgroundColor: '#fff7ed', color: '#ea580c', border: '1px solid #ffedd5', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>Store Manager — Store & Inventory</span>
             </div>
           </div>
         </div>

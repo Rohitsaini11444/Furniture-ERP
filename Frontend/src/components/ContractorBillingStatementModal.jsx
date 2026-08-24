@@ -200,21 +200,26 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
               </p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Total Deductible Amount:</p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Net Payable / Deductible Amount:</p>
               <p style={{ margin: '4px 0 0 0', fontSize: '1.4rem', fontWeight: 800, color: '#c2410c' }}>
-                ₹ {billingData ? billingData.total_chargeable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                ₹ {billingData ? (billingData.net_payable_amt || billingData.total_chargeable_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
               </p>
+              {billingData && billingData.total_returned_amt > 0 && (
+                <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 700 }}>
+                  (Includes ₹{billingData.total_returned_amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Material Return Credit)
+                </span>
+              )}
             </div>
           </div>
 
           {loading ? (
             <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>Loading bill statement...</div>
-          ) : billingData && billingData.chargeable_items.length > 0 ? (
+          ) : billingData && (billingData.chargeable_items.length > 0 || (billingData.returned_items && billingData.returned_items.length > 0)) ? (
             <div>
               <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#334155' }}>
                 Chargeable Store Material Issues List (To be deducted from contractor payment)
               </h4>
-              <div style={{ borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <div style={{ borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '1.5rem' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead style={{ backgroundColor: '#fff7ed', borderBottom: '1px solid #fed7aa' }}>
                     <tr>
@@ -226,7 +231,6 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
                       <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#9a3412' }}>Unit</th>
                       <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#9a3412' }}>Rate (₹)</th>
                       <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#9a3412' }}>Total Amount (₹)</th>
-                      <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#9a3412' }}>Unit #</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -242,25 +246,81 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
                         <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', fontWeight: 700, color: '#c2410c' }}>
                           ₹ {parseFloat(item.chargeable_total).toFixed(2)}
                         </td>
-                        <td style={{ padding: '0.65rem 0.75rem' }}>{item.production_unit_name || '-'}</td>
                       </tr>
                     ))}
                     <tr style={{ backgroundColor: '#fff7ed', fontWeight: 800, borderTop: '2px solid #fed7aa' }}>
                       <td colSpan={7} style={{ padding: '0.75rem', textAlign: 'right', color: '#9a3412', fontSize: '0.95rem' }}>
-                        TOTAL CHARGEABLE DEDUCTION AMOUNT:
+                        GROSS CHARGEABLE ISSUES TOTAL:
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'right', color: '#c2410c', fontSize: '1rem' }}>
-                        ₹ {billingData.total_chargeable_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹ {(billingData.total_chargeable_amt || billingData.total_chargeable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
-                      <td></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+
+              {/* Material Returns Section */}
+              {billingData.returned_items && billingData.returned_items.length > 0 && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#15803d' }}>
+                    Material Return Credits (Credited back to contractor statement)
+                  </h4>
+                  <div style={{ borderRadius: '8px', border: '1px solid #dcfce7', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ backgroundColor: '#f0fdf4', borderBottom: '1px solid #bbf7d0' }}>
+                        <tr>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Return Voucher</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Date</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Store Item</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Returned Qty</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Unit</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Rate (₹)</th>
+                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Credit Total (₹)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {billingData.returned_items.map((item, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600, color: '#15803d' }}>{item.voucher_no}</td>
+                            <td style={{ padding: '0.65rem 0.75rem' }}>{item.return_date}</td>
+                            <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>{item.item_name}</td>
+                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>+{parseFloat(item.qty).toFixed(2)}</td>
+                            <td style={{ padding: '0.65rem 0.75rem' }}>{item.unit}</td>
+                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>₹ {parseFloat(item.rate).toFixed(2)}</td>
+                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                              - ₹ {parseFloat(item.chargeable_total).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={{ backgroundColor: '#f0fdf4', fontWeight: 800, borderTop: '2px solid #bbf7d0' }}>
+                          <td colSpan={6} style={{ padding: '0.75rem', textAlign: 'right', color: '#15803d', fontSize: '0.95rem' }}>
+                            TOTAL MATERIAL RETURNS CREDIT:
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#15803d', fontSize: '1rem' }}>
+                            - ₹ {(billingData.total_returned_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Net Payable Summary Box */}
+              <div style={{ backgroundColor: '#fef3c7', padding: '1rem 1.25rem', borderRadius: '10px', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h4 style={{ margin: 0, color: '#92400e', fontSize: '1.05rem', fontWeight: 800 }}>NET PAYABLE DEDUCTION TOTAL</h4>
+                  <span style={{ fontSize: '0.8rem', color: '#78350f' }}>(Gross Chargeable Issues - Material Returns Credit)</span>
+                </div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#92400e' }}>
+                  ₹ {(billingData.net_payable_amt || billingData.total_chargeable_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
             </div>
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '8px', color: '#94a3b8' }}>
-              No chargeable store issues found for this contractor in {month || 'the selected period'}.
+              No store issues or returns found for this contractor in {month || 'the selected period'}.
             </div>
           )}
         </div>

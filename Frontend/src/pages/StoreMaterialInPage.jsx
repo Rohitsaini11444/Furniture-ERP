@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
+import { FormSkeleton } from '../components/TableSkeleton';
 
 export default function StoreMaterialInPage() {
   const navigate = useNavigate();
@@ -210,6 +211,9 @@ export default function StoreMaterialInPage() {
       )}
 
       {/* Form Container */}
+      {loadingData ? (
+        <FormSkeleton fields={8} />
+      ) : (
       <div style={{
         backgroundColor: '#ffffff',
         borderRadius: '16px',
@@ -439,6 +443,7 @@ export default function StoreMaterialInPage() {
 
         </form>
       </div>
+      )}
     </div>
   );
 }

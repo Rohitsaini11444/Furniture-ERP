@@ -1,26 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Shield, Clock, CheckCircle, Search, Trash2, Inbox, ChevronLeft } from 'lucide-react';
+import {
+  Bell, CheckCircle, Mail, Calendar, Search, Filter, Trash2,
+  Shield, Package, FileText, Check, MoreVertical, RefreshCw, AlertTriangle
+} from 'lucide-react';
 import api from '../api/axios';
+import Breadcrumbs from '../components/Breadcrumbs';
 
-const ROLE_COLORS = {
-  admin:      '#8b5a2b',
-  supervisor: '#a855f7',
-  contractor: '#22c55e',
-};
-
-function NotificationsPage() {
+export default function NotificationsPage() {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'unread' | 'read'
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'unread', 'read'
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'security' | 'inventory' | 'orders' | 'system'
+  const [sortBy, setSortBy] = useState('newest'); // 'newest' | 'oldest'
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch all notifications from the backend
-  const fetchAllNotifications = useCallback(async () => {
+  // Fetch notifications from backend
+  const fetchNotifications = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const res = await api.get('/notifications/', { params: { nopage: true } });
       setNotifications(res.data.results || res.data || []);
     } catch (err) {
@@ -28,33 +28,33 @@ function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    fetchAllNotifications();
-  }, [fetchAllNotifications]);
+    fetchNotifications();
+  }, []);
 
   // Mark all as read
   const handleMarkAllRead = async () => {
+    setActionLoading(true);
     try {
-      setActionLoading(true);
       await api.post('/notifications/mark_all_read/');
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     } catch (err) {
-      console.error('Failed to mark all read:', err);
+      console.error('Failed to mark all as read:', err);
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Mark a single notification as read and navigate
+  // Mark single notification as read & navigate if link exists
   const handleNotificationClick = async (n) => {
     if (!n.is_read) {
       try {
         await api.patch(`/notifications/${n.id}/mark_read/`);
-        setNotifications(prev => prev.map(notif => notif.id === n.id ? { ...notif, is_read: true } : notif));
+        setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, is_read: true } : item));
       } catch (err) {
-        console.error('Failed to mark read:', err);
+        console.error('Failed to mark read', err);
       }
     }
     if (n.link) {
@@ -62,9 +62,9 @@ function NotificationsPage() {
     }
   };
 
-  // Delete a notification (dismiss)
+  // Delete notification
   const handleDeleteNotification = async (e, id) => {
-    e.stopPropagation(); // Prevent trigger click navigation
+    e.stopPropagation();
     try {
       await api.delete(`/notifications/${id}/`);
       setNotifications(prev => prev.filter(n => n.id !== id));
@@ -73,332 +73,551 @@ function NotificationsPage() {
     }
   };
 
-  // Format timestamp helper
-  const formatTime = (dateStr) => {
-    try {
-      const date = new Date(dateStr);
-      const now = new Date();
-      
-      const dDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      const diffTime = dNow - dDate;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 0) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else if (diffDays === 1) {
-        return 'Yesterday';
-      } else {
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-      }
-    } catch (e) {
-      return '';
+  // KPI Calculations
+  const totalCount = notifications.length;
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const readCount = notifications.filter(n => n.is_read).length;
+
+  const todayCount = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    return notifications.filter(n => new Date(n.created_at).toDateString() === todayStr).length;
+  }, [notifications]);
+
+  // Filtered & Sorted Notifications
+  const filteredNotifications = useMemo(() => {
+    return notifications
+      .filter(n => {
+        const matchesTab = activeTab === 'all' || (activeTab === 'unread' && !n.is_read) || (activeTab === 'read' && n.is_read);
+        const matchesCategory = categoryFilter === 'all' || n.category === categoryFilter;
+        const q = searchQuery.toLowerCase().trim();
+        const matchesSearch = !q || (
+          (n.title || '').toLowerCase().includes(q) ||
+          (n.message || '').toLowerCase().includes(q)
+        );
+        return matchesTab && matchesCategory && matchesSearch;
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.created_at).getTime();
+        const timeB = new Date(b.created_at).getTime();
+        return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
+      });
+  }, [notifications, activeTab, categoryFilter, searchQuery, sortBy]);
+
+  // Helper icon for notification category
+  const renderCategoryIcon = (category) => {
+    switch (category) {
+      case 'security':
+        return <Shield size={18} color="#d97706" />;
+      case 'inventory':
+        return <Package size={18} color="#0284c7" />;
+      case 'orders':
+        return <FileText size={18} color="#16a34a" />;
+      default:
+        return <Bell size={18} color="#ea580c" />;
     }
   };
-
-  // Render notification Icon Badge
-  const getIconBadge = (msg) => {
-    const msgLower = msg.toLowerCase();
-    const isSuccess = msgLower.includes('success') || msgLower.includes('verified') || msgLower.includes('received') || msgLower.includes('approved') || msgLower.includes('completed');
-    const isLogin = msgLower.includes('login') || msgLower.includes('logged');
-    
-    const Icon = isSuccess ? ShieldCheck : (isLogin ? Shield : Clock);
-    const bgColor = isSuccess ? '#f0fdf4' : '#fdfaf6';
-    const borderColor = isSuccess ? '#e6f4ea' : '#f5ece1';
-    const iconColor = isSuccess ? '#16a34a' : '#8b5a2b';
-    
-    return (
-      <div style={{
-        width: '38px',
-        height: '38px',
-        borderRadius: '50%',
-        backgroundColor: bgColor,
-        border: `1.5px solid ${borderColor}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0
-      }}>
-        <Icon size={18} color={iconColor} />
-      </div>
-    );
-  };
-
-  // Message parser
-  const parseMessage = (msg) => {
-    let title = msg || '';
-    let details = [];
-    
-    if (title.includes('\n')) {
-      const lines = title.split('\n');
-      title = lines[0];
-      details = lines.slice(1);
-    } else {
-      const regex = /^New\s+login\s+detected\s+from\s+([^\s]+)\s*\((.+)\)$/i;
-      const match = title.match(regex);
-      if (match) {
-        title = "New login detected";
-        details = [
-          `from ${match[1]}`,
-          match[2]
-        ];
-      }
-    }
-    return { title, details };
-  };
-
-  // Apply tab filters and search filters
-  const filteredNotifications = notifications.filter(n => {
-    // 1. Search Query filter
-    const matchesSearch = (n.message || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // 2. Tab filter
-    if (activeTab === 'unread') {
-      return matchesSearch && !n.is_read;
-    }
-    if (activeTab === 'read') {
-      return matchesSearch && n.is_read;
-    }
-    return matchesSearch;
-  });
 
   return (
-    <div style={{ padding: '1.5rem 0', width: '100%' }}>
-      
-      {/* Main card */}
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '16px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.02)',
-        border: '1px solid #e2e8f0',
-        overflow: 'hidden'
-      }}>
-        
-        {/* Header bar */}
-        <div style={{
-          padding: '1.5rem 2rem',
-          borderBottom: '1px solid #f1f5f9',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem'
-        }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' }}>Notifications Center</h1>
-            <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>View, search, and manage your recent activity alerts.</p>
-          </div>
+    <div style={{ padding: '1.25rem 0', maxWidth: '1350px', margin: '0 auto' }}>
+      {/* Top Breadcrumbs */}
+      <Breadcrumbs />
 
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <button 
-              onClick={handleMarkAllRead}
-              disabled={actionLoading || notifications.filter(n => !n.is_read).length === 0}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                backgroundColor: 'transparent',
-                border: '1px solid #d6c7b2',
-                color: '#8b5a2b',
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                opacity: notifications.filter(n => !n.is_read).length === 0 ? 0.5 : 1
-              }}
-              onMouseEnter={e => {
-                if (notifications.filter(n => !n.is_read).length > 0) {
-                  e.currentTarget.style.backgroundColor = '#faf8f5';
-                }
-              }}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
-              <CheckCircle size={15} /> Mark all read
-            </button>
+      {/* Header Container */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '16px',
+        border: '1px solid #e2e8f0',
+        padding: '1.5rem',
+        marginBottom: '1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{
+            width: '52px',
+            height: '52px',
+            borderRadius: '16px',
+            backgroundColor: '#fff7ed',
+            color: '#ea580c',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 10px rgba(234, 88, 12, 0.15)'
+          }}>
+            <Bell size={26} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
+              Notifications Center
+            </h1>
+            <p style={{ margin: '3px 0 0 0', fontSize: '0.88rem', color: '#64748b' }}>
+              View, search, and manage your recent activity alerts.
+            </p>
           </div>
         </div>
 
-        {/* Filters and Search toolbar */}
-        <div style={{
-          padding: '1rem 2rem',
-          backgroundColor: '#faf8f5',
-          borderBottom: '1px solid #f1f5f9',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem'
-        }}>
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#e2e8f0', padding: '0.25rem', borderRadius: '8px' }}>
-            {['all', 'unread', 'read'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '0.35rem 1rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  backgroundColor: activeTab === tab ? '#ffffff' : 'transparent',
-                  color: activeTab === tab ? '#8b5a2b' : '#475569',
-                  boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.2s',
-                  textTransform: 'capitalize'
-                }}
-              >
-                {tab} {tab === 'unread' && notifications.filter(n => !n.is_read).length > 0 && `(${notifications.filter(n => !n.is_read).length})`}
-              </button>
-            ))}
-          </div>
+        <button
+          onClick={handleMarkAllRead}
+          disabled={actionLoading || unreadCount === 0}
+          style={{
+            padding: '0.65rem 1.25rem',
+            borderRadius: '10px',
+            border: '1px solid #d97706',
+            backgroundColor: '#ffffff',
+            color: unreadCount === 0 ? '#94a3b8' : '#b45309',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            cursor: unreadCount === 0 ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            opacity: unreadCount === 0 ? 0.6 : 1,
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Check size={16} />
+          <span>Mark all as read</span>
+        </button>
+      </div>
 
-          {/* Search Box */}
-          <div style={{ position: 'relative', minWidth: '260px' }}>
-            <input 
+      {/* Filters and Search Bar Row */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        {/* Left Filter Pill Tabs */}
+        <div style={{
+          backgroundColor: '#f1f5f9',
+          borderRadius: '12px',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}>
+          <button
+            onClick={() => setActiveTab('all')}
+            style={{
+              padding: '0.5rem 1.1rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: activeTab === 'all' ? '#8b5a2b' : 'transparent',
+              color: activeTab === 'all' ? '#ffffff' : '#475569',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>All</span>
+            <span style={{
+              fontSize: '0.72rem',
+              padding: '2px 7px',
+              borderRadius: '10px',
+              backgroundColor: activeTab === 'all' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+              color: activeTab === 'all' ? '#ffffff' : '#64748b'
+            }}>
+              {totalCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('unread')}
+            style={{
+              padding: '0.5rem 1.1rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: activeTab === 'unread' ? '#8b5a2b' : 'transparent',
+              color: activeTab === 'unread' ? '#ffffff' : '#475569',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>Unread</span>
+            <span style={{
+              fontSize: '0.72rem',
+              padding: '2px 7px',
+              borderRadius: '10px',
+              backgroundColor: activeTab === 'unread' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+              color: activeTab === 'unread' ? '#ffffff' : '#64748b'
+            }}>
+              {unreadCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('read')}
+            style={{
+              padding: '0.5rem 1.1rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: activeTab === 'read' ? '#8b5a2b' : 'transparent',
+              color: activeTab === 'read' ? '#ffffff' : '#475569',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>Read</span>
+            <span style={{
+              fontSize: '0.72rem',
+              padding: '2px 7px',
+              borderRadius: '10px',
+              backgroundColor: activeTab === 'read' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+              color: activeTab === 'read' ? '#ffffff' : '#64748b'
+            }}>
+              {readCount}
+            </span>
+          </button>
+        </div>
+
+        {/* Right Search Input and Filter Dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', width: '260px' }}>
+            <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input
               type="text"
-              placeholder="Search notifications..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search notifications..."
               style={{
                 width: '100%',
-                padding: '0.5rem 1rem 0.5rem 2.2rem',
-                borderRadius: '8px',
+                padding: '0.55rem 0.75rem 0.55rem 2.3rem',
+                borderRadius: '10px',
                 border: '1px solid #cbd5e1',
                 fontSize: '0.85rem',
-                outline: 'none',
-                transition: 'border-color 0.2s'
+                backgroundColor: '#ffffff',
+                boxSizing: 'border-box'
               }}
-              onFocus={e => e.currentTarget.style.borderColor = '#8b5a2b'}
-              onBlur={e => e.currentTarget.style.borderColor = '#cbd5e1'}
             />
-            <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Filter size={16} color="#64748b" />
+            <select
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+              style={{
+                padding: '0.55rem 0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#334155',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">All Categories</option>
+              <option value="security">Security & Logins</option>
+              <option value="inventory">Store & Stock</option>
+              <option value="orders">Purchase & Orders</option>
+              <option value="system">System Alerts</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 4 KPI Stat Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '1.1rem',
+        marginBottom: '1.5rem'
+      }}>
+        {/* Total Notifications */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            backgroundColor: '#fef3c7',
+            color: '#d97706',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Bell size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Total Notifications</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{totalCount}</div>
+            <span style={{ fontSize: '0.74rem', color: '#94a3b8', fontWeight: 600 }}>All time</span>
+          </div>
+        </div>
+
+        {/* Unread */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            backgroundColor: '#fff7ed',
+            color: '#ea580c',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Mail size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Unread</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{unreadCount}</div>
+            <span style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 600 }}>Requires attention</span>
+          </div>
+        </div>
+
+        {/* Read */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            backgroundColor: '#dcfce7',
+            color: '#16a34a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CheckCircle size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Read</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{readCount}</div>
+            <span style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 600 }}>Marked as read</span>
+          </div>
+        </div>
+
+        {/* Today */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            backgroundColor: '#f3e8ff',
+            color: '#9333ea',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Calendar size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Today</span>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{todayCount}</div>
+            <span style={{ fontSize: '0.74rem', color: '#9333ea', fontWeight: 600 }}>New alerts</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Notifications List Card */}
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        {/* Card Top Header */}
+        <div style={{
+          padding: '1rem 1.25rem',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+            Recent Notifications
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Sort by:</span>
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#334155',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
           </div>
         </div>
 
         {/* List Content */}
-        <div style={{ minHeight: '300px' }}>
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '1rem' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', border: '3px solid #8b5a2b', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-              <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading alerts...</span>
-            </div>
-          ) : filteredNotifications.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', textAlign: 'center', padding: '2rem' }}>
-              <Inbox size={48} color="#cbd5e1" style={{ marginBottom: '1rem' }} />
-              <h3 style={{ margin: 0, fontSize: '1rem', color: '#334155', fontWeight: 600 }}>No notifications found</h3>
-              <p style={{ margin: '0.2rem 0 0', color: '#94a3b8', fontSize: '0.82rem', maxWidth: '300px' }}>
-                There are no alerts matching your filters.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {filteredNotifications.map((n, idx) => {
-                const { title, details } = parseMessage(n.message);
-                
-                return (
-                  <div 
-                    key={n.id}
-                    onClick={() => handleNotificationClick(n)}
+        {loading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
+            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem auto' }} />
+            <span>Loading notifications...</span>
+          </div>
+        ) : filteredNotifications.length === 0 ? (
+          <div style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: '#94a3b8' }}>
+            <Bell size={40} color="#cbd5e1" style={{ margin: '0 auto 0.75rem auto' }} />
+            <h4 style={{ margin: 0, fontSize: '1rem', color: '#475569', fontWeight: 700 }}>No notifications found</h4>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+              You don't have any activity alerts matching your filters.
+            </p>
+          </div>
+        ) : (
+          <div>
+            {filteredNotifications.map((n, idx) => (
+              <div
+                key={n.id || idx}
+                onClick={() => handleNotificationClick(n)}
+                style={{
+                  padding: '1rem 1.25rem',
+                  borderBottom: idx === filteredNotifications.length - 1 ? 'none' : '1px solid #f1f5f9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  cursor: 'pointer',
+                  backgroundColor: n.is_read ? '#ffffff' : '#fffaf5',
+                  transition: 'background-color 0.15s ease'
+                }}
+              >
+                {/* Left Side: Category Icon + Content */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', flex: 1 }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    backgroundColor: n.category === 'security' ? '#fff7ed' : n.category === 'inventory' ? '#f0f9ff' : '#f0fdf4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: '2px'
+                  }}>
+                    {renderCategoryIcon(n.category)}
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                      {n.title || 'Notification'}
+                    </h4>
+                    <p style={{
+                      margin: '3px 0 0 0',
+                      fontSize: '0.82rem',
+                      color: '#64748b',
+                      whiteSpace: 'pre-line',
+                      lineHeight: 1.45
+                    }}>
+                      {n.message}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right Side: Status Badge + Timestamp + Action Menu */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  {/* Status Badge Pill */}
+                  <span style={{
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    backgroundColor: n.is_read ? '#e2e8f0' : '#ffedd5',
+                    color: n.is_read ? '#475569' : '#c2410c'
+                  }}>
+                    {n.is_read ? 'Read' : 'New'}
+                  </span>
+
+                  {/* Date / Time */}
+                  <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 500, minWidth: '100px', textAlign: 'right' }}>
+                    {n.created_at_formatted || n.time_ago}
+                  </span>
+
+                  {/* Delete Button */}
+                  <button
+                    onClick={(e) => handleDeleteNotification(e, n.id)}
+                    title="Delete notification"
                     style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#ef4444',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
                       display: 'flex',
-                      gap: '1.25rem',
-                      padding: '1.25rem 2rem',
-                      borderBottom: idx < filteredNotifications.length - 1 ? '1px solid #f1f5f9' : 'none',
-                      cursor: n.link ? 'pointer' : 'default',
-                      backgroundColor: n.is_read ? 'transparent' : '#fdfaf6',
-                      transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                      alignItems: 'flex-start',
-                      position: 'relative'
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.backgroundColor = '#faf8f5';
-                      const btn = e.currentTarget.querySelector('.dismiss-btn');
-                      if (btn) btn.style.opacity = '1';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.backgroundColor = n.is_read ? 'transparent' : '#fdfaf6';
-                      const btn = e.currentTarget.querySelector('.dismiss-btn');
-                      if (btn) btn.style.opacity = '0';
+                      alignItems: 'center'
                     }}
                   >
-                    {/* Icon */}
-                    {getIconBadge(n.message)}
+                    <Trash2 size={16} />
+                  </button>
 
-                    {/* Text content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: n.is_read ? 600 : 700, color: '#1e293b' }}>
-                          {title}
-                        </h4>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                          {formatTime(n.created_at)}
-                        </span>
-                      </div>
-                      
-                      {details.map((line, lIdx) => (
-                        <p key={lIdx} style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#475569', lineHeight: 1.4, wordBreak: 'break-word' }}>
-                          {line}
-                        </p>
-                      ))}
-                    </div>
-
-                    {/* Action panel (Center Dot / Trash Action) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', alignSelf: 'center', height: '100%', paddingLeft: '0.5rem', flexShrink: 0 }}>
-                      {/* Read status dot */}
-                      {!n.is_read && (
-                        <div style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          backgroundColor: n.message.toLowerCase().includes('success') ? '#22c55e' : '#3b82f6',
-                        }} />
-                      )}
-
-                      {/* Dismiss trash icon (visible on hover) */}
-                      <button
-                        className="dismiss-btn"
-                        onClick={(e) => handleDeleteNotification(e, n.id)}
-                        title="Dismiss notification"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          padding: '0.35rem',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          opacity: 0,
-                          transition: 'opacity 0.15s ease, background-color 0.15s ease',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  <button
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '4px'
+                    }}
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Embedded Spin Keyframes */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
-
-export default NotificationsPage;

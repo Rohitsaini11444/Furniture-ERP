@@ -223,6 +223,12 @@ function getCrumbsForPath(pathname) {
   if (pathname === '/notifications') {
     return [{ label: 'Notifications' }];
   }
+  if (pathname === '/active-devices') {
+    return [
+      { label: 'User Management', path: '/users' },
+      { label: 'Active Device Sessions' }
+    ];
+  }
 
   // Fallback for any unmapped route
   const formattedName = pathname
