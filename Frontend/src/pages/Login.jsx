@@ -11,6 +11,14 @@ function Login() {
   const location = useLocation();
   const from = location.state?.from?.pathname || '/';
 
+  const searchParams = new URLSearchParams(location.search);
+  const reason = searchParams.get('reason');
+  const reasonMessage = reason === 'session_revoked' || reason === 'revoked'
+    ? 'Your session was terminated by an Administrator.'
+    : reason === 'account_disabled'
+    ? 'Your account has been disabled by an Administrator.'
+    : null;
+
   const handleChange = (e) => {
     setError(null);
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -55,6 +63,13 @@ function Login() {
             <h2>Welcome back</h2>
             <p>Sign in to your account to continue</p>
           </div>
+
+          {reasonMessage && !error && (
+            <div className="login-error" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74', color: '#c2410c' }}>
+              <AlertCircle size={16} />
+              <span>{reasonMessage}</span>
+            </div>
+          )}
 
           {error && (
             <div className="login-error">

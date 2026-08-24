@@ -276,6 +276,11 @@ class UserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Q(supervisor=user) | Q(supervisor__isnull=True))
         return qs
 
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if 'is_active' in serializer.validated_data and not serializer.validated_data['is_active']:
+            UserSession.objects.filter(user=instance, is_active=True).update(is_active=False)
+
     @action(detail=False, methods=['get'], url_path='supervisors')
     def supervisors(self, request):
         """GET /api/users/supervisors/ — list all supervisors (for contractor assignment dropdown)"""

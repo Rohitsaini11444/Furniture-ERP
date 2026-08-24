@@ -8,7 +8,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT token to every request EXCEPT /auth/login/ itself
+// Attach JWT token & X-Session-ID to every request EXCEPT /auth/login/ itself
 api.interceptors.request.use((config) => {
   const isLoginRequest = config.url?.includes('/auth/login/');
   if (!isLoginRequest) {
@@ -16,11 +16,15 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    const sessionId = localStorage.getItem('session_id');
+    if (sessionId) {
+      config.headers['X-Session-ID'] = sessionId;
+    }
   }
   return config;
 });
 
-// Handle 401 — try to refresh token, otherwise clear and go to login
+// Handle 401 — check for explicit session revocation / account disabling
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -29,6 +33,30 @@ api.interceptors.response.use(
 
     // If 401 on login itself — bad credentials, let it pass through
     if (isLoginRequest) {
+      return Promise.reject(error);
+    }
+
+    const resData = error.response?.data;
+    const errCode = resData?.code || (typeof resData?.detail === 'object' ? resData?.detail?.code : null);
+
+    // Check for explicit session revocation or account disabling from backend
+    if (errCode === 'session_revoked' || errCode === 'account_disabled') {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('session_id');
+
+      const message = (typeof resData?.detail === 'string' ? resData?.detail : null) ||
+        (typeof resData?.detail === 'object' ? resData?.detail?.detail : null) ||
+        'Your active session has been terminated by an Administrator.';
+
+      window.dispatchEvent(new CustomEvent('auth-revoked', {
+        detail: {
+          code: errCode,
+          message: message
+        }
+      }));
+
       return Promise.reject(error);
     }
 
@@ -47,12 +75,14 @@ api.interceptors.response.use(
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
           localStorage.removeItem('user');
+          localStorage.removeItem('session_id');
           window.location.href = '/login';
         }
       } else {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
+        localStorage.removeItem('session_id');
         window.location.href = '/login';
       }
     }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -1408,6 +1408,22 @@ function AppLayout() {
   const location = useLocation();
   const isLogin = location.pathname === '/login';
 
+  const [revokedNotice, setRevokedNotice] = useState(null);
+
+  useEffect(() => {
+    const handleRevoked = (e) => {
+      const detail = e.detail;
+      setRevokedNotice(detail);
+      setTimeout(() => {
+        setRevokedNotice(null);
+        window.location.href = '/login?reason=' + (detail?.code || 'revoked');
+      }, 2500);
+    };
+
+    window.addEventListener('auth-revoked', handleRevoked);
+    return () => window.removeEventListener('auth-revoked', handleRevoked);
+  }, []);
+
   // Scroll to top on route change
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -1417,6 +1433,54 @@ function AppLayout() {
 
   return (
     <div className="app-container">
+      {/* Global Revocation / Account Disabled Overlay Modal */}
+      {revokedNotice && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            maxWidth: '460px',
+            width: '100%',
+            padding: '2rem',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #cbd5e1'
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              backgroundColor: '#fef2f2',
+              color: '#dc2626',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto'
+            }}>
+              <AlertTriangle size={30} />
+            </div>
+            <h2 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+              {revokedNotice.code === 'account_disabled' ? 'Account Disabled' : 'Session Terminated'}
+            </h2>
+            <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.9rem', color: '#475569', lineHeight: 1.5 }}>
+              {revokedNotice.message || 'Your session has been terminated by an Administrator.'}
+            </p>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>
+              Redirecting to login page...
+            </div>
+          </div>
+        </div>
+      )}
       {isAuthenticated && !isLogin && <Navbar />}
       <main className={isLogin ? '' : 'container'}>
         {isAuthenticated && !isLogin && <Breadcrumbs />}
