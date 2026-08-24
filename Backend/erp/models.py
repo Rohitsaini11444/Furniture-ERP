@@ -865,9 +865,19 @@ class ProductionQCLog(models.Model):
 
 
 
+class NotificationCategory(models.TextChoices):
+    SECURITY = 'security', 'Security & Logins'
+    INVENTORY = 'inventory', 'Store & Inventory'
+    ORDERS = 'orders', 'Purchase & Orders'
+    PRODUCTION = 'production', 'Production & QC'
+    SYSTEM = 'system', 'System Alerts'
+
+
 class Notification(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    message = models.CharField(max_length=255)
+    title = models.CharField(max_length=255, default="Notification")
+    message = models.CharField(max_length=500)
+    category = models.CharField(max_length=50, choices=NotificationCategory.choices, default=NotificationCategory.SYSTEM)
     link = models.CharField(max_length=255, blank=True, null=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -876,7 +886,7 @@ class Notification(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Notification for {self.user.username}: {self.message}"
+        return f"[{self.category}] {self.title} for {self.user.username}"
 
 class UserSession(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sessions")

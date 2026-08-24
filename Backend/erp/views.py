@@ -138,8 +138,8 @@ class LoginView(APIView):
 
         refresh = RefreshToken.for_user(user)
 
-        # Track Session
-        ip_address = request.META.get('REMOTE_ADDR')
+        # Track Session & Security Notification
+        ip_address = request.META.get('REMOTE_ADDR') or '127.0.0.1'
         user_agent = request.META.get('HTTP_USER_AGENT', '')[:512]
         
         session = UserSession.objects.create(
@@ -148,14 +148,16 @@ class LoginView(APIView):
             user_agent=user_agent
         )
 
-        # Notify Admin on new login if they have other active devices
-        if user.role == 'admin':
-            active_count = UserSession.objects.filter(user=user, is_active=True).count()
-            if active_count > 1:
-                Notification.objects.create(
-                    user=user,
-                    message=f"New login detected from {ip_address} ({user_agent[:30]}...)",
-                )
+        from .serializers import parse_user_agent
+        parsed_ua = parse_user_agent(user_agent)
+        
+        Notification.objects.create(
+            user=user,
+            title="New login detected",
+            message=f"from {ip_address}\n{user_agent[:120]}",
+            category="security",
+            link="/active-devices"
+        )
 
         return Response({
             'access': str(refresh.access_token),
@@ -196,14 +198,54 @@ class LogoutView(APIView):
 class ActiveDevicesView(APIView):
     """
     GET /api/auth/devices/
-    Returns active devices for the current user.
+    Returns active devices.
+    - Admins see sessions across all users (or filter by ?user_id=...).
+    - Standard users see their own active sessions.
+    POST /api/auth/devices/
+    DELETE /api/auth/devices/
+    Deactivates/Revokes a specific session.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        sessions = UserSession.objects.filter(user=request.user, is_active=True)
-        serializer = UserSessionSerializer(sessions, many=True)
+        user = request.user
+        user_id = request.query_params.get('user_id')
+        
+        if user.role == 'admin':
+            if user_id:
+                sessions = UserSession.objects.filter(user_id=user_id, is_active=True).select_related('user')
+            else:
+                sessions = UserSession.objects.filter(is_active=True).select_related('user')
+        else:
+            sessions = UserSession.objects.filter(user=user, is_active=True).select_related('user')
+            
+        serializer = UserSessionSerializer(sessions, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        return self._revoke(request)
+
+    def delete(self, request):
+        return self._revoke(request)
+
+    def _revoke(self, request):
+        session_id = request.data.get('session_id') or request.query_params.get('session_id')
+        if not session_id:
+            return Response({'detail': 'session_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            session_id_int = int(session_id)
+        except (ValueError, TypeError):
+            session_id_int = session_id
+
+        qs = UserSession.objects.filter(id=session_id_int)
+        if request.user.role != 'admin':
+            qs = qs.filter(user=request.user)
+            
+        updated = qs.update(is_active=False)
+        if updated:
+            return Response({'detail': 'Session revoked successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'Session not found or permission denied.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 # ─── User Management (Admin Only) ─────────────────────────────────────────────

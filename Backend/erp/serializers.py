@@ -996,16 +996,173 @@ class BuyerPIListSerializer(serializers.ModelSerializer):
         return instance
 
 
+import re
+
+
+def parse_user_agent(ua_string):
+    if not ua_string:
+        return {
+            'device_name': 'Unknown Device',
+            'device_type': 'desktop',
+            'browser_name': 'Browser',
+            'os_name': 'Unknown OS',
+            'browser_icon': 'globe'
+        }
+
+    ua = str(ua_string)
+    
+    # Detect OS
+    os_name = "Unknown OS"
+    if "Windows NT 10.0" in ua: os_name = "Windows 10/11"
+    elif "Windows NT 6.3" in ua: os_name = "Windows 8.1"
+    elif "Windows NT 6.1" in ua: os_name = "Windows 7"
+    elif "Windows" in ua: os_name = "Windows"
+    elif "Macintosh" in ua or "Mac OS X" in ua: os_name = "macOS"
+    elif "iPhone" in ua: os_name = "iOS (iPhone)"
+    elif "iPad" in ua: os_name = "iPadOS (iPad)"
+    elif "Android" in ua: os_name = "Android"
+    elif "Linux" in ua: os_name = "Linux"
+
+    # Detect Device Type
+    device_type = "desktop"
+    if "Mobile" in ua or "iPhone" in ua or "Android" in ua:
+        device_type = "mobile"
+    if "iPad" in ua or "Tablet" in ua:
+        device_type = "tablet"
+
+    # Detect Browser & Version
+    browser_name = "Browser"
+    browser_icon = "globe"
+    
+    if "Edg/" in ua or "Edge/" in ua:
+        m = re.search(r'Edg(e)?/(\d+)', ua)
+        ver = m.group(2) if m else ""
+        browser_name = f"Edge {ver}".strip()
+        browser_icon = "edge"
+    elif "Chrome/" in ua and "Chromium" not in ua:
+        m = re.search(r'Chrome/(\d+)', ua)
+        ver = m.group(1) if m else ""
+        browser_name = f"Chrome {ver}".strip()
+        browser_icon = "chrome"
+    elif "Firefox/" in ua:
+        m = re.search(r'Firefox/(\d+)', ua)
+        ver = m.group(1) if m else ""
+        browser_name = f"Firefox {ver}".strip()
+        browser_icon = "firefox"
+    elif "Safari/" in ua and "Chrome" not in ua:
+        m = re.search(r'Version/(\d+)', ua)
+        ver = m.group(1) if m else ""
+        browser_name = f"Safari {ver}".strip()
+        browser_icon = "safari"
+    elif "PostmanRuntime" in ua:
+        browser_name = "Postman API Client"
+        browser_icon = "terminal"
+
+    device_name = f"{browser_name} on {os_name}"
+    return {
+        'device_name': device_name,
+        'device_type': device_type,
+        'browser_name': browser_name,
+        'os_name': os_name,
+        'browser_icon': browser_icon
+    }
+
+
 class NotificationSerializer(serializers.ModelSerializer):
+    time_ago = serializers.SerializerMethodField()
+    created_at_formatted = serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
         fields = '__all__'
         read_only_fields = ['id', 'user', 'created_at']
 
+    def get_time_ago(self, obj):
+        now = timezone.now()
+        diff = now - obj.created_at
+        sec = diff.total_seconds()
+        if sec < 60:
+            return "Just now"
+        elif sec < 3600:
+            m = int(sec // 60)
+            return f"{m}m ago"
+        elif sec < 86400:
+            h = int(sec // 3600)
+            return f"{h}h ago"
+        else:
+            return obj.created_at.strftime("%b %d, %Y")
+
+    def get_created_at_formatted(self, obj):
+        today = timezone.now().date()
+        if obj.created_at.date() == today:
+            return obj.created_at.strftime("%I:%M %p")
+        return obj.created_at.strftime("%b %d, %Y, %I:%M %p")
+
+
 class UserSessionSerializer(serializers.ModelSerializer):
+    device_name = serializers.SerializerMethodField()
+    device_type = serializers.SerializerMethodField()
+    os_name = serializers.SerializerMethodField()
+    browser_icon = serializers.SerializerMethodField()
+    time_ago = serializers.SerializerMethodField()
+    user_full_name = serializers.SerializerMethodField()
+    username = serializers.CharField(source='user.username', read_only=True)
+    user_role = serializers.CharField(source='user.role', read_only=True)
+    profile_image = serializers.SerializerMethodField()
+
     class Meta:
         model = UserSession
-        fields = ["id", "ip_address", "user_agent", "created_at", "last_activity", "is_active"]
+        fields = [
+            "id", "user", "username", "user_full_name", "user_role", "profile_image",
+            "ip_address", "user_agent", "device_name", "device_type", "os_name",
+            "browser_icon", "created_at", "last_activity", "is_active", "time_ago"
+        ]
+
+    def get_device_info(self, obj):
+        if not hasattr(obj, '_cached_ua'):
+            obj._cached_ua = parse_user_agent(obj.user_agent)
+        return obj._cached_ua
+
+    def get_device_name(self, obj):
+        return self.get_device_info(obj)['device_name']
+
+    def get_device_type(self, obj):
+        return self.get_device_info(obj)['device_type']
+
+    def get_os_name(self, obj):
+        return self.get_device_info(obj)['os_name']
+
+    def get_browser_icon(self, obj):
+        return self.get_device_info(obj)['browser_icon']
+
+    def get_user_full_name(self, obj):
+        if obj.user:
+            return obj.user.get_full_name() or obj.user.username
+        return ""
+
+    def get_profile_image(self, obj):
+        request = self.context.get('request')
+        if obj.user and obj.user.profile_image:
+            if request:
+                return request.build_absolute_uri(obj.user.profile_image.url)
+            return obj.user.profile_image.url
+        return None
+
+    def get_time_ago(self, obj):
+        now = timezone.now()
+        diff = now - obj.last_activity
+        sec = diff.total_seconds()
+        if sec < 60:
+            return "Active now"
+        elif sec < 3600:
+            m = int(sec // 60)
+            return f"{m} minute{'s' if m > 1 else ''} ago"
+        elif sec < 86400:
+            h = int(sec // 3600)
+            return f"{h} hour{'s' if h > 1 else ''} ago"
+        else:
+            d = int(sec // 86400)
+            return f"{d} day{'s' if d > 1 else ''} ago"
 
 
 class StockItemSerializer(serializers.ModelSerializer):
