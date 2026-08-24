@@ -85,7 +85,22 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Custom User Model
 AUTH_USER_MODEL = 'erp.User'
 
-# Database - PostgreSQL (Supports individual DB_* variables and optional DATABASE_URL)
+# ==============================================================================
+# DATABASE RESOLUTION WORKFLOW (LOCAL vs PRODUCTION)
+# ==============================================================================
+# LOCAL DEVELOPMENT:
+#   When DATABASE_URL environment variable is NOT set, Django resolves the database
+#   using local DB_* variables from Backend/.env (localhost:5432 / erp_furniture_db).
+#   Commands like `python manage.py makemigrations` and `python manage.py migrate`
+#   affect ONLY the local PostgreSQL database.
+#
+# PRODUCTION MIGRATIONS:
+#   To run schema migrations against the Production Neon PostgreSQL database, use:
+#   `.\scripts\migrate-production.ps1`
+#   This temporarily sets DATABASE_URL only during migration execution and requires
+#   explicit human confirmation ('MIGRATE-PRODUCTION').
+# ==============================================================================
+
 from urllib.parse import urlparse, parse_qs
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
