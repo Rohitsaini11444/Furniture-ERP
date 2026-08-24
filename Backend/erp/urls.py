@@ -21,7 +21,8 @@ from .views import (
     ProductionUnitViewSet, BuyerUnitAllocationViewSet, UnitWorkReallocationViewSet, WorkloadReallocationView,
     SampleExcelExportView, FinishExcelExportView, FinishExcelImportView,
     SampleBulkDeleteView, FinishBulkDeleteView,
-    StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet,
+    StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet, StoreMaterialReturnViewSet,
+    StoreRequisitionViewSet, StoreStockAdjustmentViewSet,
     StoreStockSummaryView, MonthlyContractorBillingView,
     DatabaseRelationshipsPDFView, AuditLogViewSet,
 )
@@ -36,6 +37,9 @@ router.register(r'store/contractor-persons', ContractorPersonViewSet, basename='
 router.register(r'store/purchase-orders', StorePurchaseOrderViewSet, basename='store-po')
 router.register(r'store/material-in', StoreMaterialInViewSet, basename='store-material-in')
 router.register(r'store/daily-issues', StoreDailyIssueViewSet, basename='store-daily-issue')
+router.register(r'store/material-returns', StoreMaterialReturnViewSet, basename='store-material-return')
+router.register(r'store/requisitions', StoreRequisitionViewSet, basename='store-requisition')
+router.register(r'store/stock-adjustments', StoreStockAdjustmentViewSet, basename='store-stock-adjustment')
 
 # Production Units & Work Allocation
 router.register(r'production-units', ProductionUnitViewSet, basename='production-unit')

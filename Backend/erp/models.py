@@ -1024,6 +1024,13 @@ class StoreItem(models.Model):
         return f"{self.item_code} - {self.item_name}"
 
     @property
+    def total_returned_qty(self):
+        if hasattr(self, 'returned_qty_sum') and self.returned_qty_sum is not None:
+            return Decimal(str(self.returned_qty_sum))
+        returned = self.return_entries.aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        return returned
+
+    @property
     def total_stock_qty(self):
         if hasattr(self, 'inward_qty_sum') and self.inward_qty_sum is not None:
             return Decimal(str(self.inward_qty_sum))
@@ -1038,8 +1045,15 @@ class StoreItem(models.Model):
         return issued
 
     @property
+    def total_adjustment_qty(self):
+        if hasattr(self, 'adjustment_qty_sum') and self.adjustment_qty_sum is not None:
+            return Decimal(str(self.adjustment_qty_sum))
+        adjustments = self.stock_adjustments.filter(status='approved').aggregate(total=Sum('quantity_delta'))['total'] or Decimal('0.00')
+        return adjustments
+
+    @property
     def balance_stock_qty(self):
-        return self.total_stock_qty - self.total_issued_qty
+        return (self.total_stock_qty + self.total_returned_qty + self.total_adjustment_qty) - self.total_issued_qty
 
     @property
     def total_stock_value(self):
@@ -1211,6 +1225,120 @@ class StoreDailyIssue(models.Model):
 
     def __str__(self):
         return f"Issue #{self.voucher_no} - {self.contractor.username} - {self.item.item_name} ({self.qty})"
+
+
+class StoreMaterialReturn(models.Model):
+    """
+    Material return entry from contractor back into store inventory.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    voucher_no = models.CharField(max_length=100, unique=True, verbose_name="Return Voucher No.")
+    return_date = models.DateField(default=timezone.now)
+    month_year = models.CharField(max_length=30, blank=True, null=True, help_text="e.g. Jul-26")
+    contractor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="store_returns", help_text="Contractor / Supervisor returning material")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="return_entries")
+    qty = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Returned Qty")
+    unit = models.CharField(max_length=30, default="pcs", verbose_name="Unit")
+    rate = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Return Rate (₹)")
+    status = models.CharField(
+        max_length=20,
+        choices=StoreItemStatus.choices,
+        default=StoreItemStatus.CHARGE,
+        verbose_name="Charge Status"
+    )
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Total Value (₹)")
+    chargeable_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Chargeable Total (₹)")
+    non_chargeable_total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Non-Chargeable Total (₹)")
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name="store_returns", verbose_name="Unit # / Factory")
+    returned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="processed_store_returns")
+    remark = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-return_date', '-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.month_year and self.return_date:
+            self.month_year = self.return_date.strftime('%b-%y')
+        self.total_amount = self.qty * self.rate
+        if self.status == StoreItemStatus.CHARGE:
+            self.chargeable_total = self.total_amount
+            self.non_chargeable_total = Decimal('0.00')
+        else:
+            self.chargeable_total = Decimal('0.00')
+            self.non_chargeable_total = self.total_amount
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Return #{self.voucher_no} - {self.contractor.username} - {self.item.item_name} ({self.qty})"
+
+
+class StoreRequisitionStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending Approval'
+    APPROVED = 'approved', 'Approved'
+    ISSUED = 'issued', 'Stock Issued'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class StoreRequisition(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    requisition_no = models.CharField(max_length=100, unique=True, verbose_name="Requisition No.")
+    requested_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="store_requisitions", help_text="Supervisor or Contractor requesting material")
+    production_unit = models.ForeignKey(ProductionUnit, on_delete=models.SET_NULL, null=True, blank=True, related_name="store_requisitions", verbose_name="Factory Unit")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="requisitions")
+    requested_qty = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Requested Qty")
+    unit = models.CharField(max_length=30, default="pcs", verbose_name="Unit")
+    purpose = models.TextField(blank=True, null=True, verbose_name="Purpose / Production Batch Note")
+    status = models.CharField(max_length=20, choices=StoreRequisitionStatus.choices, default=StoreRequisitionStatus.PENDING)
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_store_requisitions")
+    rejection_reason = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Store Material Requisition"
+        verbose_name_plural = "Store Material Requisitions"
+
+    def __str__(self):
+        return f"MRN #{self.requisition_no} - {self.item.item_name} ({self.requested_qty} {self.unit})"
+
+
+class StockAdjustmentType(models.TextChoices):
+    EVAPORATION = 'evaporation', 'Liquid Evaporation'
+    DAMAGE = 'damage', 'Material Damage'
+    WASTAGE = 'wastage', 'Production Wastage'
+    PHYSICAL_AUDIT = 'physical_audit', 'Physical Audit Adjustment'
+
+
+class StockAdjustmentStatus(models.TextChoices):
+    PENDING_ADMIN = 'pending_admin', 'Pending Admin Approval'
+    APPROVED = 'approved', 'Approved & Stock Synced'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class StoreStockAdjustment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    adjustment_no = models.CharField(max_length=100, unique=True, verbose_name="Adjustment No.")
+    item = models.ForeignKey(StoreItem, on_delete=models.CASCADE, related_name="stock_adjustments")
+    adjustment_type = models.CharField(max_length=30, choices=StockAdjustmentType.choices, default=StockAdjustmentType.PHYSICAL_AUDIT)
+    quantity_delta = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Quantity Delta (Negative for Loss, Positive for Gain)")
+    reason = models.TextField(verbose_name="Audit Note / Reason")
+    status = models.CharField(max_length=20, choices=StockAdjustmentStatus.choices, default=StockAdjustmentStatus.PENDING_ADMIN)
+    logged_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="logged_stock_adjustments")
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_stock_adjustments")
+    admin_remark = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Store Stock Adjustment"
+        verbose_name_plural = "Store Stock Adjustments"
+
+    def __str__(self):
+        return f"Adjustment #{self.adjustment_no} - {self.item.item_name} ({self.quantity_delta})"
+
 
 
 # ─── Global Enterprise Audit Trail Model ──────────────────────────────────────

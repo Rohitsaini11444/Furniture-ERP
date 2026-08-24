@@ -1,3 +1,4 @@
+import uuid
 import csv
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -50,8 +51,9 @@ from .models import (
     Notification, POExtensionLog, POSupplierHistory, PerformaInvoice,
     PerformaInvoiceItem, ProductionJob, ProductionQCLog, ProductionUnit,
     Sample, SampleImage, StockItem, StoreDailyIssue, StoreItem,
-    StoreItemCategory, StoreItemRateHistory, StoreItemStatus, StoreMaterialIn,
+    StoreItemCategory, StoreItemRateHistory, StoreItemStatus, StoreMaterialIn, StoreMaterialReturn,
     StorePurchaseOrder, StorePurchaseOrderItem, Supplier, SupplierDebitNote,
+    StoreRequisition, StoreStockAdjustment,
     SupplierDebitNoteItem, SupplierPO, SupplierPOItem, SupplierPOItemDefect,
     SupplierPOItemDefectImage, SupplierTaxInvoice, SupplierTaxInvoiceItem,
     UnitWorkReallocation, User, UserSession, AuditLog, AuditAction
@@ -77,8 +79,9 @@ from .serializers import (
     SampleCompactSerializer, SampleDropdownSerializer, SampleImageSerializer,
     SampleListSerializer, SampleSerializer, StockItemSerializer,
     StoreDailyIssueSerializer, StoreItemCategorySerializer,
-    StoreItemRateHistorySerializer, StoreItemSerializer, StoreMaterialInSerializer,
+    StoreItemRateHistorySerializer, StoreItemSerializer, StoreMaterialInSerializer, StoreMaterialReturnSerializer,
     StorePurchaseOrderItemSerializer, StorePurchaseOrderSerializer,
+    StoreRequisitionSerializer, StoreStockAdjustmentSerializer,
     SupplierDebitNoteItemSerializer, SupplierDebitNoteSerializer,
     SupplierPOItemDefectSerializer, SupplierPOItemSerializer,
     SupplierPOListSerializer, SupplierPOSerializer, SupplierSerializer,
@@ -5285,7 +5288,23 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
                 updated_by=self.request.user
             )
             item.current_rate = instance.bill_rate
-            item.save()
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users are authorized to void or delete store material in vouchers.'}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        reason = request.data.get('reason') or request.query_params.get('reason') or 'Admin Void Voucher'
+        
+        log_audit_event(
+            user=request.user,
+            action=AuditAction.DELETE,
+            module_name='Store Management',
+            model_name='StoreMaterialIn',
+            object_id=instance.id,
+            object_repr=f"Voided Inward Voucher #{instance.voucher_no} ({instance.item.item_name})",
+            reason=reason,
+            request=request
+        )
+        return super().destroy(request, *args, **kwargs)
 
 
 class StoreDailyIssueViewSet(viewsets.ModelViewSet):
@@ -5311,7 +5330,171 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(issued_by=self.request.user)
+        issue = serializer.save(issued_by=self.request.user)
+        item = issue.item
+        if item and item.balance_stock_qty <= item.reorder_level:
+            admin_and_store_users = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+            for u in admin_and_store_users:
+                Notification.objects.create(
+                    recipient=u,
+                    title=f"Low Stock Alert: {item.item_name} ({item.item_code})",
+                    message=f"Store balance for {item.item_name} has dropped to {item.balance_stock_qty} {item.unit} (Reorder Level: {item.reorder_level} {item.unit}). Please reorder soon.",
+                    link=f"/store-management"
+                )
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users are authorized to void or delete store daily issue vouchers.'}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        reason = request.data.get('reason') or request.query_params.get('reason') or 'Admin Void Voucher'
+        
+        log_audit_event(
+            user=request.user,
+            action=AuditAction.DELETE,
+            module_name='Store Management',
+            model_name='StoreDailyIssue',
+            object_id=instance.id,
+            object_repr=f"Voided Outward Issue Voucher #{instance.voucher_no} ({instance.item.item_name})",
+            reason=reason,
+            request=request
+        )
+        return super().destroy(request, *args, **kwargs)
+
+
+class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
+    queryset = StoreMaterialReturn.objects.all()
+    serializer_class = StoreMaterialReturnSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StoreMaterialReturn.objects.all()
+        contractor_id = self.request.query_params.get('contractor')
+        month = self.request.query_params.get('month')
+        status_param = self.request.query_params.get('status')
+        unit_id = self.request.query_params.get('production_unit')
+
+        if contractor_id:
+            qs = qs.filter(contractor_id=contractor_id)
+        if month:
+            qs = qs.filter(month_year__icontains=month)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if unit_id:
+            qs = qs.filter(production_unit_id=unit_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(returned_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users are authorized to void or delete store material return vouchers.'}, status=status.HTTP_403_FORBIDDEN)
+        instance = self.get_object()
+        reason = request.data.get('reason') or request.query_params.get('reason') or 'Admin Void Voucher'
+        
+        log_audit_event(
+            user=request.user,
+            action=AuditAction.DELETE,
+            module_name='Store Management',
+            model_name='StoreMaterialReturn',
+            object_id=instance.id,
+            object_repr=f"Voided Return Voucher #{instance.voucher_no} ({instance.item.item_name})",
+            reason=reason,
+            request=request
+        )
+        return super().destroy(request, *args, **kwargs)
+
+
+class StoreRequisitionViewSet(viewsets.ModelViewSet):
+    queryset = StoreRequisition.objects.select_related('requested_by', 'approved_by', 'item', 'production_unit').all()
+    serializer_class = StoreRequisitionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get('status')
+        unit_id = self.request.query_params.get('production_unit')
+        user = self.request.user
+
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if unit_id:
+            qs = qs.filter(production_unit_id=unit_id)
+
+        if user.role in ['supervisor', 'contractor']:
+            qs = qs.filter(requested_by=user)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(requested_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve(self, request, pk=None):
+        if request.user.role not in ['admin', 'store_manager']:
+            return Response({'detail': 'Only Admin or Store Manager can approve requisitions.'}, status=status.HTTP_403_FORBIDDEN)
+        mrn = self.get_object()
+        mrn.status = 'approved'
+        mrn.approved_by = request.user
+        mrn.save()
+        return Response(StoreRequisitionSerializer(mrn).data)
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject(self, request, pk=None):
+        if request.user.role not in ['admin', 'store_manager']:
+            return Response({'detail': 'Only Admin or Store Manager can reject requisitions.'}, status=status.HTTP_403_FORBIDDEN)
+        mrn = self.get_object()
+        mrn.status = 'rejected'
+        mrn.rejection_reason = request.data.get('reason', 'Rejected by Store Management')
+        mrn.save()
+        return Response(StoreRequisitionSerializer(mrn).data)
+
+
+class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
+    queryset = StoreStockAdjustment.objects.select_related('item', 'logged_by', 'approved_by').all()
+    serializer_class = StoreStockAdjustmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(logged_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='approve')
+    def approve(self, request, pk=None):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users can approve stock variance adjustments.'}, status=status.HTTP_403_FORBIDDEN)
+        adj = self.get_object()
+        adj.status = 'approved'
+        adj.approved_by = request.user
+        adj.admin_remark = request.data.get('remark', 'Approved by Admin')
+        adj.save()
+
+        log_audit_event(
+            user=request.user,
+            action=AuditAction.UPDATE,
+            module_name='Store Management',
+            model_name='StoreStockAdjustment',
+            object_id=adj.id,
+            object_repr=f"Approved Stock Adjustment #{adj.adjustment_no} ({adj.item.item_name}: {adj.quantity_delta})",
+            reason=adj.admin_remark,
+            request=request
+        )
+        return Response(StoreStockAdjustmentSerializer(adj).data)
+
+    @action(detail=True, methods=['post'], url_path='reject')
+    def reject(self, request, pk=None):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users can reject stock variance adjustments.'}, status=status.HTTP_403_FORBIDDEN)
+        adj = self.get_object()
+        adj.status = 'rejected'
+        adj.admin_remark = request.data.get('remark', 'Rejected by Admin')
+        adj.save()
+        return Response(StoreStockAdjustmentSerializer(adj).data)
 
 
 class StoreStockSummaryView(APIView):

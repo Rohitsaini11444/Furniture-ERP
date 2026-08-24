@@ -1,4 +1,9 @@
+from datetime import date
+from decimal import Decimal
+
 from django.contrib.auth import authenticate
+from django.db.models import Q, Sum
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -9,8 +14,9 @@ from .models import (
     BuyerPI, BuyerPIItem,
     UserSession, StockItem, ProductionJob, ProductionQCLog,
     GateInwardReceipt, SupplierDebitNote, SupplierTaxInvoice, SupplierTaxInvoiceItem, SupplierDebitNoteItem,
-    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreItemStatus,
-    AuditLog
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson, StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue, StoreMaterialReturn, StoreItemStatus,
+    StoreRequisition, StoreStockAdjustment,
+    Notification, AuditLog
 )
 
 
@@ -420,7 +426,6 @@ class SupplierPOItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'supplier_po', 'amount']
 
     def validate_quantity(self, value):
-        from decimal import Decimal
         if value is None or value <= 0:
             raise serializers.ValidationError("Quantity must be greater than 0.")
         if value > Decimal('999999.00'):
@@ -428,7 +433,6 @@ class SupplierPOItemSerializer(serializers.ModelSerializer):
         return value
 
     def validate_rate(self, value):
-        from decimal import Decimal
         if value is None or value < 0:
             raise serializers.ValidationError("Rate cannot be negative.")
         if value > Decimal('99999999.99'):
@@ -458,9 +462,6 @@ class POExtensionLogSerializer(serializers.ModelSerializer):
 def get_po_metrics(obj):
     if hasattr(obj, '_cached_po_metrics'):
         return obj._cached_po_metrics
-
-    from datetime import date
-    from decimal import Decimal
 
     items_list = list(obj.items.all()) if hasattr(obj, 'items') else []
     total_ordered = sum((it.quantity or Decimal('0')) for it in items_list)
@@ -536,7 +537,6 @@ class SupplierPOListSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_amount(self, obj):
-        from decimal import Decimal
         items_list = list(obj.items.all()) if hasattr(obj, 'items') else []
         return sum(item.amount or Decimal('0') for item in items_list)
 
@@ -581,7 +581,6 @@ class SupplierPOSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def get_total_amount(self, obj):
-        from decimal import Decimal
         return sum(item.amount or Decimal('0') for item in obj.items.all())
 
     def get_days_remaining(self, obj):
@@ -603,10 +602,6 @@ class SupplierPOSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"items": ["At least one line item is required for a Purchase Order."]})
 
         # Validate PO item quantities against Buyer PI limits
-        from decimal import Decimal
-        from django.db.models import Sum
-        from .models import BuyerPI, SupplierPOItem
-
         pi_qty_map = {}
         for idx, item in enumerate(items_data):
             buyer_pi = item.get('buyer_pi')
@@ -777,9 +772,6 @@ class BuyerPIItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_allocated_quantity(self, obj):
-        from django.db.models import Sum, Q
-        from .models import SupplierPOItem
-
         if not obj.buyer_pi:
             allocations = obj.po_allocations.exclude(supplier_po__status='Cancelled')
             return float(allocations.aggregate(s=Sum('quantity'))['s'] or 0)
@@ -850,7 +842,6 @@ class BuyerPISerializer(serializers.ModelSerializer):
             return 'Fully Allocated'
 
     def get_supplier_allocations(self, obj):
-        from .models import SupplierPOItem
         po_items = SupplierPOItem.objects.filter(
             supplier_po__buyer_pi=obj
         ).exclude(
@@ -951,7 +942,6 @@ class BuyerPIListSerializer(serializers.ModelSerializer):
             return 'Fully Allocated'
 
     def get_supplier_allocations(self, obj):
-        from .models import SupplierPOItem
         po_items = SupplierPOItem.objects.filter(
             supplier_po__buyer_pi=obj
         ).exclude(
@@ -1008,7 +998,6 @@ class BuyerPIListSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
-        from .models import Notification
         model = Notification
         fields = '__all__'
         read_only_fields = ['id', 'user', 'created_at']
@@ -1108,7 +1097,6 @@ class SupplierDebitNoteSerializer(serializers.ModelSerializer):
 
     def get_grace_days_remaining(self, obj):
         if obj.status == 'Grace Period' and obj.holding_until:
-            from django.utils import timezone
             diff = obj.holding_until - timezone.now()
             hours_left = diff.total_seconds() / 3600.0
             return max(0, round(hours_left / 24.0, 1))
@@ -1184,6 +1172,28 @@ class StoreMaterialInSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreMaterialIn
         fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'total_amount']
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            if data.get('po') == '':
+                data['po'] = None
+            if data.get('production_unit') == '':
+                data['production_unit'] = None
+            if data.get('received_by') == '':
+                data['received_by'] = None
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        qty = attrs.get('qty')
+        bill_rate = attrs.get('bill_rate')
+
+        if qty is not None and qty <= Decimal('0.00'):
+            raise serializers.ValidationError({"qty": ["Received quantity must be greater than 0."]})
+        if bill_rate is not None and bill_rate < Decimal('0.00'):
+            raise serializers.ValidationError({"bill_rate": ["Bill rate cannot be negative."]})
+        return super().validate(attrs)
 
 
 class StoreDailyIssueSerializer(serializers.ModelSerializer):
@@ -1195,11 +1205,127 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreDailyIssue
         fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'total_amount', 'chargeable_total', 'non_chargeable_total']
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            if data.get('contractor_person') == '':
+                data['contractor_person'] = None
+            if data.get('production_unit') == '':
+                data['production_unit'] = None
+            if data.get('issued_by') == '':
+                data['issued_by'] = None
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        qty = attrs.get('qty')
+        rate = attrs.get('rate')
+        item = attrs.get('item') or (self.instance.item if self.instance else None)
+
+        if qty is not None and qty <= Decimal('0.00'):
+            raise serializers.ValidationError({"qty": ["Issued quantity must be greater than 0."]})
+        if rate is not None and rate < Decimal('0.00'):
+            raise serializers.ValidationError({"rate": ["Issue rate cannot be negative."]})
+
+        if item and qty is not None:
+            avail_stock = item.balance_stock_qty
+            if self.instance and self.instance.item == item:
+                avail_stock += self.instance.qty
+
+            if qty > avail_stock:
+                raise serializers.ValidationError({
+                    "qty": [f"Insufficient store balance for {item.item_name}. Available: {avail_stock} {item.unit}, Requested: {qty} {item.unit}."]
+                })
+        return super().validate(attrs)
 
     def get_contractor_name(self, obj):
         if obj.contractor:
             return obj.contractor.get_full_name() or obj.contractor.username
         return ""
+
+
+class StoreMaterialReturnSerializer(serializers.ModelSerializer):
+    contractor_name = serializers.SerializerMethodField()
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+
+    class Meta:
+        model = StoreMaterialReturn
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'total_amount', 'chargeable_total', 'non_chargeable_total']
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            if data.get('production_unit') == '':
+                data['production_unit'] = None
+            if data.get('returned_by') == '':
+                data['returned_by'] = None
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        qty = attrs.get('qty')
+        rate = attrs.get('rate')
+
+        if qty is not None and qty <= Decimal('0.00'):
+            raise serializers.ValidationError({"qty": ["Returned quantity must be greater than 0."]})
+        if rate is not None and rate < Decimal('0.00'):
+            raise serializers.ValidationError({"rate": ["Return rate cannot be negative."]})
+        return super().validate(attrs)
+
+    def get_contractor_name(self, obj):
+        if obj.contractor:
+            return obj.contractor.get_full_name() or obj.contractor.username
+        return ""
+
+
+class StoreRequisitionSerializer(serializers.ModelSerializer):
+    requested_by_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+
+    class Meta:
+        model = StoreRequisition
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_requested_by_name(self, obj):
+        if obj.requested_by:
+            return obj.requested_by.get_full_name() or obj.requested_by.username
+        return ""
+
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            return obj.approved_by.get_full_name() or obj.approved_by.username
+        return ""
+
+
+class StoreStockAdjustmentSerializer(serializers.ModelSerializer):
+    logged_by_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    item_code = serializers.CharField(source='item.item_code', read_only=True)
+    item_name = serializers.CharField(source='item.item_name', read_only=True)
+
+    class Meta:
+        model = StoreStockAdjustment
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_logged_by_name(self, obj):
+        if obj.logged_by:
+            return obj.logged_by.get_full_name() or obj.logged_by.username
+        return ""
+
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            return obj.approved_by.get_full_name() or obj.approved_by.username
+        return ""
+
+
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
