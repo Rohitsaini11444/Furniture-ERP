@@ -61,7 +61,7 @@ from .models import (
 from .pagination import OptionalPagination
 from .permissions import (
     IsAdmin, IsAdminOrSandingSupervisor, IsAdminOrSupervisor,
-    IsContractor, IsSandingSupervisor, IsSupervisor
+    IsContractor, IsSandingSupervisor, IsSupervisor, IsSupplierManager
 )
 from .presentation_generator import (
     find_image_path, generate_brand_pptx_presentation,
@@ -1485,7 +1485,9 @@ class SupplierViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update'):
+            return [IsAuthenticated(), IsSupplierManager()]
+        if self.action == 'destroy':
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 

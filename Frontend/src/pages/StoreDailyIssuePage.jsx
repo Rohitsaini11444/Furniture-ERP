@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert, FileText } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import { UnsavedChangesModal } from '../components/UnsavedChangesModal';
 
 export default function StoreDailyIssuePage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [items, setItems] = useState([]);
   const [contractors, setContractors] = useState([]);
@@ -52,6 +55,42 @@ export default function StoreDailyIssuePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+
+  const {
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'store_issue',
+    formLabel: 'Daily Issue',
+    getFormTitle: (data) => `Daily Issue - Vch ${data?.voucher_no || 'New'}`,
+    getFormData: () => formData,
+    targetPath: '/store-management/daily-issue',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('store-daily-issue-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (location.state?.draftData) {
+      setFormData(location.state.draftData);
+      setIsDirty(true);
+      if (location.state.draftId) {
+        setCurrentDraftId(location.state.draftId);
+      }
+    }
+  }, [location.state]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -110,6 +149,7 @@ export default function StoreDailyIssuePage() {
   }, [formData.contractor, persons]);
 
   const handleDateChange = (e) => {
+    setIsDirty(true);
     const val = e.target.value;
     setFormData(prev => ({
       ...prev,
@@ -119,6 +159,7 @@ export default function StoreDailyIssuePage() {
   };
 
   const handleContractorChange = (val) => {
+    setIsDirty(true);
     const cId = typeof val === 'object' ? val.id : val;
     const selectedContractor = contractors.find(c => String(c.id) === String(cId));
     const cName = selectedContractor ? (selectedContractor.full_name || selectedContractor.username) : '';
@@ -132,6 +173,7 @@ export default function StoreDailyIssuePage() {
   };
 
   const handlePersonSelectChange = (val) => {
+    setIsDirty(true);
     const pId = typeof val === 'object' ? val.id : val;
     const selectedP = contractorPersonsList.find(p => String(p.id) === String(pId));
     const contractorObj = contractors.find(c => String(c.id) === String(formData.contractor));
@@ -153,6 +195,7 @@ export default function StoreDailyIssuePage() {
   };
 
   const handleItemChange = (val, selectedObj) => {
+    setIsDirty(true);
     const itemId = typeof val === 'object' ? val.id : val;
     const found = selectedObj || items.find(i => String(i.id) === String(itemId));
     setSelectedItemObj(found || null);
@@ -184,6 +227,8 @@ export default function StoreDailyIssuePage() {
 
     api.post('/store/daily-issues/', formData)
       .then(() => {
+        if (currentDraftId) clearDraft(currentDraftId);
+        setIsDirty(false);
         setSuccessMsg('Daily Outward Issue saved successfully! Stock balance updated.');
         setTimeout(() => navigate('/store-management'), 1200);
       })
@@ -224,7 +269,9 @@ export default function StoreDailyIssuePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <button
             type="button"
-            onClick={() => navigate('/store-management')}
+            onClick={() => {
+              if (confirmExit('/store-management')) navigate('/store-management');
+            }}
             style={{
               width: '38px',
               height: '38px',
@@ -538,7 +585,9 @@ export default function StoreDailyIssuePage() {
           }}>
             <button
               type="button"
-              onClick={() => navigate('/store-management')}
+              onClick={() => {
+                if (confirmExit('/store-management')) navigate('/store-management');
+              }}
               style={{
                 padding: '0.65rem 1.25rem',
                 borderRadius: '8px',
@@ -551,6 +600,25 @@ export default function StoreDailyIssuePage() {
               }}
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveDraft()}
+              style={{
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                border: '1px solid #ea580c',
+                backgroundColor: '#fff7ed',
+                color: '#c2410c',
+                fontWeight: 650,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              <FileText size={16} /> Save as Draft
             </button>
             <button
               type="submit"
@@ -578,6 +646,14 @@ export default function StoreDailyIssuePage() {
         </form>
       </div>
       )}
+
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        formLabel="Daily Issue"
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
+      />
     </div>
   );
 }

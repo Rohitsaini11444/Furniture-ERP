@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, ArrowDownRight, Save, AlertCircle } from 'lucide-react';
+import { X, ArrowDownRight, Save, AlertCircle, FileText } from 'lucide-react';
 import api from '../api/axios';
+import { useDrafts } from '../context/DraftsContext';
+import { UnsavedChangesModal } from './UnsavedChangesModal';
 
-export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers, units, onSuccess }) {
+export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers, units, onSuccess, draftData, draftId }) {
+  const { saveDraft, clearDraft } = useDrafts();
+  const [isDirty, setIsDirty] = useState(false);
+  const [showExitReminder, setShowExitReminder] = useState(false);
+
   const [formData, setFormData] = useState({
     voucher_no: '',
     inward_date: new Date().toISOString().split('T')[0],
@@ -23,28 +29,45 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
 
   useEffect(() => {
     if (isOpen) {
-      const vno = `ST-IN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setFormData({
-        voucher_no: vno,
-        inward_date: new Date().toISOString().split('T')[0],
-        month_year: 'Jul-26',
-        bill_no: '',
-        supplier: suppliers && suppliers.length > 0 ? suppliers[0].id : '',
-        item: items && items.length > 0 ? items[0].id : '',
-        qty: '',
-        unit: items && items.length > 0 ? items[0].unit : 'pcs',
-        bill_rate: items && items.length > 0 ? (items[0].current_rate || items[0].base_rate) : '',
-        total_amount: '',
-        production_unit: units && units.length > 0 ? units[0].id : '',
-        remark: ''
-      });
+      setIsDirty(false);
+      setShowExitReminder(false);
+
+      if (draftData) {
+        setFormData(draftData);
+        setIsDirty(true);
+      } else {
+        const vno = `ST-IN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        setFormData({
+          voucher_no: vno,
+          inward_date: new Date().toISOString().split('T')[0],
+          month_year: 'Jul-26',
+          bill_no: '',
+          supplier: suppliers && suppliers.length > 0 ? suppliers[0].id : '',
+          item: items && items.length > 0 ? items[0].id : '',
+          qty: '',
+          unit: items && items.length > 0 ? items[0].unit : 'pcs',
+          bill_rate: items && items.length > 0 ? (items[0].current_rate || items[0].base_rate) : '',
+          total_amount: '',
+          production_unit: units && units.length > 0 ? units[0].id : '',
+          remark: ''
+        });
+      }
       setError(null);
     }
-  }, [isOpen, items, suppliers, units]);
+  }, [isOpen, items, suppliers, units, draftData]);
+
+  const handleAttemptClose = () => {
+    if (isDirty) {
+      setShowExitReminder(true);
+    } else {
+      onClose();
+    }
+  };
 
   if (!isOpen) return null;
 
   const handleItemChange = (e) => {
+    setIsDirty(true);
     const itemId = e.target.value;
     const selectedItem = items.find(i => String(i.id) === String(itemId));
     if (selectedItem) {
@@ -61,6 +84,7 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
   };
 
   const handleQtyRateChange = (name, val) => {
+    setIsDirty(true);
     setFormData(prev => {
       const updated = { ...prev, [name]: val };
       const q = parseFloat(updated.qty || 0);
@@ -77,6 +101,8 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
 
     try {
       await api.post('/store/material-in/', formData);
+      if (draftId) clearDraft(draftId);
+      setIsDirty(false);
       onSuccess();
       onClose();
     } catch (err) {
@@ -147,64 +173,50 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleAttemptClose}
             style={{
               background: 'none',
               border: 'none',
               color: '#94a3b8',
               cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '8px'
+              padding: '4px',
+              borderRadius: '6px'
             }}
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {/* Body */}
+        <form onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {error && (
-            <div style={{ padding: '0.75rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '0.875rem' }}>
-              <AlertCircle size={18} style={{ display: 'inline', marginRight: '6px' }} />
-              {error}
+            <div style={{ padding: '0.75rem', borderRadius: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <AlertCircle size={18} />
+              <span>{error}</span>
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Voucher No *
+                Inward Voucher # (Auto)
               </label>
               <input
                 type="text"
+                disabled
                 value={formData.voucher_no}
-                onChange={(e) => setFormData({ ...formData, voucher_no: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f1f5f9', fontWeight: 700 }}
               />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Inward Date *
+                Inward Date
               </label>
               <input
                 type="date"
+                required
                 value={formData.inward_date}
-                onChange={(e) => setFormData({ ...formData, inward_date: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Supplier Bill / Invoice # *
-              </label>
-              <input
-                type="text"
-                value={formData.bill_no}
-                onChange={(e) => setFormData({ ...formData, bill_no: e.target.value })}
-                placeholder="e.g. Bill # 2667"
-                required
+                onChange={(e) => { setIsDirty(true); setFormData({ ...formData, inward_date: e.target.value }); }}
                 style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
               />
             </div>
@@ -216,49 +228,62 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
                 Supplier Name *
               </label>
               <select
-                value={formData.supplier}
-                onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
                 required
+                value={formData.supplier}
+                onChange={(e) => { setIsDirty(true); setFormData({ ...formData, supplier: e.target.value }); }}
                 style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
               >
                 <option value="">Select Supplier</option>
                 {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>{s.name} ({s.code || 'SUP'})</option>
                 ))}
               </select>
             </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Store Item *
+                Supplier Bill / Invoice # *
               </label>
-              <select
-                value={formData.item}
-                onChange={handleItemChange}
+              <input
+                type="text"
                 required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
-              >
-                <option value="">Select Store Item</option>
-                {items.map(i => (
-                  <option key={i.id} value={i.id}>{i.item_code} - {i.item_name} ({i.unit})</option>
-                ))}
-              </select>
+                value={formData.bill_no}
+                onChange={(e) => { setIsDirty(true); setFormData({ ...formData, bill_no: e.target.value }); }}
+                placeholder="e.g. INV-9901"
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+              />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+              Select Item Master *
+            </label>
+            <select
+              required
+              value={formData.item}
+              onChange={handleItemChange}
+              style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', fontWeight: 600 }}
+            >
+              <option value="">Select Item</option>
+              {items.map(i => (
+                <option key={i.id} value={i.id}>[{i.item_code}] {i.item_name} ({i.category_name || 'General'})</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Received Qty *
+                Inward Qty *
               </label>
               <input
                 type="number"
-                step="0.001"
+                step="0.01"
+                required
                 value={formData.qty}
                 onChange={(e) => handleQtyRateChange('qty', e.target.value)}
-                placeholder="0"
-                required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                placeholder="0.00"
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700 }}
               />
             </div>
             <div>
@@ -267,14 +292,14 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
               </label>
               <input
                 type="text"
+                disabled
                 value={formData.unit}
-                readOnly
                 style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f1f5f9' }}
               />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Bill Rate (₹) *
+                Bill Rate (₹)
               </label>
               <input
                 type="number"
@@ -282,37 +307,38 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
                 value={formData.bill_rate}
                 onChange={(e) => handleQtyRateChange('bill_rate', e.target.value)}
                 placeholder="0.00"
-                required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}
               />
             </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
                 Total Amount (₹)
               </label>
               <input
                 type="text"
+                disabled
                 value={formData.total_amount ? `₹ ${formData.total_amount}` : '₹ 0.00'}
-                readOnly
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f0fdf4', fontWeight: 700, color: '#16a34a' }}
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#f8fafc', fontWeight: 800, color: '#16a34a' }}
               />
             </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-              Target Factory / Unit #
-            </label>
-            <select
-              value={formData.production_unit}
-              onChange={(e) => setFormData({ ...formData, production_unit: e.target.value })}
-              style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
-            >
-              <option value="">Select Production Unit</option>
-              {units.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Target Factory / Unit #
+              </label>
+              <select
+                value={formData.production_unit}
+                onChange={(e) => { setIsDirty(true); setFormData({ ...formData, production_unit: e.target.value }); }}
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+              >
+                <option value="">Select Production Unit</option>
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>
@@ -322,7 +348,7 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
             <textarea
               rows={2}
               value={formData.remark}
-              onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+              onChange={(e) => { setIsDirty(true); setFormData({ ...formData, remark: e.target.value }); }}
               placeholder="e.g. Received via Tempo, bill checked..."
               style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', resize: 'none' }}
             />
@@ -331,10 +357,29 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleAttemptClose}
               style={{ padding: '0.65rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                saveDraft({
+                  formType: 'store_in',
+                  formLabel: 'Store Material In',
+                  title: `Material In - Inv ${formData.bill_no || formData.voucher_no}`,
+                  data: formData,
+                  targetPath: '/store-management'
+                });
+                alert('Draft saved to Saved Drafts!');
+                setIsDirty(false);
+                onClose();
+              }}
+              style={{ padding: '0.65rem 1.1rem', borderRadius: '8px', border: '1px solid #16a34a', backgroundColor: '#f0fdf4', color: '#166534', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <FileText size={16} />
+              <span>Save Draft</span>
             </button>
             <button
               type="submit"
@@ -358,6 +403,32 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
           </div>
         </form>
       </div>
+
+      <UnsavedChangesModal
+        isOpen={showExitReminder}
+        title="Unsaved Store Material In Voucher"
+        message="You have unsaved changes in this Material Inward form. Would you like to save it as a draft before leaving?"
+        onSaveDraft={() => {
+          saveDraft({
+            formType: 'store_in',
+            formLabel: 'Store Material In',
+            title: `Material In - Inv ${formData.bill_no || formData.voucher_no}`,
+            data: formData,
+            targetPath: '/store-management'
+          });
+          setShowExitReminder(false);
+          setIsDirty(false);
+          onClose();
+        }}
+        onDiscard={() => {
+          setShowExitReminder(false);
+          setIsDirty(false);
+          onClose();
+        }}
+        onCancel={() => {
+          setShowExitReminder(false);
+        }}
+      />
     </div>
   );
 }

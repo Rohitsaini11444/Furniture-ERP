@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Warehouse, Upload, Download, FileSpreadsheet, Plus, CheckCircle,
-  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw
+  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw, FileText
 } from 'lucide-react';
 import api from '../api/axios';
 import CustomFileUpload from '../components/CustomFileUpload';
 import SearchableSelect from '../components/SearchableSelect';
 import StoreCategoryModal from '../components/StoreCategoryModal';
 import { FormSkeleton } from '../components/TableSkeleton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import { UnsavedChangesModal } from '../components/UnsavedChangesModal';
 
 export default function StoreItemMasterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const isEditing = Boolean(id);
 
@@ -42,6 +45,42 @@ export default function StoreItemMasterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+
+  const {
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'store_item',
+    formLabel: 'Store Item Master',
+    getFormTitle: (data) => `${data?.item_code || 'IT'} - ${data?.item_name || 'New Store Item'}`,
+    getFormData: () => formData,
+    targetPath: '/store-management/item-master/new',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('store-item-master-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (location.state?.draftData) {
+      setFormData(location.state.draftData);
+      setIsDirty(true);
+      if (location.state.draftId) {
+        setCurrentDraftId(location.state.draftId);
+      }
+    }
+  }, [location.state]);
 
   // Excel Import State
   const [importFile, setImportFile] = useState(null);
@@ -89,6 +128,7 @@ export default function StoreItemMasterPage() {
   }, [id, isEditing]);
 
   const handleChange = (e) => {
+    setIsDirty(true);
     const { name, value } = e.target;
     setFormData(prev => {
       const next = { ...prev, [name]: value };
@@ -100,6 +140,7 @@ export default function StoreItemMasterPage() {
   };
 
   const handleImageChange = (file) => {
+    setIsDirty(true);
     if (file) {
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
@@ -136,6 +177,8 @@ export default function StoreItemMasterPage() {
 
     req
       .then(() => {
+        if (currentDraftId) clearDraft(currentDraftId);
+        setIsDirty(false);
         setSuccessMsg(isEditing ? 'Store item updated successfully!' : 'Store item created successfully!');
         setTimeout(() => navigate('/store-management'), 1200);
       })
@@ -256,7 +299,9 @@ export default function StoreItemMasterPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <button
             type="button"
-            onClick={() => navigate('/store-management')}
+            onClick={() => {
+              if (confirmExit('/store-management')) navigate('/store-management');
+            }}
             style={{
               width: '38px',
               height: '38px',
@@ -382,7 +427,7 @@ export default function StoreItemMasterPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           padding: '1.75rem'
         }}>
-          <form onSubmit={handleSubmitForm}>
+          <form id="store-item-master-form" onSubmit={handleSubmitForm}>
             <div className="item-master-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
               {/* Item Code */}
               <div>
@@ -641,7 +686,9 @@ export default function StoreItemMasterPage() {
             }}>
               <button
                 type="button"
-                onClick={() => navigate('/store-management')}
+                onClick={() => {
+                  if (confirmExit('/store-management')) navigate('/store-management');
+                }}
                 style={{
                   padding: '0.65rem 1.25rem',
                   borderRadius: '8px',
@@ -655,6 +702,27 @@ export default function StoreItemMasterPage() {
               >
                 Cancel
               </button>
+              {!isEditing && (
+                <button
+                  type="button"
+                  onClick={() => handleSaveDraft()}
+                  style={{
+                    padding: '0.65rem 1.25rem',
+                    borderRadius: '8px',
+                    border: '1px solid #ea580c',
+                    backgroundColor: '#fff7ed',
+                    color: '#c2410c',
+                    fontWeight: 650,
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                >
+                  <FileText size={16} /> Save as Draft
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={loading}
@@ -863,6 +931,14 @@ export default function StoreItemMasterPage() {
           setCategories(prev => [...prev, newCat]);
           setFormData(prev => ({ ...prev, category: newCat.id }));
         }}
+      />
+
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        formLabel="Store Item Master"
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import {
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
+import { StatCardsSkeleton, TableSkeleton } from '../components/TableSkeleton';
 
 export default function ActiveDevicesPage() {
   const navigate = useNavigate();
@@ -193,132 +194,135 @@ export default function ActiveDevicesPage() {
       </div>
 
       {/* 4 KPI Stat Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: '1.1rem',
-        marginBottom: '1.5rem'
-      }}>
-        {/* Total Sessions */}
+      {loading && <StatCardsSkeleton count={4} />}
+      {!loading && (
         <div style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '14px',
-          padding: '1.2rem',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '1.1rem',
+          marginBottom: '1.5rem'
         }}>
+          {/* Total Sessions */}
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            backgroundColor: '#f0f9ff',
-            color: '#0284c7',
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '1.2rem',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            gap: '1rem'
           }}>
-            <Monitor size={22} />
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              backgroundColor: '#f0f9ff',
+              color: '#0284c7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Monitor size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Active Sessions</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{totalSessions}</div>
+              <span style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: 600 }}>Connected devices</span>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Active Sessions</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{totalSessions}</div>
-            <span style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: 600 }}>Connected devices</span>
-          </div>
-        </div>
 
-        {/* Desktop Devices */}
-        <div style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '14px',
-          padding: '1.2rem',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem'
-        }}>
+          {/* Desktop Devices */}
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            backgroundColor: '#f0fdf4',
-            color: '#16a34a',
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '1.2rem',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            gap: '1rem'
           }}>
-            <Monitor size={22} />
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              backgroundColor: '#f0fdf4',
+              color: '#16a34a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Monitor size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Desktop Devices</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{desktopCount}</div>
+              <span style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 600 }}>Windows / Mac / Linux</span>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Desktop Devices</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{desktopCount}</div>
-            <span style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 600 }}>PC & Laptops</span>
-          </div>
-        </div>
 
-        {/* Mobile Devices */}
-        <div style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '14px',
-          padding: '1.2rem',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem'
-        }}>
+          {/* Mobile & Tablet Devices */}
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            backgroundColor: '#fff7ed',
-            color: '#ea580c',
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '1.2rem',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            gap: '1rem'
           }}>
-            <Smartphone size={22} />
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              backgroundColor: '#fff7ed',
+              color: '#ea580c',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Smartphone size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Mobile & Tablets</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{mobileCount}</div>
+              <span style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 600 }}>Android / iOS</span>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Mobile & Tablets</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{mobileCount}</div>
-            <span style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 600 }}>Portable sessions</span>
-          </div>
-        </div>
 
-        {/* My Sessions */}
-        <div style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '14px',
-          padding: '1.2rem',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem'
-        }}>
+          {/* My Sessions */}
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            backgroundColor: '#faf5ff',
-            color: '#9333ea',
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '1.2rem',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            gap: '1rem'
           }}>
-            <UserCheck size={22} />
-          </div>
-          <div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>My Account Sessions</span>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{mySessionsCount}</div>
-            <span style={{ fontSize: '0.74rem', color: '#9333ea', fontWeight: 600 }}>Logged in as {user?.username}</span>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              backgroundColor: '#faf5ff',
+              color: '#9333ea',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <UserCheck size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>My Account Sessions</span>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>{mySessionsCount}</div>
+              <span style={{ fontSize: '0.74rem', color: '#9333ea', fontWeight: 600 }}>Logged in as {user?.username}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div style={{
@@ -440,10 +444,7 @@ export default function ActiveDevicesPage() {
         </div>
 
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem auto' }} />
-            <span>Loading active device sessions...</span>
-          </div>
+          <TableSkeleton rows={5} cols={5} />
         ) : filteredSessions.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
             <Monitor size={36} color="#cbd5e1" style={{ margin: '0 auto 0.75rem auto' }} />

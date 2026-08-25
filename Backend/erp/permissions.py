@@ -86,3 +86,15 @@ class IsMerchant(BasePermission):
             request.user.role in ('admin', 'merchant')
         )
 
+
+class IsSupplierManager(BasePermission):
+    """Allow access to Admin, Store Manager, or Supervisor users to manage supplier profiles."""
+    message = "Access restricted to Admin, Store Manager, or Supervisor users."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.role in ('admin', 'store_manager', 'supervisor')
+        )
+

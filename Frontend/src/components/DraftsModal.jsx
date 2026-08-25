@@ -4,7 +4,8 @@ import { useDrafts } from '../context/DraftsContext';
 import {
   FileBox, X, Trash2, ArrowRight, Clock, Layers, Receipt,
   ClipboardCheck, Box, Palette, Search, SlidersHorizontal,
-  ChevronDown, Lightbulb, Plus, MoreVertical, FileText
+  ChevronDown, Lightbulb, Plus, MoreVertical, FileText,
+  ArrowDownRight, ArrowUpRight, Undo2, Package
 } from 'lucide-react';
 
 const FORM_ICONS = {
@@ -13,6 +14,10 @@ const FORM_ICONS = {
   sample: Box,
   buyer_master: Layers,
   finishing: Palette,
+  store_in: ArrowDownRight,
+  store_issue: ArrowUpRight,
+  store_return: Undo2,
+  store_item: Package,
 };
 
 const FORM_COLORS = {
@@ -21,6 +26,10 @@ const FORM_COLORS = {
   sample: '#22c55e',
   buyer_master: '#6366f1',
   finishing: '#8b5a2b',
+  store_in: '#16a34a',
+  store_issue: '#ea580c',
+  store_return: '#d97706',
+  store_item: '#0284c7',
 };
 
 const CATEGORIES = [
@@ -30,6 +39,10 @@ const CATEGORIES = [
   { id: 'sample', label: 'Sample' },
   { id: 'buyer_master', label: 'Buyer Master' },
   { id: 'finishing', label: 'Finishing' },
+  { id: 'store_in', label: 'Material In' },
+  { id: 'store_issue', label: 'Daily Issue' },
+  { id: 'store_return', label: 'Material Return' },
+  { id: 'store_item', label: 'Store Item' },
 ];
 
 export function DraftsModal({ isOpen, onClose }) {

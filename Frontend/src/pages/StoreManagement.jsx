@@ -36,6 +36,7 @@ export default function StoreManagement() {
   const [pageBilling, setPageBilling] = useState(1);
   const [pageRequisitions, setPageRequisitions] = useState(1);
   const [pageAdjustments, setPageAdjustments] = useState(1);
+  const [pageMaterialReturns, setPageMaterialReturns] = useState(1);
 
   // Sliding nav indicator state & refs
   const navTabRefs = React.useRef({});
@@ -315,6 +316,9 @@ export default function StoreManagement() {
   const paginatedDailyIssues = filteredDailyIssues.slice((pageDailyIssue - 1) * ITEMS_PER_PAGE, pageDailyIssue * ITEMS_PER_PAGE);
   const paginatedContractors = contractors.slice((pageContractors - 1) * ITEMS_PER_PAGE, pageContractors * ITEMS_PER_PAGE);
   const paginatedBillingContractors = contractors.slice((pageBilling - 1) * ITEMS_PER_PAGE, pageBilling * ITEMS_PER_PAGE);
+  const paginatedMaterialReturns = materialReturnsList.slice((pageMaterialReturns - 1) * ITEMS_PER_PAGE, pageMaterialReturns * ITEMS_PER_PAGE);
+  const paginatedRequisitions = requisitionsList.slice((pageRequisitions - 1) * ITEMS_PER_PAGE, pageRequisitions * ITEMS_PER_PAGE);
+  const paginatedAdjustments = stockAdjustmentsList.slice((pageAdjustments - 1) * ITEMS_PER_PAGE, pageAdjustments * ITEMS_PER_PAGE);
 
   return (
     <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
@@ -1479,7 +1483,7 @@ export default function StoreManagement() {
                     </td>
                   </tr>
                 ) : (
-                  materialReturnsList.map((ret, idx) => (
+                  paginatedMaterialReturns.map((ret, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#b45309' }}>{ret.voucher_no}</td>
                       <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{ret.return_date}</td>
@@ -1522,6 +1526,14 @@ export default function StoreManagement() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageMaterialReturns}
+              totalPages={Math.ceil(materialReturnsList.length / ITEMS_PER_PAGE)}
+              onPageChange={setPageMaterialReturns}
+            />
           </div>
         </div>
       )}

@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse, FileText } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import { UnsavedChangesModal } from '../components/UnsavedChangesModal';
 
 export default function StoreMaterialInPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [items, setItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -31,6 +34,42 @@ export default function StoreMaterialInPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+
+  const {
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'store_in',
+    formLabel: 'Store Material In',
+    getFormTitle: (data) => `Material In - Inv ${data?.bill_no || data?.voucher_no || 'New'}`,
+    getFormData: () => formData,
+    targetPath: '/store-management/material-in',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('store-material-in-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (location.state?.draftData) {
+      setFormData(location.state.draftData);
+      setIsDirty(true);
+      if (location.state.draftId) {
+        setCurrentDraftId(location.state.draftId);
+      }
+    }
+  }, [location.state]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -68,6 +107,7 @@ export default function StoreMaterialInPage() {
   }, []);
 
   const handleItemChange = (e) => {
+    setIsDirty(true);
     const itemId = e.target.value;
     const selectedItem = items.find(i => String(i.id) === String(itemId));
     if (selectedItem) {
@@ -88,6 +128,7 @@ export default function StoreMaterialInPage() {
   };
 
   const handleQtyRateChange = (name, val) => {
+    setIsDirty(true);
     setFormData(prev => {
       const updated = { ...prev, [name]: val };
       const q = parseFloat(updated.qty || 0);
@@ -104,6 +145,8 @@ export default function StoreMaterialInPage() {
 
     api.post('/store/material-in/', formData)
       .then(() => {
+        if (currentDraftId) clearDraft(currentDraftId);
+        setIsDirty(false);
         setSuccessMsg('Material Inward record saved successfully! Stock balance credited.');
         setTimeout(() => navigate('/store-management'), 1200);
       })
@@ -144,7 +187,9 @@ export default function StoreMaterialInPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <button
             type="button"
-            onClick={() => navigate('/store-management')}
+            onClick={() => {
+              if (confirmExit('/store-management')) navigate('/store-management');
+            }}
             style={{
               width: '38px',
               height: '38px',
@@ -404,7 +449,9 @@ export default function StoreMaterialInPage() {
           }}>
             <button
               type="button"
-              onClick={() => navigate('/store-management')}
+              onClick={() => {
+                if (confirmExit('/store-management')) navigate('/store-management');
+              }}
               style={{
                 padding: '0.65rem 1.25rem',
                 borderRadius: '8px',
@@ -417,6 +464,25 @@ export default function StoreMaterialInPage() {
               }}
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSaveDraft()}
+              style={{
+                padding: '0.65rem 1.25rem',
+                borderRadius: '8px',
+                border: '1px solid #16a34a',
+                backgroundColor: '#f0fdf4',
+                color: '#166534',
+                fontWeight: 650,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              <FileText size={16} /> Save as Draft
             </button>
             <button
               type="submit"
@@ -444,6 +510,14 @@ export default function StoreMaterialInPage() {
         </form>
       </div>
       )}
+
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        formLabel="Store Material In"
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
+      />
     </div>
   );
 }
