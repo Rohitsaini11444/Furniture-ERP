@@ -59,18 +59,21 @@ export default function VendorManagement() {
   const [showSupplierManagerModal, setShowSupplierManagerModal] = useState(false);
   const [debitNotes, setDebitNotes] = useState([]);
 
-  // Fetch Suppliers, POs, and Debit Notes
+  // Fetch Suppliers and POs (Debit notes fetched lazily)
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [posRes, suppRes, dnRes] = await Promise.all([
-        api.get('/supplier-pos/', { params: { nopage: true } }),
-        api.get('/suppliers/', { params: { nopage: true } }),
-        api.get('/supplier-debit-notes/', { params: { nopage: true } })
+      const [posRes, suppRes] = await Promise.all([
+        api.get('/supplier-pos/'),
+        api.get('/suppliers/', { params: { nopage: true } })
       ]);
       setPos(posRes.data.results || posRes.data || []);
       setSuppliers(suppRes.data.results || suppRes.data || []);
-      setDebitNotes(dnRes.data.results || dnRes.data || []);
+
+      // Fetch Debit Notes in background (non-blocking)
+      api.get('/supplier-debit-notes/').then(dnRes => {
+        setDebitNotes(dnRes.data.results || dnRes.data || []);
+      }).catch(err => console.error('Error fetching debit notes:', err));
     } catch (err) {
       console.error('Error loading vendor management data:', err);
     } finally {

@@ -4,7 +4,7 @@ import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
-  ShieldAlert, Check, XCircle
+  ShieldAlert, Check, XCircle, RotateCcw
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -116,43 +116,98 @@ export default function StoreManagement() {
 
   const [loading, setLoading] = useState(false);
 
-  // Fetch initial baseline data
+  // Cache state tracking fetched tabs & modal options
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [modalOptionsLoaded, setModalOptionsLoaded] = useState({
+    suppliers: false,
+    contractors: false,
+    items: false,
+    units: false,
+  });
+
+  // Fetch initial baseline data (Only Stock Summary & Categories - 2 requests)
   const fetchBaselineData = useCallback(async () => {
     setLoading(true);
     try {
       const results = await Promise.allSettled([
         api.get('/store/stock-summary/'),
-        api.get('/store/items/'),
         api.get('/store/categories/'),
-        api.get('/suppliers/', { params: { nopage: true } }),
-        api.get('/users/', { params: { role: 'contractor' } }),
-        api.get('/store/contractor-persons/'),
-        api.get('/production-units/'),
-        api.get('/store/material-in/'),
-        api.get('/store/daily-issues/'),
-        api.get('/store/material-returns/'),
-        api.get('/store/requisitions/'),
-        api.get('/store/stock-adjustments/'),
       ]);
 
       if (results[0].status === 'fulfilled') setStockSummaryData(results[0].value.data);
-      if (results[1].status === 'fulfilled') setItemsList(results[1].value.data.results || results[1].value.data || []);
-      if (results[2].status === 'fulfilled') setCategories(results[2].value.data.results || results[2].value.data || []);
-      if (results[3].status === 'fulfilled') setSuppliers(results[3].value.data.results || results[3].value.data || []);
-      if (results[4].status === 'fulfilled') setContractors(results[4].value.data.results || results[4].value.data || []);
-      if (results[5].status === 'fulfilled') setContractorPersons(results[5].value.data.results || results[5].value.data || []);
-      if (results[6].status === 'fulfilled') setProductionUnits(results[6].value.data.results || results[6].value.data || []);
-      if (results[7].status === 'fulfilled') setMaterialInList(results[7].value.data.results || results[7].value.data || []);
-      if (results[8].status === 'fulfilled') setDailyIssuesList(results[8].value.data.results || results[8].value.data || []);
-      if (results[9].status === 'fulfilled') setMaterialReturnsList(results[9].value.data.results || results[9].value.data || []);
-      if (results[10]?.status === 'fulfilled') setRequisitionsList(results[10].value.data.results || results[10].value.data || []);
-      if (results[11]?.status === 'fulfilled') setStockAdjustmentsList(results[11].value.data.results || results[11].value.data || []);
+      if (results[1].status === 'fulfilled') setCategories(results[1].value.data.results || results[1].value.data || []);
+      setLoadedTabs(prev => ({ ...prev, 'stock-summary': true }));
     } catch (err) {
       console.error('Failed to load store management baseline data', err);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Lazy-load data for a specific active tab on-demand
+  const fetchTabData = useCallback(async (tabKey, force = false) => {
+    if (!force && loadedTabs[tabKey]) return;
+    setLoading(true);
+    try {
+      if (tabKey === 'item-master') {
+        const res = await api.get('/store/items/');
+        setItemsList(res.data.results || res.data || []);
+      } else if (tabKey === 'material-in') {
+        const res = await api.get('/store/material-in/');
+        setMaterialInList(res.data.results || res.data || []);
+      } else if (tabKey === 'daily-issue') {
+        const res = await api.get('/store/daily-issues/');
+        setDailyIssuesList(res.data.results || res.data || []);
+      } else if (tabKey === 'material-returns') {
+        const res = await api.get('/store/material-returns/');
+        setMaterialReturnsList(res.data.results || res.data || []);
+      } else if (tabKey === 'requisitions') {
+        const res = await api.get('/store/requisitions/');
+        setRequisitionsList(res.data.results || res.data || []);
+      } else if (tabKey === 'adjustments') {
+        const res = await api.get('/store/stock-adjustments/');
+        setStockAdjustmentsList(res.data.results || res.data || []);
+      } else if (tabKey === 'contractors' || tabKey === 'billing') {
+        const [cRes, cpRes] = await Promise.all([
+          api.get('/users/', { params: { role: 'contractor' } }),
+          api.get('/store/contractor-persons/'),
+        ]);
+        setContractors(cRes.data.results || cRes.data || []);
+        setContractorPersons(cpRes.data.results || cpRes.data || []);
+      }
+      setLoadedTabs(prev => ({ ...prev, [tabKey]: true }));
+    } catch (err) {
+      console.error(`Failed to fetch data for tab ${tabKey}`, err);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadedTabs]);
+
+  // Ensure dropdown data for modals is loaded on-demand
+  const ensureModalOptions = useCallback(async (optionsList = []) => {
+    const toFetch = [];
+    if (optionsList.includes('suppliers') && !modalOptionsLoaded.suppliers) {
+      toFetch.push(api.get('/suppliers/', { params: { nopage: true } }).then(r => setSuppliers(r.data.results || r.data || [])));
+    }
+    if (optionsList.includes('contractors') && !modalOptionsLoaded.contractors) {
+      toFetch.push(api.get('/users/', { params: { role: 'contractor' } }).then(r => setContractors(r.data.results || r.data || [])));
+      toFetch.push(api.get('/store/contractor-persons/').then(r => setContractorPersons(r.data.results || r.data || [])));
+    }
+    if (optionsList.includes('items') && !modalOptionsLoaded.items && itemsList.length === 0) {
+      toFetch.push(api.get('/store/items/').then(r => setItemsList(r.data.results || r.data || [])));
+    }
+    if (optionsList.includes('units') && !modalOptionsLoaded.units) {
+      toFetch.push(api.get('/production-units/').then(r => setProductionUnits(r.data.results || r.data || [])));
+    }
+    if (toFetch.length > 0) {
+      await Promise.allSettled(toFetch);
+      setModalOptionsLoaded(prev => {
+        const updated = { ...prev };
+        optionsList.forEach(opt => { updated[opt] = true; });
+        return updated;
+      });
+    }
+  }, [modalOptionsLoaded, itemsList.length]);
 
   // Admin Void Voucher Handler
   const handleVoidVoucher = async (endpoint, id, voucherNo) => {
@@ -168,6 +223,7 @@ export default function StoreManagement() {
       await api.delete(`${endpoint}${id}/`, { data: { reason } });
       alert(`Voucher #${voucherNo} voided successfully. Audit log recorded and store inventory balance recalculated.`);
       fetchBaselineData();
+      fetchTabData(activeTab, true);
     } catch (err) {
       console.error('Error voiding voucher:', err);
       alert(err.response?.data?.detail || 'Failed to void voucher.');
@@ -179,6 +235,7 @@ export default function StoreManagement() {
     try {
       await api.post(`/store/requisitions/${id}/approve/`);
       fetchBaselineData();
+      fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to approve requisition.');
     }
@@ -190,6 +247,7 @@ export default function StoreManagement() {
     try {
       await api.post(`/store/requisitions/${id}/reject/`, { reason });
       fetchBaselineData();
+      fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to reject requisition.');
     }
@@ -201,6 +259,7 @@ export default function StoreManagement() {
       await api.post(`/store/stock-adjustments/${id}/approve/`);
       alert('Stock variance adjustment approved and store inventory synced!');
       fetchBaselineData();
+      fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to approve adjustment.');
     }
@@ -210,6 +269,7 @@ export default function StoreManagement() {
     try {
       await api.post(`/store/stock-adjustments/${id}/reject/`);
       fetchBaselineData();
+      fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to reject adjustment.');
     }
@@ -218,6 +278,12 @@ export default function StoreManagement() {
   useEffect(() => {
     fetchBaselineData();
   }, [fetchBaselineData]);
+
+  useEffect(() => {
+    if (activeTab !== 'stock-summary') {
+      fetchTabData(activeTab);
+    }
+  }, [activeTab, fetchTabData]);
 
   // Filtered Stock Summary Items
   const filteredStockItems = (stockSummaryData?.items || []).filter(item => {
@@ -1398,14 +1464,17 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Rate (₹)</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Total Value</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Credit Status</th>
+                  {user?.role === 'admin' && (
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={6} cols={8} />
+                  <TableSkeleton rows={6} cols={user?.role === 'admin' ? 9 : 8} />
                 ) : materialReturnsList.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan={user?.role === 'admin' ? 9 : 8} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
                       No material return vouchers recorded yet.
                     </td>
                   </tr>

@@ -69,22 +69,36 @@ export default function ProductionPipeline() {
   const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
   const isContractor = false;
 
+  const [modalDataLoaded, setModalDataLoaded] = useState(false);
+
+  const fetchModalData = useCallback(async () => {
+    if (modalDataLoaded) return;
+    try {
+      const [stockRes, contractorRes] = await Promise.all([
+        api.get('/stock/'),
+        isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] })
+      ]);
+      setStockItems(stockRes.data.results || stockRes.data || []);
+      setContractors(contractorRes.data.results || contractorRes.data || []);
+      setModalDataLoaded(true);
+    } catch (err) {
+      console.error('Error fetching modal options:', err);
+    }
+  }, [modalDataLoaded, isSupervisor]);
+
   const fetchData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/stock/', { params: { nopage: true } }),
-      api.get('/production-jobs/', { params: { nopage: true } }),
-      isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] }),
+      api.get('/production-jobs/'),
       api.get('/production-units/')
-    ]).then(([stockRes, jobsRes, contractorRes, unitRes]) => {
-      const sData = stockRes.data.results || stockRes.data || [];
+    ]).then(([jobsRes, unitRes]) => {
       const jData = jobsRes.data.results || jobsRes.data || [];
-      const cData = contractorRes.data.results || contractorRes.data || [];
       const uData = unitRes.data.results || unitRes.data || [];
-      setStockItems(sData);
       setProductionJobs(jData);
-      setContractors(cData);
       setUnits(uData);
+
+      // Fetch stock & contractors in background for instant modal availability
+      fetchModalData();
     }).catch(err => console.error(err))
       .finally(() => setLoading(false));
   };

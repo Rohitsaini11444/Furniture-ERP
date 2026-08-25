@@ -5575,41 +5575,7 @@ class StoreStockSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        inward_sub = Subquery(
-            StoreMaterialIn.objects.filter(item=OuterRef('pk'))
-            .values('item')
-            .annotate(total=Sum('qty'))
-            .values('total')[:1],
-            output_field=DecimalField(max_digits=12, decimal_places=2)
-        )
-        issued_sub = Subquery(
-            StoreDailyIssue.objects.filter(item=OuterRef('pk'))
-            .values('item')
-            .annotate(total=Sum('qty'))
-            .values('total')[:1],
-            output_field=DecimalField(max_digits=12, decimal_places=2)
-        )
-        returned_sub = Subquery(
-            StoreMaterialReturn.objects.filter(item=OuterRef('pk'))
-            .values('item')
-            .annotate(total=Sum('qty'))
-            .values('total')[:1],
-            output_field=DecimalField(max_digits=12, decimal_places=2)
-        )
-        adjustment_sub = Subquery(
-            StoreStockAdjustment.objects.filter(item=OuterRef('pk'))
-            .values('item')
-            .annotate(total=Sum('qty'))
-            .values('total')[:1],
-            output_field=DecimalField(max_digits=12, decimal_places=2)
-        )
-
-        items = StoreItem.objects.select_related('category').annotate(
-            inward_qty_sum=Coalesce(inward_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2))),
-            issued_qty_sum=Coalesce(issued_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2))),
-            returned_qty_sum=Coalesce(returned_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2))),
-            adjustment_qty_sum=Coalesce(adjustment_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2))),
-        ).all()
+        items = StoreItem.objects.select_related('category').all()
         
         summary_list = []
         tot_stock = Decimal('0.00')

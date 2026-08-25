@@ -27,21 +27,24 @@ export default function UnitManagement() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [uRes, bRes, uUsers, allocRes, logsRes] = await Promise.all([
+      const [uRes, bRes, supRes, conRes, allocRes] = await Promise.all([
         api.get('/production-units/'),
         api.get('/buyers/?ordering=-created_at'),
-        api.get('/users/'),
-        api.get('/buyer-unit-allocations/'),
-        api.get('/unit-work-reallocations/')
+        api.get('/users/?role=supervisor'),
+        api.get('/users/?role=contractor'),
+        api.get('/buyer-unit-allocations/')
       ]);
 
       setUnits(uRes.data.results || uRes.data || []);
       setBuyers((bRes.data.results || bRes.data || []).filter(b => !b.is_deleted));
-      const allUsers = uUsers.data.results || uUsers.data || [];
-      setSupervisors(allUsers.filter(u => u.role === 'supervisor'));
-      setContractors(allUsers.filter(u => u.role === 'contractor'));
+      setSupervisors(supRes.data.results || supRes.data || []);
+      setContractors(conRes.data.results || conRes.data || []);
       setAllocations(allocRes.data.results || allocRes.data || []);
-      setReallocLogs(logsRes.data.results || logsRes.data || []);
+
+      // Fetch reallocation logs in background (non-blocking)
+      api.get('/unit-work-reallocations/').then(logsRes => {
+        setReallocLogs(logsRes.data.results || logsRes.data || []);
+      }).catch(err => console.error('Error fetching realloc logs:', err));
     } catch (err) {
       console.error(err);
     } finally {

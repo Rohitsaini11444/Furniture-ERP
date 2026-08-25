@@ -158,13 +158,9 @@ function Stock() {
 
     Promise.all([
       api.get('/stock/', { params }),
-      api.get('/production-jobs/', { params: { nopage: true } }),
-      api.get('/production-units/'),
-      isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] }),
-      api.get('/buyers/', { params: { nopage: true } }),
-      api.get('/samples/dropdown/')
+      api.get('/production-units/')
     ])
-      .then(([stockRes, jobsRes, unitRes, contractorRes, buyerRes, sampleRes]) => {
+      .then(([stockRes, unitRes]) => {
         const sData = stockRes.data.results || stockRes.data || [];
         setStockItems(sData);
         if (stockRes.data.count !== undefined) {
@@ -173,11 +169,19 @@ function Stock() {
           setTotalPages(1);
         }
 
-        setProductionJobs(jobsRes.data.results || jobsRes.data || []);
-        setUnits(unitRes.data.results || unitRes.data || []);
-        setContractors(contractorRes.data.results || contractorRes.data || []);
-        setBuyers(buyerRes.data.results || buyerRes.data || []);
-        setSamples(sampleRes.data.results || sampleRes.data || []);
+        const uData = unitRes.data.results || unitRes.data || [];
+        setUnits(uData);
+
+        // Fetch modal options in background (non-blocking)
+        Promise.allSettled([
+          api.get('/buyers/', { params: { nopage: true } }),
+          api.get('/samples/dropdown/'),
+          isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] })
+        ]).then(([bRes, smpRes, conRes]) => {
+          if (bRes.status === 'fulfilled') setBuyers(bRes.value.data.results || bRes.value.data || []);
+          if (smpRes.status === 'fulfilled') setSamples(smpRes.value.data.results || smpRes.value.data || []);
+          if (conRes.status === 'fulfilled') setContractors(conRes.value.data.results || conRes.value.data || []);
+        });
       })
       .catch(err => console.error('Failed to fetch merged stock data:', err))
       .finally(() => setLoading(false));
