@@ -5577,6 +5577,29 @@ class StoreStockSummaryView(APIView):
     def get(self, request):
         items = StoreItem.objects.select_related('category').all()
         
+        # Pre-aggregate totals across all items in 4 single bulk SQL queries instead of 4*N queries
+        inward_map = dict(
+            StoreMaterialIn.objects.values('item_id')
+            .annotate(total=Sum('qty'))
+            .values_list('item_id', 'total')
+        )
+        issued_map = dict(
+            StoreDailyIssue.objects.values('item_id')
+            .annotate(total=Sum('qty'))
+            .values_list('item_id', 'total')
+        )
+        returned_map = dict(
+            StoreMaterialReturn.objects.values('item_id')
+            .annotate(total=Sum('qty'))
+            .values_list('item_id', 'total')
+        )
+        adjustment_map = dict(
+            StoreStockAdjustment.objects.filter(status='approved')
+            .values('item_id')
+            .annotate(total=Sum('quantity_delta'))
+            .values_list('item_id', 'total')
+        )
+
         summary_list = []
         tot_stock = Decimal('0.00')
         tot_issued = Decimal('0.00')
@@ -5584,9 +5607,12 @@ class StoreStockSummaryView(APIView):
         tot_valuation = Decimal('0.00')
 
         for item in items:
-            stk_qty = item.total_stock_qty
-            iss_qty = item.total_issued_qty
-            bal_qty = item.balance_stock_qty
+            stk_qty = inward_map.get(item.id) or Decimal('0.00')
+            iss_qty = issued_map.get(item.id) or Decimal('0.00')
+            ret_qty = returned_map.get(item.id) or Decimal('0.00')
+            adj_qty = adjustment_map.get(item.id) or Decimal('0.00')
+
+            bal_qty = (stk_qty + ret_qty + adj_qty) - iss_qty
             rate = item.current_rate or item.base_rate
             val = bal_qty * rate
 
