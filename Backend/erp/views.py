@@ -142,6 +142,14 @@ class LoginView(APIView):
         ip_address = request.META.get('REMOTE_ADDR') or '127.0.0.1'
         user_agent = request.META.get('HTTP_USER_AGENT', '')[:512]
         
+        # Deactivate any previous active sessions for this user on the same IP and user agent
+        UserSession.objects.filter(
+            user=user,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            is_active=True
+        ).update(is_active=False)
+
         session = UserSession.objects.create(
             user=user,
             ip_address=ip_address,
@@ -178,20 +186,29 @@ class LoginView(APIView):
 class LogoutView(APIView):
     """
     POST /api/auth/logout/
-    Blacklists the refresh token (client should also discard access token).
+    Blacklists the refresh token and deactivates the user session.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        session_id = request.data.get('session_id')
+        if session_id:
+            try:
+                session_id_int = int(session_id)
+                UserSession.objects.filter(id=session_id_int, user=request.user).update(is_active=False)
+            except (ValueError, TypeError):
+                UserSession.objects.filter(id=session_id, user=request.user).update(is_active=False)
+        else:
+            UserSession.objects.filter(user=request.user, is_active=True).update(is_active=False)
+
         try:
             refresh_token = request.data.get('refresh')
-            session_id = request.data.get('session_id')
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            if session_id:
-                UserSession.objects.filter(id=session_id, user=request.user).update(is_active=False)
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
         except Exception:
-            pass  # Token may already be expired
+            pass  # Token blacklisting optional
+
         return Response({'detail': 'Logged out successfully.'}, status=status.HTTP_200_OK)
 
 
@@ -213,11 +230,11 @@ class ActiveDevicesView(APIView):
         
         if user.role == 'admin':
             if user_id:
-                sessions = UserSession.objects.filter(user_id=user_id, is_active=True).select_related('user')
+                sessions = UserSession.objects.filter(user_id=user_id, is_active=True).select_related('user').order_by('-last_activity')
             else:
-                sessions = UserSession.objects.filter(is_active=True).select_related('user')
+                sessions = UserSession.objects.filter(is_active=True).select_related('user').order_by('-last_activity')
         else:
-            sessions = UserSession.objects.filter(user=user, is_active=True).select_related('user')
+            sessions = UserSession.objects.filter(user=user, is_active=True).select_related('user').order_by('-last_activity')
             
         serializer = UserSessionSerializer(sessions, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -5757,6 +5774,18 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(timestamp__date__lte=end_date)
 
         return qs
+
+
+class HealthCheckView(APIView):
+    """
+    Ultra-lightweight keep-alive health check endpoint for UptimeRobot pinging.
+    Allows unauthenticated requests to keep the Render container awake 24/7.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"status": "ok", "message": "ERP Backend is awake and healthy"})
+
 
 
 

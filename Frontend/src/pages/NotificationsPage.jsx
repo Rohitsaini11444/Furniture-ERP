@@ -119,9 +119,6 @@ export default function NotificationsPage() {
 
   return (
     <div style={{ padding: '1.25rem 0', maxWidth: '1350px', margin: '0 auto' }}>
-      {/* Top Breadcrumbs */}
-      <Breadcrumbs />
-
       {/* Header Container */}
       <div style={{
         backgroundColor: '#ffffff',

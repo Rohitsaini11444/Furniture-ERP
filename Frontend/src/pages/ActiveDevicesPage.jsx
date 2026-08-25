@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import Breadcrumbs from '../components/Breadcrumbs';
+import Pagination from '../components/Pagination';
 
 export default function ActiveDevicesPage() {
   const navigate = useNavigate();
@@ -101,11 +101,21 @@ export default function ActiveDevicesPage() {
   const mobileCount = sessions.filter(s => s.device_type === 'mobile' || s.device_type === 'tablet').length;
   const mySessionsCount = sessions.filter(s => String(s.user) === String(user?.id)).length;
 
+  // Pagination State (10 per page)
+  const ITEMS_PER_PAGE = 10;
+  const [pageDevice, setPageDevice] = useState(1);
+
+  useEffect(() => {
+    setPageDevice(1);
+  }, [deviceFilter, userFilter, searchQuery]);
+
+  const totalPages = Math.ceil(filteredSessions.length / ITEMS_PER_PAGE);
+  const paginatedSessions = useMemo(() => {
+    return filteredSessions.slice((pageDevice - 1) * ITEMS_PER_PAGE, pageDevice * ITEMS_PER_PAGE);
+  }, [filteredSessions, pageDevice]);
+
   return (
     <div style={{ padding: '1.25rem 0', maxWidth: '1350px', margin: '0 auto' }}>
-      {/* Breadcrumb Navigation */}
-      <Breadcrumbs />
-
       {/* Feedback Toast */}
       {feedback && (
         <div style={{
@@ -444,7 +454,7 @@ export default function ActiveDevicesPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {filteredSessions.map((session, idx) => {
+            {paginatedSessions.map((session, idx) => {
               const isCurrentSession = currentSessionId && String(session.id) === String(currentSessionId);
               return (
                 <div
@@ -565,6 +575,13 @@ export default function ActiveDevicesPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination Bar */}
+      <Pagination
+        currentPage={pageDevice}
+        totalPages={totalPages}
+        onPageChange={setPageDevice}
+      />
 
       {/* Revoke Session Confirmation Modal */}
       {sessionToRevoke && (

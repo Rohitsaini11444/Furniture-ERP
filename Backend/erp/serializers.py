@@ -29,11 +29,20 @@ class LoginSerializer(serializers.Serializer):
     def validate(self, attrs):
         username = attrs.get('username')
         password = attrs.get('password')
+
+        # Check if user exists and password is correct to report account status accurately
+        user_obj = User.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first()
+        if user_obj and user_obj.check_password(password):
+            if not user_obj.is_active:
+                raise serializers.ValidationError("This account has been deactivated by an Administrator. Please contact support.")
+            attrs['user'] = user_obj
+            return attrs
+
         user = authenticate(username=username, password=password)
         if not user:
             raise serializers.ValidationError("Invalid credentials. Please try again.")
         if not user.is_active:
-            raise serializers.ValidationError("This account has been disabled.")
+            raise serializers.ValidationError("This account has been deactivated by an Administrator. Please contact support.")
         attrs['user'] = user
         return attrs
 

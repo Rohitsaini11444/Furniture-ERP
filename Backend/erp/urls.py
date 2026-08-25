@@ -24,7 +24,7 @@ from .views import (
     StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet, StoreMaterialReturnViewSet,
     StoreRequisitionViewSet, StoreStockAdjustmentViewSet,
     StoreStockSummaryView, MonthlyContractorBillingView,
-    DatabaseRelationshipsPDFView, AuditLogViewSet,
+    DatabaseRelationshipsPDFView, AuditLogViewSet, HealthCheckView,
 )
 
 router = DefaultRouter()
@@ -76,6 +76,9 @@ router.register(r'users', UserViewSet, basename='user')
 router.register(r'notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
+    # Health / Keep-Alive Ping
+    path('health/', HealthCheckView.as_view(), name='health-check'),
+
     # Auth
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
