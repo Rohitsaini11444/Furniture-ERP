@@ -429,6 +429,7 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
 
 // ─── QC Form (Gate Entry Check) ───────────────────────────────────────────────
 function QCForm({ poId, onBack }) {
+  const { isStoreManager } = useAuth();
   const [po, setPo] = useState(null);
   const [poReceipts, setPoReceipts] = useState([]);
   const [poDebitNotes, setPoDebitNotes] = useState([]);
@@ -719,27 +720,29 @@ function QCForm({ poId, onBack }) {
           <div style={{ width: '36px', height: '3px', backgroundColor: '#10b981', borderRadius: '2px', marginLeft: '1.85rem' }} />
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowRecordInstallmentModal(true)}
-          style={{
-            backgroundColor: '#059669',
-            color: '#ffffff',
-            border: 'none',
-            padding: '0.65rem 1.25rem',
-            borderRadius: '10px',
-            fontSize: '0.9rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)'
-          }}
-        >
-          <Truck size={18} />
-          <span>+ Record Delivery Installment / Inward Shipment</span>
-        </button>
+        {!isStoreManager && (
+          <button
+            type="button"
+            onClick={() => setShowRecordInstallmentModal(true)}
+            style={{
+              backgroundColor: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.65rem 1.25rem',
+              borderRadius: '10px',
+              fontSize: '0.9rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 12px rgba(5, 150, 105, 0.2)'
+            }}
+          >
+            <Truck size={18} />
+            <span>+ Record Delivery Installment / Inward Shipment</span>
+          </button>
+        )}
       </div>
 
       {/* Table Card Container */}

@@ -7,6 +7,7 @@ import {
   CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X,
   Home, ChevronRight
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import SearchableSelect from '../components/SearchableSelect';
@@ -150,6 +151,7 @@ function formatApiError(err) {
 
 // ─── PO Form (Create / Edit) ───────────────────────────────────────────────────
 function POForm({ poId, onBack, onSaved }) {
+  const { isStoreManager } = useAuth();
   const isNew = !poId;
   const formTopRef = React.useRef(null);
   const [loading, setLoading] = useState(!isNew);
@@ -299,11 +301,13 @@ function POForm({ poId, onBack, onSaved }) {
   }, [poId, isNew]);
 
   const updateHeader = (key, val) => {
+    if (isStoreManager) return;
     setIsDirty(true);
     setHeader(h => ({ ...h, [key]: val }));
   };
 
   const updateItem = (idx, key, val) => {
+    if (isStoreManager) return;
     setIsDirty(true);
     setItems(prev => {
       const next = [...prev];
@@ -467,11 +471,19 @@ function POForm({ poId, onBack, onSaved }) {
           </div>
         )}
 
+        {isStoreManager && (
+          <div style={{ backgroundColor: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '0.85rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#0369a1', fontWeight: 650, fontSize: '0.9rem' }}>
+            <Eye size={18} />
+            <span>View Only Mode: As a Store Manager, you are viewing this Purchase Order in read-only mode.</span>
+          </div>
+        )}
+
+        <fieldset disabled={isStoreManager} style={{ border: 'none', padding: 0, margin: 0 }}>
         <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
           <div className="modal-header" style={{ padding: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
             <h2 className="pi-form-title" style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
               <FileText size={20} color="#8b5a2b"/>
-              {isNew ? 'Create New PO' : 'Edit PO'}
+              {isNew ? 'Create New PO' : 'View PO Details'}
               {!isNew && <span style={{ backgroundColor: '#fff3e0', color: '#b45309', padding: '0.2rem 0.6rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 700 }}>{header.po_number}</span>}
             </h2>
           </div>
@@ -499,6 +511,7 @@ function POForm({ poId, onBack, onSaved }) {
                   clearable={false}
                   placeholder="Select status..."
                   titleKey="name"
+                  disabled={isStoreManager}
                 />
               </div>
               <div className="form-group">
@@ -507,6 +520,7 @@ function POForm({ poId, onBack, onSaved }) {
                   required
                   value={header.po_date}
                   onChange={val => updateHeader('po_date', val)}
+                  disabled={isStoreManager}
                 />
               </div>
               <div className="form-group">
@@ -514,17 +528,20 @@ function POForm({ poId, onBack, onSaved }) {
                   label="PO Due Date"
                   value={header.due_date}
                   onChange={val => updateHeader('due_date', val)}
+                  disabled={isStoreManager}
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Mode of Payment</label>
                 <input type="text" className="form-input" placeholder="e.g. Bank Transfer / Cheque"
+                  disabled={isStoreManager}
                   value={header.mode_of_payment} onChange={e => updateHeader('mode_of_payment', e.target.value)} />
               </div>
               <div className="form-group">
                 <label className="form-label">Supervisor</label>
                 <CustomSelect
                   value={header.supervisor}
+                  disabled={isStoreManager}
                   onChange={val => {
                     const selectedVal = val?.target ? val.target.value : val;
                     updateHeader('supervisor', selectedVal);
@@ -555,21 +572,25 @@ function POForm({ poId, onBack, onSaved }) {
                   codeKey="pi_no"
                   titleKey="buyer_name"
                   icon={FileText}
+                  disabled={isStoreManager}
                 />
               </div>
               <div className="form-group full-width">
                 <label className="form-label">Terms of Delivery</label>
                 <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
+                  disabled={isStoreManager}
                   value={header.terms_of_delivery} onChange={e => updateHeader('terms_of_delivery', e.target.value)} />
               </div>
               <div className="form-group full-width">
                 <label className="form-label">NKU Reference Numbers</label>
                 <input type="text" className="form-input" placeholder="e.g. NKU # P0010167N1"
+                  disabled={isStoreManager}
                   value={header.nku_refs} onChange={e => updateHeader('nku_refs', e.target.value)} />
               </div>
               <div className="form-group full-width">
                 <label className="form-label">Remarks</label>
                 <textarea rows={2} className="form-input" placeholder="Any special instructions..."
+                  disabled={isStoreManager}
                   value={header.remarks} onChange={e => updateHeader('remarks', e.target.value)} />
               </div>
             </div>
@@ -592,6 +613,7 @@ function POForm({ poId, onBack, onSaved }) {
                   icon={Building2}
                   footerIcon={Building2}
                   footerText={(count) => ` ${count} supplier${count !== 1 ? 's' : ''} found`}
+                  disabled={isStoreManager}
                 />
               </div>
             </div>
@@ -639,17 +661,19 @@ function POForm({ poId, onBack, onSaved }) {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
             <h3 className="form-section-title" style={{ margin: 0 }}>📦 Line Items</h3>
-            <button type="button" className="btn-secondary" onClick={addItem}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
-              <Plus size={15}/> Add Item
-            </button>
+            {!isStoreManager && (
+              <button type="button" className="btn-secondary" onClick={addItem}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+                <Plus size={15}/> Add Item
+              </button>
+            )}
           </div>
 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  {(header.buyer_pi ? ['#','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)',''] : ['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)','']).map(h => (
+                  {(header.buyer_pi ? ['#','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? '' : null].filter(Boolean) : ['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? '' : null].filter(Boolean)).map(h => (
                     <th key={h} style={{ padding: '10px 10px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -663,6 +687,7 @@ function POForm({ poId, onBack, onSaved }) {
                         <td style={{ padding: '6px 8px' }}>
                           <CustomSelect
                             value={item.buyer}
+                            disabled={isStoreManager}
                             onChange={e => {
                               const val = e.target ? e.target.value : e;
                               updateItem(idx, 'buyer', val);
@@ -682,7 +707,7 @@ function POForm({ poId, onBack, onSaved }) {
                               const val = e.target ? e.target.value : e;
                               updateItem(idx, 'buyer_pi', val);
                             }}
-                            disabled={!item.buyer}
+                            disabled={isStoreManager || !item.buyer}
                             options={[
                               { value: '', label: 'None' },
                               ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
@@ -695,6 +720,7 @@ function POForm({ poId, onBack, onSaved }) {
                     )}
                     <td style={{ padding: '6px 8px' }}>
                       <textarea rows={2} required className="form-input"
+                        disabled={isStoreManager}
                         style={{ minWidth: '220px', fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }}
                         placeholder="e.g. Natural Jute Fabric / 2601-068SBWWKW"
                         value={item.description}
@@ -702,6 +728,7 @@ function POForm({ poId, onBack, onSaved }) {
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <input required type="number" step="0.01" min="0.01" max="999999" className="form-input"
+                        disabled={isStoreManager}
                         style={{ width: '95px', fontSize: '0.82rem', padding: '6px 8px' }}
                         placeholder="0.00" value={item.quantity}
                         onChange={e => updateItem(idx, 'quantity', e.target.value)} />
@@ -709,6 +736,7 @@ function POForm({ poId, onBack, onSaved }) {
                     <td style={{ padding: '6px 8px' }}>
                       <CustomSelect
                         value={item.unit}
+                        disabled={isStoreManager}
                         onChange={e => {
                           const val = e.target ? e.target.value : e;
                           updateItem(idx, 'unit', val);
@@ -719,6 +747,7 @@ function POForm({ poId, onBack, onSaved }) {
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <input required type="number" step="0.01" min="0" max="99999999.99" className="form-input"
+                        disabled={isStoreManager}
                         style={{ width: '105px', fontSize: '0.82rem', padding: '6px 8px' }}
                         placeholder="0.00" value={item.rate}
                         onChange={e => updateItem(idx, 'rate', e.target.value)} />
@@ -726,12 +755,14 @@ function POForm({ poId, onBack, onSaved }) {
                     <td style={{ padding: '6px 8px', fontWeight: 600, color: '#8b5a2b', whiteSpace: 'nowrap', minWidth: '100px' }}>
                       {item.amount ? `₹${parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
                     </td>
-                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
-                      <button type="button" onClick={() => removeItem(idx)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}>
-                        <Trash2 size={16}/>
-                      </button>
-                    </td>
+                    {!isStoreManager && (
+                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                        <button type="button" onClick={() => removeItem(idx)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}>
+                          <Trash2 size={16}/>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -806,27 +837,36 @@ function POForm({ poId, onBack, onSaved }) {
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
-                  if (confirmExit('/pos')) onBack();
+                  if (isStoreManager) {
+                    onBack();
+                  } else {
+                    if (confirmExit('/pos')) onBack();
+                  }
                 }}
                 style={{ padding: '0.65rem 1.6rem', borderRadius: '10px' }}
               >
-                Cancel
+                {isStoreManager ? 'Back to Listing' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', padding: '0.65rem 1.4rem' }}
-                onClick={() => handleSaveDraft()}
-              >
-                <FileText size={16} /> Save as Draft
-              </button>
-              <button type="submit" className="btn-primary" disabled={saving}
-                style={{ padding: '0.65rem 2.2rem', borderRadius: '10px', fontWeight: 800, backgroundColor: '#8b5a2b', borderColor: '#8b5a2b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {saving ? 'Saving…' : isNew ? 'Create PO' : 'Save Changes'}
-              </button>
+              {!isStoreManager && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', padding: '0.65rem 1.4rem' }}
+                    onClick={() => handleSaveDraft()}
+                  >
+                    <FileText size={16} /> Save as Draft
+                  </button>
+                  <button type="submit" className="btn-primary" disabled={saving}
+                    style={{ padding: '0.65rem 2.2rem', borderRadius: '10px', fontWeight: 800, backgroundColor: '#8b5a2b', borderColor: '#8b5a2b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {saving ? 'Saving…' : isNew ? 'Create PO' : 'Save Changes'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
+        </fieldset>
 
         <SupplierAllocationBreakdownModal
           isOpen={showBreakdownModal}
@@ -839,6 +879,7 @@ function POForm({ poId, onBack, onSaved }) {
 }
 
 function POs() {
+  const { isStoreManager } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1317,30 +1358,32 @@ function POs() {
                   </p>
                 </div>
               </div>
-              <div className="po-header-actions">
-                <button
-                  onClick={() => navigate('/pos/new')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    backgroundColor: '#8b5a2b',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '10px',
-                    padding: '0.65rem 1.35rem',
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
-                    transition: 'background-color 0.15s ease'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#754921'}
-                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8b5a2b'}
-                >
-                  <Plus size={18} /> Create New PO
-                </button>
-              </div>
+              {!isStoreManager && (
+                <div className="po-header-actions">
+                  <button
+                    onClick={() => navigate('/pos/new')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      backgroundColor: '#8b5a2b',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '0.65rem 1.35rem',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
+                      transition: 'background-color 0.15s ease'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#754921'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8b5a2b'}
+                  >
+                    <Plus size={18} /> Create New PO
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ── Stat Cards Grid (4 KPI Cards) ── */}
@@ -1684,7 +1727,7 @@ function POs() {
                                 style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', color: '#475569' }}
                                 onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
                               >
-                                <Eye size={13}/> Edit
+                                <Eye size={13}/> {isStoreManager ? 'View' : 'Edit'}
                               </button>
                               <button
                                 className="po-action-pill-btn"
@@ -1695,20 +1738,22 @@ function POs() {
                               >
                                 <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
                               </button>
-                              <button
-                                className="po-action-pill-btn"
-                                style={{
-                                  backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fff5f5',
-                                  border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
-                                  color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
-                                  cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
-                                }}
-                                onClick={e => handleCancelPO(p, e)}
-                                disabled={p.status === 'Cancelled'}
-                                title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
-                              >
-                                <X size={13}/> {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
-                              </button>
+                              {!isStoreManager && (
+                                <button
+                                  className="po-action-pill-btn"
+                                  style={{
+                                    backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fff5f5',
+                                    border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
+                                    color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
+                                    cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
+                                  }}
+                                  onClick={e => handleCancelPO(p, e)}
+                                  disabled={p.status === 'Cancelled'}
+                                  title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
+                                >
+                                  <X size={13}/> {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

@@ -106,17 +106,17 @@ export default function StoreMaterialInPage() {
       .finally(() => setLoadingData(false));
   }, []);
 
-  const handleItemChange = (e) => {
+  const handleItemChange = (val, selectedObj) => {
     setIsDirty(true);
-    const itemId = e.target.value;
-    const selectedItem = items.find(i => String(i.id) === String(itemId));
+    const itemId = typeof val === 'object' && val?.target ? val.target.value : (typeof val === 'object' ? val?.id : val);
+    const selectedItem = selectedObj || items.find(i => String(i.id) === String(itemId));
     if (selectedItem) {
       setFormData(prev => {
         const rate = selectedItem.current_rate || selectedItem.base_rate || 0;
         const q = parseFloat(prev.qty || 0);
         return {
           ...prev,
-          item: itemId,
+          item: selectedItem.id,
           unit: selectedItem.unit,
           bill_rate: rate,
           total_amount: q ? (q * parseFloat(rate)).toFixed(2) : ''

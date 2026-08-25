@@ -1520,7 +1520,7 @@ function AppLayout() {
             <Route path="/stock-details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StockDetails /></ProtectedRoute>} />
 
             {/* Tools & Catalog Generators */}
-            <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><Tools /></ProtectedRoute>} />
+            <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
 
             <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
             <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />

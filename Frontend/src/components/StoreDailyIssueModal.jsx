@@ -95,15 +95,15 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
     }
   };
 
-  const handleItemChange = (e) => {
-    const itemId = e.target.value;
-    const found = items.find(i => String(i.id) === String(itemId));
+  const handleItemChange = (val, selectedObj) => {
+    const itemId = typeof val === 'object' && val?.target ? val.target.value : (typeof val === 'object' ? val?.id : val);
+    const found = selectedObj || items.find(i => String(i.id) === String(itemId));
     setSelectedItemObj(found || null);
 
     if (found) {
       setFormData(prev => ({
         ...prev,
-        item: itemId,
+        item: found.id,
         unit: found.unit,
         rate: found.current_rate || found.base_rate || '',
         status: found.default_status || 'charge'

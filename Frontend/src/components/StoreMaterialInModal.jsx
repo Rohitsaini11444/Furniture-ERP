@@ -66,14 +66,14 @@ export default function StoreMaterialInModal({ isOpen, onClose, items, suppliers
 
   if (!isOpen) return null;
 
-  const handleItemChange = (e) => {
+  const handleItemChange = (val, selectedObj) => {
     setIsDirty(true);
-    const itemId = e.target.value;
-    const selectedItem = items.find(i => String(i.id) === String(itemId));
+    const itemId = typeof val === 'object' && val?.target ? val.target.value : (typeof val === 'object' ? val?.id : val);
+    const selectedItem = selectedObj || items.find(i => String(i.id) === String(itemId));
     if (selectedItem) {
       setFormData(prev => ({
         ...prev,
-        item: itemId,
+        item: selectedItem.id,
         unit: selectedItem.unit,
         bill_rate: selectedItem.current_rate || selectedItem.base_rate || '',
         total_amount: prev.qty ? (parseFloat(prev.qty) * parseFloat(selectedItem.current_rate || selectedItem.base_rate || 0)).toFixed(2) : ''

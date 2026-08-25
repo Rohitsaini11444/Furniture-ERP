@@ -21,7 +21,7 @@ const ALL_TILES = [
   { name: 'Production Pipeline',     icon: <Boxes size={28} />,         color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
   { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor', 'store_manager'] },
   { name: 'Audit Trail Logs',       icon: <ShieldCheck size={28} />,   color: '#dc2626', link: '/audit-trail',       roles: ['admin'] },
-  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor', 'store_manager'] },
+  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
 ];
 
 const WORKFLOW_STEPS = [

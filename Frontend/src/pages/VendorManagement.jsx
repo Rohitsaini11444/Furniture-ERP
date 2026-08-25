@@ -6,6 +6,7 @@ import {
   Hourglass, Plus, ChevronDown, ChevronUp, ChevronRight, FileText, UserCheck, MessageSquare,
   RefreshCw, ShieldAlert, ArrowRight, PhoneCall, History, Info, Building2, SlidersHorizontal, Package
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import TaxInvoiceEntryModal from '../components/TaxInvoiceEntryModal';
@@ -21,6 +22,7 @@ function fmtINR(val) {
 const floatVal = (val) => parseFloat(val || 0);
 
 export default function VendorManagement() {
+  const { isStoreManager } = useAuth();
   const navigate = useNavigate();
   const [pos, setPos] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -327,13 +329,15 @@ export default function VendorManagement() {
             >
               <Building2 size={16} /> Manage Suppliers
             </button>
-            <button
-              className="btn-primary"
-              onClick={() => navigate('/record-tax-invoice')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#8b5a2b', color: '#fff' }}
-            >
-              <FileText size={16} />Record Tax Invoice Inward (Multi-PO)
-            </button>
+            {!isStoreManager && (
+              <button
+                className="btn-primary"
+                onClick={() => navigate('/record-tax-invoice')}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#8b5a2b', color: '#fff' }}
+              >
+                <FileText size={16} />Record Tax Invoice Inward (Multi-PO)
+              </button>
+            )}
             <button
               className="btn-secondary"
               onClick={fetchData}
@@ -368,12 +372,14 @@ export default function VendorManagement() {
                     <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d48806', backgroundColor: '#fff1b8', padding: '3px 8px', borderRadius: '6px' }}>
                       ⏳ {dn.grace_days_remaining} Days Grace Remaining
                     </span>
-                    <button
-                      onClick={() => handleResolveRepaired(dn.id)}
-                      style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', color: '#389e0d', padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      ✓ Repaired & Accepted
-                    </button>
+                    {!isStoreManager && (
+                      <button
+                        onClick={() => handleResolveRepaired(dn.id)}
+                        style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', color: '#389e0d', padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        ✓ Repaired & Accepted
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDownloadDebitNotePDF(dn)}
                       style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '4px 10px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
