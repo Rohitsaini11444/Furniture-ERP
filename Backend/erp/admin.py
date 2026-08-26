@@ -42,6 +42,9 @@ from .models import (
     BuyerPI, BuyerPIItem,
     StockItem, ProductionJob, ProductionQCLog,
     Notification, UserSession, AuditLog,
+    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson,
+    StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue,
+    StoreMaterialReturn, StoreRequisition, StoreStockAdjustment,
 )
 
 
@@ -404,11 +407,6 @@ class UserSessionAdmin(admin.ModelAdmin):
 
 
 # ── Store Management Admin Registration ─────────────────────────────────────
-from .models import (
-    StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson,
-    StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue
-)
-
 @admin.register(StoreItemCategory)
 class StoreItemCategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'code', 'created_at']
@@ -443,6 +441,46 @@ class StoreDailyIssueAdmin(admin.ModelAdmin):
     list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'qty', 'rate', 'status', 'total_amount']
     list_filter = ['contractor', 'status', 'production_unit']
     search_fields = ['voucher_no', 'contractor_person_name', 'item__item_name']
+
+
+class StorePurchaseOrderItemInline(admin.TabularInline):
+    model = StorePurchaseOrderItem
+    extra = 1
+
+@admin.register(StorePurchaseOrder)
+class StorePurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = ['po_number', 'supplier', 'order_date', 'expected_delivery_date', 'status', 'total_amount', 'created_by', 'created_at']
+    list_select_related = ['supplier', 'created_by']
+    list_filter = ['status', 'order_date', 'supplier']
+    search_fields = ['po_number', 'supplier__name', 'remarks']
+    inlines = [StorePurchaseOrderItemInline]
+
+@admin.register(StorePurchaseOrderItem)
+class StorePurchaseOrderItemAdmin(admin.ModelAdmin):
+    list_display = ['po', 'item', 'ordered_qty', 'unit', 'unit_rate', 'amount']
+    list_select_related = ['po', 'item']
+    search_fields = ['po__po_number', 'item__item_name']
+
+@admin.register(StoreMaterialReturn)
+class StoreMaterialReturnAdmin(admin.ModelAdmin):
+    list_display = ['voucher_no', 'return_date', 'contractor', 'item', 'qty', 'unit', 'rate', 'status', 'total_amount', 'production_unit']
+    list_select_related = ['contractor', 'item', 'production_unit']
+    list_filter = ['status', 'production_unit', 'return_date']
+    search_fields = ['voucher_no', 'contractor__username', 'item__item_name', 'remark']
+
+@admin.register(StoreRequisition)
+class StoreRequisitionAdmin(admin.ModelAdmin):
+    list_display = ['requisition_no', 'requested_by', 'production_unit', 'item', 'requested_qty', 'unit', 'status', 'approved_by', 'created_at']
+    list_select_related = ['requested_by', 'production_unit', 'item', 'approved_by']
+    list_filter = ['status', 'production_unit', 'created_at']
+    search_fields = ['requisition_no', 'requested_by__username', 'item__item_name', 'purpose']
+
+@admin.register(StoreStockAdjustment)
+class StoreStockAdjustmentAdmin(admin.ModelAdmin):
+    list_display = ['adjustment_no', 'item', 'adjustment_type', 'quantity_delta', 'status', 'logged_by', 'approved_by', 'created_at']
+    list_select_related = ['item', 'logged_by', 'approved_by']
+    list_filter = ['adjustment_type', 'status', 'created_at']
+    search_fields = ['adjustment_no', 'item__item_name', 'reason']
 
 
 # ── Global Audit Log Admin Registration ─────────────────────────────────────
