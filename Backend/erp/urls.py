@@ -24,6 +24,8 @@ from .views import (
     StoreItemCategoryViewSet, StoreItemViewSet, ContractorPersonViewSet, StorePurchaseOrderViewSet, StoreMaterialInViewSet, StoreDailyIssueViewSet, StoreMaterialReturnViewSet,
     StoreRequisitionViewSet, StoreStockAdjustmentViewSet,
     StoreStockSummaryView, MonthlyContractorBillingView,
+    StoreExcelImportView, StoreExportTemplateView,
+    StoreExportSelectedView, StoreBulkDeleteView,
     DatabaseRelationshipsPDFView, AuditLogViewSet, HealthCheckView,
 )
 
@@ -98,9 +100,13 @@ urlpatterns = [
     path('samples/bulk-delete/', SampleBulkDeleteView.as_view(), name='samples-bulk-delete'),
     path('finishes/bulk-delete/', FinishBulkDeleteView.as_view(), name='finishes-bulk-delete'),
 
-    # Store Custom Analytics Endpoints
+    # Store Custom Analytics & Excel Import / Multi-Select Endpoints
     path('store/stock-summary/', StoreStockSummaryView.as_view(), name='store-stock-summary'),
     path('store/monthly-contractor-bill/', MonthlyContractorBillingView.as_view(), name='store-contractor-bill'),
+    path('store/import-excel/', StoreExcelImportView.as_view(), name='store-import-excel'),
+    path('store/export-template/', StoreExportTemplateView.as_view(), name='store-export-template'),
+    path('store/export-selected/', StoreExportSelectedView.as_view(), name='store-export-selected'),
+    path('store/bulk-delete/', StoreBulkDeleteView.as_view(), name='store-bulk-delete'),
     path('tools/database-relationships-pdf/', DatabaseRelationshipsPDFView.as_view(), name='database-relationships-pdf'),
 
     # Router URLs

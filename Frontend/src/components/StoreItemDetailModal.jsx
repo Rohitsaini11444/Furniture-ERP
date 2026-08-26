@@ -9,7 +9,12 @@ export default function StoreItemDetailModal({ isOpen, onClose, item, onEdit }) 
 
   if (!isOpen || !item) return null;
 
-  const imageUrl = item.image || item.image_url || null;
+  const rawImg = item?.image || item?.image_url || null;
+  const imageUrl = rawImg
+    ? (rawImg.startsWith('http://') || rawImg.startsWith('https://')
+      ? rawImg
+      : `http://127.0.0.1:8000${rawImg.startsWith('/') ? '' : '/'}${rawImg}`)
+    : null;
   const balanceQty = Number(item.balance_stock_qty || item.total_stock_qty || 0);
   const reorderLevel = Number(item.reorder_level || 0);
   const isLowStock = balanceQty <= reorderLevel;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDrafts } from '../context/DraftsContext';
+import { useAuth } from '../context/AuthContext';
 import {
   FileBox, X, Trash2, ArrowRight, Clock, Layers, Receipt,
   ClipboardCheck, Box, Palette, Search, SlidersHorizontal,
@@ -46,8 +47,25 @@ const CATEGORIES = [
 ];
 
 export function DraftsModal({ isOpen, onClose }) {
+  const { isStoreManager } = useAuth();
   const { drafts, deleteDraft } = useDrafts();
   const navigate = useNavigate();
+
+  const STORE_FORM_TYPES = useMemo(() => ['store_in', 'store_issue', 'store_return', 'store_item'], []);
+
+  const relevantCategories = useMemo(() => {
+    if (isStoreManager) {
+      return CATEGORIES.filter(cat => cat.id === 'all' || STORE_FORM_TYPES.includes(cat.id));
+    }
+    return CATEGORIES;
+  }, [isStoreManager, STORE_FORM_TYPES]);
+
+  const roleFilteredDrafts = useMemo(() => {
+    if (isStoreManager) {
+      return drafts.filter(d => STORE_FORM_TYPES.includes(d.formType));
+    }
+    return drafts;
+  }, [drafts, isStoreManager, STORE_FORM_TYPES]);
 
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -91,7 +109,7 @@ export function DraftsModal({ isOpen, onClose }) {
 
   // Filter & Sort Drafts
   const processedDrafts = useMemo(() => {
-    let result = [...drafts];
+    let result = [...roleFilteredDrafts];
 
     if (selectedCategory !== 'all') {
       result = result.filter(d => d.formType === selectedCategory);
@@ -113,7 +131,7 @@ export function DraftsModal({ isOpen, onClose }) {
     });
 
     return result;
-  }, [drafts, selectedCategory, searchTerm, sortOrder]);
+  }, [roleFilteredDrafts, selectedCategory, searchTerm, sortOrder]);
 
   if (!shouldRender) return null;
 
@@ -300,8 +318,8 @@ export function DraftsModal({ isOpen, onClose }) {
               borderBottom: '1px solid #fafaf9'
             }}
           >
-            {CATEGORIES.map(cat => {
-              const count = cat.id === 'all' ? drafts.length : drafts.filter(d => d.formType === cat.id).length;
+            {relevantCategories.map(cat => {
+              const count = cat.id === 'all' ? roleFilteredDrafts.length : roleFilteredDrafts.filter(d => d.formType === cat.id).length;
               const isActive = selectedCategory === cat.id;
               return (
                 <button
@@ -760,7 +778,7 @@ export function DraftsModal({ isOpen, onClose }) {
               type="button"
               onClick={() => {
                 handleClose();
-                setTimeout(() => navigate('/samples/new'), 220);
+                setTimeout(() => navigate(isStoreManager ? '/store-management' : '/samples/new'), 220);
               }}
               style={{
                 backgroundColor: '#5c3a21',

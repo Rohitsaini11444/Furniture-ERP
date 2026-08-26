@@ -1178,6 +1178,8 @@ class StoreMaterialIn(models.Model):
         ordering = ['-inward_date', '-created_at']
 
     def save(self, *args, **kwargs):
+        if hasattr(self.inward_date, 'date'):
+            self.inward_date = self.inward_date.date()
         if not self.month_year and self.inward_date:
             self.month_year = self.inward_date.strftime('%b-%y')
         if not self.total_amount:
@@ -1222,6 +1224,8 @@ class StoreDailyIssue(models.Model):
         ordering = ['-issue_date', '-created_at']
 
     def save(self, *args, **kwargs):
+        if hasattr(self.issue_date, 'date'):
+            self.issue_date = self.issue_date.date()
         if not self.month_year and self.issue_date:
             self.month_year = self.issue_date.strftime('%b-%y')
         self.total_amount = self.qty * self.rate
@@ -1268,6 +1272,8 @@ class StoreMaterialReturn(models.Model):
         ordering = ['-return_date', '-created_at']
 
     def save(self, *args, **kwargs):
+        if hasattr(self.return_date, 'date'):
+            self.return_date = self.return_date.date()
         if not self.month_year and self.return_date:
             self.month_year = self.return_date.strftime('%b-%y')
         self.total_amount = self.qty * self.rate

@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, ChevronRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Breadcrumbs() {
   const location = useLocation();
+  const { isAdmin } = useAuth();
   const pathname = location.pathname;
 
   // Don't render breadcrumbs on login page or home dashboard root
@@ -11,7 +13,7 @@ export default function Breadcrumbs() {
     return null;
   }
 
-  const crumbs = getCrumbsForPath(pathname);
+  const crumbs = getCrumbsForPath(pathname, isAdmin);
 
   if (!crumbs || crumbs.length === 0) return null;
 
@@ -43,7 +45,7 @@ export default function Breadcrumbs() {
   );
 }
 
-function getCrumbsForPath(pathname) {
+function getCrumbsForPath(pathname, isAdmin = false) {
   // Vendor & Supplier Management routes
   if (pathname === '/vendor-management') {
     return [{ label: 'Vendor / Supplier Management', path: '/vendor-management' }];
@@ -225,7 +227,7 @@ function getCrumbsForPath(pathname) {
   }
   if (pathname === '/active-devices') {
     return [
-      { label: 'User Management', path: '/users' },
+      ...(isAdmin ? [{ label: 'User Management', path: '/users' }] : []),
       { label: 'Active Device Sessions' }
     ];
   }

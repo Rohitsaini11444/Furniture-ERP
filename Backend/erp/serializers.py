@@ -1330,15 +1330,21 @@ class StorePurchaseOrderSerializer(serializers.ModelSerializer):
 
 
 class StoreMaterialInSerializer(serializers.ModelSerializer):
-    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    supplier_name = serializers.SerializerMethodField()
     item_code = serializers.CharField(source='item.item_code', read_only=True)
     item_name = serializers.CharField(source='item.item_name', read_only=True)
-    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    production_unit_name = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreMaterialIn
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'total_amount']
+
+    def get_supplier_name(self, obj):
+        return obj.supplier.name if obj.supplier else ""
+
+    def get_production_unit_name(self, obj):
+        return obj.production_unit.name if obj.production_unit else ""
 
     def to_internal_value(self, data):
         if isinstance(data, dict):
@@ -1366,12 +1372,15 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
     contractor_name = serializers.SerializerMethodField()
     item_code = serializers.CharField(source='item.item_code', read_only=True)
     item_name = serializers.CharField(source='item.item_name', read_only=True)
-    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    production_unit_name = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreDailyIssue
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'total_amount', 'chargeable_total', 'non_chargeable_total']
+
+    def get_production_unit_name(self, obj):
+        return obj.production_unit.name if obj.production_unit else ""
 
     def to_internal_value(self, data):
         if isinstance(data, dict):
@@ -1415,12 +1424,15 @@ class StoreMaterialReturnSerializer(serializers.ModelSerializer):
     contractor_name = serializers.SerializerMethodField()
     item_code = serializers.CharField(source='item.item_code', read_only=True)
     item_name = serializers.CharField(source='item.item_name', read_only=True)
-    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    production_unit_name = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreMaterialReturn
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'total_amount', 'chargeable_total', 'non_chargeable_total']
+
+    def get_production_unit_name(self, obj):
+        return obj.production_unit.name if obj.production_unit else ""
 
     def to_internal_value(self, data):
         if isinstance(data, dict):
@@ -1448,16 +1460,20 @@ class StoreMaterialReturnSerializer(serializers.ModelSerializer):
 
 
 class StoreRequisitionSerializer(serializers.ModelSerializer):
+    requisition_no = serializers.CharField(required=False, allow_blank=True)
     requested_by_name = serializers.SerializerMethodField()
     approved_by_name = serializers.SerializerMethodField()
     item_code = serializers.CharField(source='item.item_code', read_only=True)
     item_name = serializers.CharField(source='item.item_name', read_only=True)
-    production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    production_unit_name = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreRequisition
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'requested_by', 'created_at', 'updated_at']
+
+    def get_production_unit_name(self, obj):
+        return obj.production_unit.name if obj.production_unit else ""
 
     def get_requested_by_name(self, obj):
         if obj.requested_by:
@@ -1471,6 +1487,7 @@ class StoreRequisitionSerializer(serializers.ModelSerializer):
 
 
 class StoreStockAdjustmentSerializer(serializers.ModelSerializer):
+    adjustment_no = serializers.CharField(required=False, allow_blank=True)
     logged_by_name = serializers.SerializerMethodField()
     approved_by_name = serializers.SerializerMethodField()
     item_code = serializers.CharField(source='item.item_code', read_only=True)
@@ -1479,7 +1496,7 @@ class StoreStockAdjustmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreStockAdjustment
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'logged_by', 'created_at', 'updated_at']
 
     def get_logged_by_name(self, obj):
         if obj.logged_by:

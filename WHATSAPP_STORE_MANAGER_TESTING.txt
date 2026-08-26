@@ -1,0 +1,90 @@
+*📦 STORE MANAGER TESTING INSTRUCTIONS (STEP BY STEP)*
+
+Bhai, Store Management wale software me niche diye gaye tareeke se testing karni hai. Ek-ek step follow kar aur dummy data dalkar check kar ki stock sahi update ho raha hai ya nahi.
+
+---
+
+*🔐 STEP 0: LOGIN KARNA*
+1. Chrome browser me link khol: `http://localhost:5173/login`
+2. Username daal: `ramesh_store_mgr`
+3. Password daal: `1234`
+4. *Sign In* par click kar. Tu direct *Store Management Hub* par pahunch jayega.
+
+---
+
+*🔹 MODULE 1: NAYA ITEM MASTER BANANA*
+1. Upar right side me *+ New Item Master* button par click kar.
+2. Form me ye details bhar:
+   • *Item Code*: `TEST-SCR-2026`
+   • *Item Name*: `Hardware Screw 2.5 inch`
+   • *Category*: `Hardware` select kar (ya *+ Category* par click karke naya bana le).
+   • *Unit*: `pcs` select kar
+   • *Base Rate (₹)*: `12.50`
+   • *Reorder Level*: `40`
+   • *Default Status*: `Chargeable`
+3. Niche *Save Item Master* button par click kar.
+👉 *Check Kar*: Item save ho jayega aur catalog me stock `0 pcs` dikhayega.
+
+---
+
+*🔹 MODULE 2: MATERIAL INWARD ENTRY (CREDIT STOCK)*
+1. Green color wale *Material In (Credit Stock)* button par click kar.
+2. Details bhar:
+   • *Supplier*: Koi bhi supplier select kar (jaise *Pinkcity Suppliers*).
+   • *Supplier Bill / Invoice #*: `BILL-9901`
+   • *Store Item*: `TEST-SCR-2026 - Hardware Screw 2.5 inch` select kar.
+   • *Received Qty*: `150` daal.
+   • *Bill Rate (₹)*: `12.50` daal.
+3. *Save Material Inward* par click kar.
+👉 *Check Kar*: Stock Summary me Available Stock `0` se badh kar `150 pcs` ho jayega. Notification bell me notification bhi aayega.
+
+---
+
+*🔹 MODULE 3: CONTRACTOR DAILY ISSUE ENTRY (OUTWARD)*
+1. Orange color wale *Daily Issue Entry (Outward)* button par click kar.
+2. Details bhar:
+   • *Contractor*: Koi bhi contractor select kar (jaise *Suresh Contractor*).
+   • *Worker / Person Name*: `Raju Carpenter` daal.
+   • *Store Item*: `TEST-SCR-2026 - Hardware Screw 2.5 inch` select kar.
+   • *Issued Qty*: `20` daal.
+   • *Issue Rate (₹)*: `12.50` daal.
+   • *Charge Status*: `Chargeable` select kar.
+3. *Save Daily Issue Entry* par click kar.
+👉 *Check Kar*: Available Stock `150` se kam ho kar `130 pcs` reh jayega.
+
+---
+
+*🔹 MODULE 4: MATERIAL RETURN ENTRY (RETURN FROM CONTRACTOR)*
+1. Amber color wale *Record Material Return* button par click kar.
+2. Details bhar:
+   • *Contractor*: *Suresh Contractor* select kar.
+   • *Store Item*: `TEST-SCR-2026 - Hardware Screw 2.5 inch` select kar.
+   • *Returned Qty*: `5` daal.
+   • *Return Rate (₹)*: `12.50` daal.
+   • *Remark*: `Unused screws returned`
+3. *Save Material Return* par click kar.
+👉 *Check Kar*: Available Stock `130` se wapas badh kar `135 pcs` ho jayega.
+
+---
+
+*🔹 MODULE 5: PHYSICAL STOCK AUDIT (COUNTING MATCH)*
+1. Upar *📋 Start Physical Audit* button par click kar.
+2. Worksheet table me `TEST-SCR-2026` dhoond:
+   • System Stock `135` dikhayega.
+   • *Physical Count* wale box me `130` type kar (matlab 5 pcs kam nikle).
+   • Variance me apney aap `-5.000 pcs (Deduction)` aa jayega.
+   • Reason me daal: `Physical audit variance`
+3. *Submit Audit Adjustments* par click kar.
+👉 *Check Kar*: Admin approval ke liye adjustment draft submit ho jayega.
+
+---
+
+*🔹 MODULE 6: STORE ANALYTICS & LOW STOCK REORDER*
+1. Upar *📊 Store Analytics* button par click kar ke contractor consumption aur stock speed (Fast/Slow moving) check kar.
+2. Agar upar yellow color me *⚠️ Low Stock Alert Banner* dikhe, toh *Review & Generate Indent* par click kar.
+3. Quantities check karke *Generate Purchase Requisitions* par click kar.
+👉 *Check Kar*: Purchase Requisition Admin ko PO generate karne ke liye chali jayegi.
+
+---
+
+Bhai saare options ek-ek karke karke dekh le, agar kahin par bhi koi button kaam na kare ya galat stock dikhaye toh mujhe batana!

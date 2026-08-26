@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
-  ShieldAlert, Check, XCircle, RotateCcw
+  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -19,10 +19,15 @@ import StoreItemMasterModal from '../components/StoreItemMasterModal';
 import StoreMaterialReturnModal from '../components/StoreMaterialReturnModal';
 import StoreRequisitionModal from '../components/StoreRequisitionModal';
 import StoreStockAdjustmentModal from '../components/StoreStockAdjustmentModal';
+import StoreReorderIndentModal from '../components/StoreReorderIndentModal';
+import StorePhysicalAuditModal from '../components/StorePhysicalAuditModal';
+import StoreAnalyticsSection from '../components/StoreAnalyticsSection';
+import StoreExcelImportModal from '../components/StoreExcelImportModal';
 
 
 export default function StoreManagement() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'material-returns' | 'requisitions' | 'adjustments' | 'contractors' | 'billing'
 
@@ -115,6 +120,109 @@ export default function StoreManagement() {
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
   const [selectedContractorForBill, setSelectedContractorForBill] = useState(null);
 
+  const [isReorderIndentModalOpen, setIsReorderIndentModalOpen] = useState(false);
+  const [isPhysicalAuditModalOpen, setIsPhysicalAuditModalOpen] = useState(false);
+  const [isExcelImportModalOpen, setIsExcelImportModalOpen] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Multi-Select Bulk Actions State
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [deletingBulk, setDeletingBulk] = useState(false);
+
+  // Clear selection when activeTab changes
+  useEffect(() => {
+    setSelectedRowIds(new Set());
+  }, [activeTab]);
+
+  const getActiveModuleKey = useCallback(() => {
+    switch (activeTab) {
+      case 'stock-summary':
+      case 'item-master':
+        return 'items';
+      case 'material-in':
+        return 'material_in';
+      case 'daily-issue':
+        return 'daily_issue';
+      case 'material-returns':
+        return 'material_return';
+      default:
+        return 'items';
+    }
+  }, [activeTab]);
+
+  const handleToggleSelectRow = (id) => {
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = (items) => {
+    if (!items || items.length === 0) return;
+    const allIds = items.map(i => i.id);
+    const allSelected = allIds.every(id => selectedRowIds.has(id));
+    if (allSelected) {
+      setSelectedRowIds(new Set());
+    } else {
+      setSelectedRowIds(new Set(allIds));
+    }
+  };
+
+  const handleExportSelectedExcel = async () => {
+    if (selectedRowIds.size === 0) return;
+    setExportingExcel(true);
+    try {
+      const moduleKey = getActiveModuleKey();
+      const response = await api.post('/store/export-selected/', {
+        module: moduleKey,
+        selected_ids: Array.from(selectedRowIds)
+      }, { responseType: 'blob' });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Store_${moduleKey}_Selected_${selectedRowIds.size}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Failed to export selected items to Excel:', err);
+      alert('Failed to export selected items.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedRowIds.size === 0) return;
+    setDeletingBulk(true);
+    try {
+      const moduleKey = getActiveModuleKey();
+      const res = await api.post('/store/bulk-delete/', {
+        module: moduleKey,
+        selected_ids: Array.from(selectedRowIds)
+      });
+      alert(res.data?.message || 'Bulk deletion completed.');
+      setSelectedRowIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      fetchBaselineData();
+    } catch (err) {
+      console.error('Bulk deletion failed:', err);
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete selected items.');
+    } finally {
+      setDeletingBulk(false);
+    }
+  };
+
+  const lowStockItems = React.useMemo(() => {
+    return (stockSummaryData?.items || []).filter(it => it.is_low_stock || Number(it.balance_qty || 0) <= Number(it.reorder_level || 0));
+  }, [stockSummaryData]);
+
   const [loading, setLoading] = useState(false);
 
   // Cache state tracking fetched tabs & modal options
@@ -147,7 +255,6 @@ export default function StoreManagement() {
 
   // Lazy-load data for a specific active tab on-demand
   const fetchTabData = useCallback(async (tabKey, force = false) => {
-    if (!force && loadedTabs[tabKey]) return;
     setLoading(true);
     try {
       if (tabKey === 'item-master') {
@@ -182,7 +289,7 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
-  }, [loadedTabs]);
+  }, []);
 
   // Ensure dropdown data for modals is loaded on-demand
   const ensureModalOptions = useCallback(async (optionsList = []) => {
@@ -278,7 +385,7 @@ export default function StoreManagement() {
 
   useEffect(() => {
     fetchBaselineData();
-  }, [fetchBaselineData]);
+  }, [location.key, fetchBaselineData]);
 
   useEffect(() => {
     if (activeTab !== 'stock-summary') {
@@ -458,6 +565,96 @@ export default function StoreManagement() {
           </button>
 
           <button
+            onClick={() => setIsPhysicalAuditModalOpen(true)}
+            style={{
+              padding: '0.65rem 1.1rem',
+              borderRadius: '10px',
+              border: '1px solid #e7e5e4',
+              backgroundColor: '#ffffff',
+              color: '#44403c',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+            }}
+          >
+            <ClipboardCheck size={17} color="#5c3a21" />
+            <span>Start Physical Audit</span>
+          </button>
+
+          <button
+            onClick={() => setIsExcelImportModalOpen(true)}
+            style={{
+              padding: '0.65rem 1.1rem',
+              borderRadius: '10px',
+              border: '1px solid #bae6fd',
+              backgroundColor: '#f0f9ff',
+              color: '#0369a1',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              transition: 'all 0.2s'
+            }}
+          >
+            <Download size={17} color="#0284c7" />
+            <span>Import Excel Data</span>
+          </button>
+
+          <button
+            onClick={() => setShowAnalytics(prev => !prev)}
+            style={{
+              padding: '0.65rem 1.1rem',
+              borderRadius: '10px',
+              border: '1px solid #e7e5e4',
+              backgroundColor: showAnalytics ? '#5c3a21' : '#ffffff',
+              color: showAnalytics ? '#ffffff' : '#44403c',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              transition: 'all 0.2s'
+            }}
+          >
+            <BarChart3 size={17} color={showAnalytics ? '#ffffff' : '#5c3a21'} />
+            <span>{showAnalytics ? 'Hide Analytics' : 'Store Analytics'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSelectionMode(prev => !prev);
+              if (selectionMode) setSelectedRowIds(new Set());
+            }}
+            style={{
+              padding: '0.65rem 1.1rem',
+              borderRadius: '10px',
+              border: selectionMode ? '1px solid #2563eb' : '1px solid #e7e5e4',
+              backgroundColor: selectionMode ? '#eff6ff' : '#ffffff',
+              color: selectionMode ? '#1d4ed8' : '#44403c',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              transition: 'all 0.2s'
+            }}
+          >
+            <CheckCircle size={17} color={selectionMode ? '#1d4ed8' : '#5c3a21'} />
+            <span>{selectionMode ? 'Exit Selection' : 'Select Items'}</span>
+          </button>
+
+          <button
             onClick={() => navigate('/store-management/item-master/new')}
             className="btn-subtle-motion btn-action-new-item"
             style={{
@@ -479,6 +676,203 @@ export default function StoreManagement() {
           </button>
         </div>
       </div>
+
+      {/* Floating Multi-Select Action Bar */}
+      {selectionMode && (
+        <div style={{
+          marginBottom: '1.25rem',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '14px',
+          backgroundColor: '#3c2415',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          boxShadow: '0 10px 25px rgba(60, 36, 21, 0.25)',
+          animation: 'slideDown 0.2s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              padding: '0.25rem 0.65rem',
+              borderRadius: '20px',
+              backgroundColor: 'rgba(255,255,255,0.15)',
+              fontSize: '0.82rem',
+              fontWeight: 800
+            }}>
+              {selectedRowIds.size} Selected
+            </div>
+            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f5ece1' }}>
+              Multi-Select Actions Mode Active ({activeTab.replace('-', ' ').toUpperCase()})
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            {/* Select All / Deselect All */}
+            <button
+              onClick={() => {
+                const currentItems = stockSummaryData?.items || itemsList || [];
+                handleToggleSelectAll(currentItems);
+              }}
+              style={{
+                padding: '0.45rem 0.9rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.25)',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                color: '#ffffff',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              {selectedRowIds.size > 0 ? 'Deselect All' : 'Select All'}
+            </button>
+
+            {/* Export Selected Excel */}
+            <button
+              onClick={handleExportSelectedExcel}
+              disabled={selectedRowIds.size === 0 || exportingExcel}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.45rem 1rem',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: selectedRowIds.size > 0 ? '#2563eb' : 'rgba(255,255,255,0.15)',
+                color: '#ffffff',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: selectedRowIds.size > 0 ? 'pointer' : 'not-allowed',
+                opacity: selectedRowIds.size > 0 ? 1 : 0.6
+              }}
+            >
+              <Download size={15} />
+              <span>{exportingExcel ? 'Exporting...' : 'Export Excel'}</span>
+            </button>
+
+            {/* Bulk Delete / Void (Admin only) */}
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                disabled={selectedRowIds.size === 0}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.45rem 1rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: selectedRowIds.size > 0 ? '#dc2626' : 'rgba(255,255,255,0.15)',
+                  color: '#ffffff',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: selectedRowIds.size > 0 ? 'pointer' : 'not-allowed',
+                  opacity: selectedRowIds.size > 0 ? 1 : 0.6
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Delete Selected</span>
+              </button>
+            )}
+
+            {/* Close / Exit Mode */}
+            <button
+              onClick={() => { setSelectionMode(false); setSelectedRowIds(new Set()); }}
+              style={{
+                padding: '0.45rem 0.75rem',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: 'transparent',
+                color: '#f5ece1',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Low Stock Alert Reorder Indent Banner */}
+      {lowStockItems.length > 0 && (
+        <div
+          style={{
+            padding: '0.9rem 1.25rem',
+            backgroundColor: '#fffbeb',
+            border: '1.5px solid #fde68a',
+            borderRadius: '12px',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            boxShadow: '0 2px 5px rgba(217, 119, 6, 0.08)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                backgroundColor: '#fef3c7',
+                border: '1px solid #fde68a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#d97706',
+                flexShrink: 0
+              }}
+            >
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <strong style={{ fontSize: '0.92rem', color: '#78350f', display: 'block' }}>
+                ⚠️ Low Stock Alert: {lowStockItems.length} Store {lowStockItems.length === 1 ? 'Item is' : 'Items are'} below threshold!
+              </strong>
+              <span style={{ fontSize: '0.78rem', color: '#92400e' }}>
+                Generate batch purchase requisitions for Admin approval to restore inventory levels.
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsReorderIndentModalOpen(true)}
+            style={{
+              backgroundColor: '#5c3a21',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '0.55rem 1.1rem',
+              fontSize: '0.83rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 2px 5px rgba(92, 58, 33, 0.2)',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Sparkles size={16} color="#fbbf24" /> Review & Generate Indent
+          </button>
+        </div>
+      )}
+
+      {/* Store Analytics Section */}
+      {showAnalytics && (
+        <StoreAnalyticsSection
+          items={stockSummaryData?.items || []}
+          dailyIssues={dailyIssuesList}
+          contractors={contractors}
+        />
+      )}
 
       {/* Desktop & Mobile KPI Stats Cards Bar */}
       {loading ? (
@@ -989,6 +1383,16 @@ export default function StoreManagement() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                   <tr>
+                    {selectionMode && (
+                      <th style={{ width: '40px', padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>
+                        <input
+                          type="checkbox"
+                          checked={paginatedStockItems.length > 0 && paginatedStockItems.every(i => selectedRowIds.has(i.id))}
+                          onChange={() => handleToggleSelectAll(paginatedStockItems)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </th>
+                    )}
                     <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Code</th>
                     <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Name</th>
                     <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0284c7', backgroundColor: '#f0f9ff' }}>Stock Qty (Inward)</th>
@@ -1001,13 +1405,17 @@ export default function StoreManagement() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableSkeleton rows={8} cols={8} />
+                    <TableSkeleton rows={8} cols={selectionMode ? 9 : 8} />
                   ) :
                     paginatedStockItems.map((item, idx) => (
                     <tr
                       key={idx}
                       className="table-row-stagger"
                       onClick={() => {
+                        if (selectionMode) {
+                          handleToggleSelectRow(item.id);
+                          return;
+                        }
                         const fullItem = itemsList.find(i => i.id === item.id || i.item_code === item.item_code) || item;
                         setSelectedDetailItem(fullItem);
                         setIsDetailModalOpen(true);
@@ -1015,11 +1423,21 @@ export default function StoreManagement() {
                       title="Click to view full item details and image"
                       style={{
                         borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: item.is_low_stock ? '#fff1f2' : 'transparent',
+                        backgroundColor: selectedRowIds.has(item.id) ? '#eff6ff' : (item.is_low_stock ? '#fff1f2' : 'transparent'),
                         animationDelay: `${Math.min(idx * 20, 200)}ms`,
                         cursor: 'pointer'
                       }}
                     >
+                    {selectionMode && (
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(item.id)}
+                          onChange={() => handleToggleSelectRow(item.id)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </td>
+                    )}
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
                       {item.item_name}
@@ -1911,6 +2329,58 @@ export default function StoreManagement() {
         onSuccess={fetchBaselineData}
         items={itemsList}
       />
+
+      <StoreReorderIndentModal
+        isOpen={isReorderIndentModalOpen}
+        onClose={() => setIsReorderIndentModalOpen(false)}
+        lowStockItems={lowStockItems}
+        onSuccess={fetchBaselineData}
+      />
+
+      <StorePhysicalAuditModal
+        isOpen={isPhysicalAuditModalOpen}
+        onClose={() => setIsPhysicalAuditModalOpen(false)}
+        items={stockSummaryData?.items || []}
+        onSuccess={fetchBaselineData}
+      />
+
+      <StoreExcelImportModal
+        isOpen={isExcelImportModalOpen}
+        onClose={() => setIsExcelImportModalOpen(false)}
+        onImportSuccess={fetchBaselineData}
+      />
+
+      {/* Bulk Delete Confirm Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="modal-overlay" style={{ zIndex: 999999 }} onClick={() => setShowBulkDeleteConfirm(false)}>
+          <div className="modal-content" style={{ maxWidth: '420px', borderRadius: '16px', padding: '1.5rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+              <AlertTriangle size={26} />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+              Confirm Bulk Deletion
+            </h3>
+            <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.85rem', color: '#64748b' }}>
+              Are you sure you want to delete <strong style={{ color: '#dc2626' }}>{selectedRowIds.size} selected item(s)</strong>? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDeleteConfirm}
+                disabled={deletingBulk}
+                style={{ padding: '0.55rem 1.25rem', borderRadius: '8px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: deletingBulk ? 'not-allowed' : 'pointer' }}
+              >
+                {deletingBulk ? 'Deleting...' : `Yes, Delete (${selectedRowIds.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

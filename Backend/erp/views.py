@@ -161,10 +161,10 @@ class LoginView(APIView):
         
         Notification.objects.create(
             user=user,
-            title="New login detected",
-            message=f"from {ip_address}\n{user_agent[:120]}",
+            title="Successful Login",
+            message=f"IP: {ip_address} • {parsed_ua['device_type'].capitalize()} ({parsed_ua['browser_name']})",
             category="security",
-            link="/active-devices"
+            link="/active-devices" if user.role == 'admin' else "/notifications"
         )
 
         return Response({
@@ -5354,6 +5354,19 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
                 updated_by=self.request.user
             )
             item.current_rate = instance.bill_rate
+            item.save(update_fields=['current_rate'])
+
+        # Notify store managers & admins of material inward
+        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+        sup_name = instance.supplier.name if instance.supplier else 'Supplier'
+        for u in store_and_admins:
+            Notification.objects.create(
+                user=u,
+                title="Material Inward Recorded",
+                message=f"Voucher #{instance.voucher_no}: Received {instance.qty} {instance.unit} of {item.item_name} from {sup_name}.",
+                category="inventory",
+                link="/store-management/material-in" if u.role == 'store_manager' else "/store-management"
+            )
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response({'detail': 'Only Admin users are authorized to void or delete store material in vouchers.'}, status=status.HTTP_403_FORBIDDEN)
@@ -5398,14 +5411,26 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         issue = serializer.save(issued_by=self.request.user)
         item = issue.item
+        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+
         if item and item.balance_stock_qty <= item.reorder_level:
-            admin_and_store_users = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
-            for u in admin_and_store_users:
+            for u in store_and_admins:
                 Notification.objects.create(
-                    recipient=u,
+                    user=u,
                     title=f"Low Stock Alert: {item.item_name} ({item.item_code})",
                     message=f"Store balance for {item.item_name} has dropped to {item.balance_stock_qty} {item.unit} (Reorder Level: {item.reorder_level} {item.unit}). Please reorder soon.",
-                    link=f"/store-management"
+                    category="inventory",
+                    link="/store-management"
+                )
+        else:
+            c_name = issue.contractor_person_name or (issue.contractor.name if issue.contractor else 'Department')
+            for u in store_and_admins:
+                Notification.objects.create(
+                    user=u,
+                    title="Material Outward Issue",
+                    message=f"Voucher #{issue.voucher_no}: Issued {issue.qty} {issue.unit} of {item.item_name} to {c_name}.",
+                    category="inventory",
+                    link="/store-management/daily-issue" if u.role == 'store_manager' else "/store-management"
                 )
 
     def destroy(self, request, *args, **kwargs):
@@ -5450,7 +5475,17 @@ class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(returned_by=self.request.user)
+        ret = serializer.save(returned_by=self.request.user)
+        item = ret.item
+        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+        for u in store_and_admins:
+            Notification.objects.create(
+                user=u,
+                title="Material Return Recorded",
+                message=f"Voucher #{ret.voucher_no}: Restored {ret.qty} {ret.unit} of {item.item_name} back to store balance.",
+                category="inventory",
+                link="/store-management/material-return" if u.role == 'store_manager' else "/store-management"
+            )
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
@@ -5492,7 +5527,11 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(requested_by=self.request.user)
+        req_no = serializer.validated_data.get('requisition_no')
+        if not req_no:
+            import uuid
+            req_no = f"MRN-{uuid.uuid4().hex[:8].upper()}"
+        serializer.save(requested_by=self.request.user, requisition_no=req_no)
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
@@ -5528,7 +5567,11 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(logged_by=self.request.user)
+        adj_no = serializer.validated_data.get('adjustment_no')
+        if not adj_no:
+            import uuid
+            adj_no = f"ADJ-{uuid.uuid4().hex[:8].upper()}"
+        serializer.save(logged_by=self.request.user, adjustment_no=adj_no)
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
@@ -5632,10 +5675,15 @@ class StoreStockSummaryView(APIView):
                 'issued_qty': float(iss_qty),
                 'balance_qty': float(bal_qty),
                 'rate': float(rate),
+                'base_rate': float(item.base_rate or 0),
+                'current_rate': float(item.current_rate or item.base_rate or 0),
                 'unit': item.unit,
+                'weight': float(item.weight) if item.weight else None,
+                'image': request.build_absolute_uri(item.image.url) if item.image else None,
                 'total_value': float(val),
                 'default_status': item.default_status,
                 'reorder_level': float(item.reorder_level),
+                'remark': item.remark or '',
                 'is_low_stock': bal_qty <= item.reorder_level
             })
 
@@ -5813,4 +5861,440 @@ class HealthCheckView(APIView):
 
     def get(self, request):
         return Response({"status": "ok", "message": "ERP Backend is awake and healthy"})
+
+
+class StoreExportTemplateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        template_type = request.query_params.get('type', 'items')
+        wb = openpyxl.Workbook()
+        ws = wb.active
+
+        header_fill = PatternFill(start_color="5C3A21", end_color="5C3A21", fill_type="solid")
+        header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+
+        if template_type == 'items':
+            ws.title = "Store Item Master"
+            headers = ["Item Code*", "Item Name*", "Category", "Unit", "Base Rate (INR)", "Reorder Level", "Default Status"]
+            sample_row = ["IT-101", "Hardware Screw 2 inch", "Hardware", "pcs", 12.50, 40, "charge"]
+            ws.append(headers)
+            ws.append(sample_row)
+        elif template_type == 'material_in':
+            ws.title = "Material Inward Receipts"
+            headers = ["Voucher No*", "Entry Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Supplier Name*", "Quantity*", "Unit", "Bill Rate (INR)*", "Supplier Bill No"]
+            sample_row = ["IN-2026-001", "2026-08-01", "IT-101", "Hardware Screw 2 inch", "Pinkcity Suppliers", 500, "pcs", 12.50, "BILL-901"]
+            ws.append(headers)
+            ws.append(sample_row)
+        elif template_type == 'daily_issue':
+            ws.title = "Daily Outward Issues"
+            headers = ["Voucher No*", "Issue Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Contractor Username/Name*", "Worker Delegate Name", "Quantity*", "Unit", "Rate (INR)*", "Status (charge/non_charge)"]
+            sample_row = ["OUT-2026-001", "2026-08-05", "IT-101", "Hardware Screw 2 inch", "suresh_contractor", "Raju Carpenter", 50, "pcs", 12.50, "charge"]
+            ws.append(headers)
+            ws.append(sample_row)
+        elif template_type == 'material_return':
+            ws.title = "Material Return Entries"
+            headers = ["Voucher No*", "Return Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Contractor Username/Name*", "Quantity*", "Unit", "Rate (INR)*", "Remark"]
+            sample_row = ["RET-2026-001", "2026-08-10", "IT-101", "Hardware Screw 2 inch", "suresh_contractor", 10, "pcs", 12.50, "Surplus material returned"]
+            ws.append(headers)
+            ws.append(sample_row)
+        else:
+            return Response({'error': 'Invalid template type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Style headers
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            ws.column_dimensions[get_column_letter(col_num)].width = 24
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="store_{template_type}_template.xlsx"'
+        return response
+
+
+class StoreExcelImportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['admin', 'store_manager']:
+            return Response({'detail': 'Only Admin or Store Manager can import store data.'}, status=status.HTTP_403_FORBIDDEN)
+
+        file_obj = request.FILES.get('file')
+        import_type = request.data.get('import_type', 'items')
+
+        if not file_obj:
+            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            wb = openpyxl.load_workbook(file_obj, data_only=True)
+            ws = wb.active
+        except Exception as e:
+            return Response({'error': f'Failed to parse Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows or len(rows) < 2:
+            return Response({'error': 'Excel file is empty or contains no data rows.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_count = 0
+        updated_count = 0
+        errors = []
+
+        data_rows = rows[1:]
+
+        if import_type == 'items':
+            for idx, r in enumerate(data_rows, start=2):
+                if not r or r[0] is None or r[1] is None:
+                    continue
+                item_code = str(r[0]).strip()
+                item_name = str(r[1]).strip()
+                cat_name = str(r[2]).strip() if len(r) > 2 and r[2] else "General"
+                unit = str(r[3]).strip() if len(r) > 3 and r[3] else "pcs"
+                base_rate = Decimal(str(r[4])) if len(r) > 4 and r[4] is not None else Decimal('0.00')
+                reorder_level = Decimal(str(r[5])) if len(r) > 5 and r[5] is not None else Decimal('10.00')
+                default_status = str(r[6]).strip() if len(r) > 6 and r[6] else "charge"
+
+                cat_code = re.sub(r'[^A-Z0-9]', '_', cat_name.upper())[:10] or "GEN"
+                cat = StoreItemCategory.objects.filter(name=cat_name).first() or StoreItemCategory.objects.filter(code=cat_code).first()
+                if not cat:
+                    cat = StoreItemCategory.objects.create(name=cat_name, code=cat_code)
+
+                item, created = StoreItem.objects.update_or_create(
+                    item_code=item_code,
+                    defaults={
+                        'item_name': item_name,
+                        'category': cat,
+                        'unit': unit,
+                        'base_rate': base_rate,
+                        'current_rate': base_rate if base_rate > 0 else Decimal('0.00'),
+                        'reorder_level': reorder_level,
+                        'default_status': default_status
+                    }
+                )
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+        elif import_type == 'material_in':
+            for idx, r in enumerate(data_rows, start=2):
+                if not r or r[0] is None or r[2] is None or r[4] is None or r[5] is None:
+                    continue
+                voucher_no = str(r[0]).strip()
+                entry_date_val = r[1]
+                item_identifier = str(r[2]).strip()
+                supplier_name = str(r[4]).strip()
+                qty = Decimal(str(r[5]))
+                unit = str(r[6]).strip() if len(r) > 6 and r[6] else "pcs"
+                bill_rate = Decimal(str(r[7])) if len(r) > 7 and r[7] is not None else Decimal('0.00')
+                bill_no = str(r[8]).strip() if len(r) > 8 and r[8] else f"BILL-{voucher_no}"
+
+                if hasattr(entry_date_val, 'date'):
+                    entry_date = entry_date_val.date()
+                elif hasattr(entry_date_val, 'year'):
+                    entry_date = entry_date_val
+                elif entry_date_val:
+                    try:
+                        entry_date = datetime.strptime(str(entry_date_val).strip(), '%Y-%m-%d').date()
+                    except Exception:
+                        entry_date = timezone.now().date()
+                else:
+                    entry_date = timezone.now().date()
+
+                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
+                if not item:
+                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
+                    continue
+
+                supplier, _ = Supplier.objects.get_or_create(name=supplier_name)
+
+                mat_in, created = StoreMaterialIn.objects.update_or_create(
+                    voucher_no=voucher_no,
+                    defaults={
+                        'inward_date': entry_date,
+                        'item': item,
+                        'supplier': supplier,
+                        'qty': qty,
+                        'unit': unit,
+                        'bill_rate': bill_rate,
+                        'bill_no': bill_no,
+                        'received_by': request.user
+                    }
+                )
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+        elif import_type == 'daily_issue':
+            for idx, r in enumerate(data_rows, start=2):
+                if not r or r[0] is None or r[2] is None or r[4] is None or r[6] is None:
+                    continue
+                voucher_no = str(r[0]).strip()
+                issue_date_val = r[1]
+                item_identifier = str(r[2]).strip()
+                contractor_identifier = str(r[4]).strip()
+                worker_name = str(r[5]).strip() if len(r) > 5 and r[5] else ""
+                qty = Decimal(str(r[6]))
+                unit = str(r[7]).strip() if len(r) > 7 and r[7] else "pcs"
+                rate = Decimal(str(r[8])) if len(r) > 8 and r[8] is not None else Decimal('0.00')
+                issue_status = str(r[9]).strip() if len(r) > 9 and r[9] else "charge"
+
+                if hasattr(issue_date_val, 'date'):
+                    issue_date = issue_date_val.date()
+                elif hasattr(issue_date_val, 'year'):
+                    issue_date = issue_date_val
+                elif issue_date_val:
+                    try:
+                        issue_date = datetime.strptime(str(issue_date_val).strip(), '%Y-%m-%d').date()
+                    except Exception:
+                        issue_date = timezone.now().date()
+                else:
+                    issue_date = timezone.now().date()
+
+                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
+                if not item:
+                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
+                    continue
+
+                contractor = User.objects.filter(username=contractor_identifier).first() or User.objects.filter(first_name__icontains=contractor_identifier).first() or User.objects.filter(role='contractor').first()
+
+                issue, created = StoreDailyIssue.objects.update_or_create(
+                    voucher_no=voucher_no,
+                    defaults={
+                        'issue_date': issue_date,
+                        'item': item,
+                        'contractor': contractor,
+                        'contractor_person_name': worker_name,
+                        'qty': qty,
+                        'unit': unit,
+                        'rate': rate,
+                        'status': issue_status,
+                        'issued_by': request.user
+                    }
+                )
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+        elif import_type == 'material_return':
+            for idx, r in enumerate(data_rows, start=2):
+                if not r or r[0] is None or r[2] is None or r[4] is None or r[5] is None:
+                    continue
+                voucher_no = str(r[0]).strip()
+                return_date_val = r[1]
+                item_identifier = str(r[2]).strip()
+                contractor_identifier = str(r[4]).strip()
+                qty = Decimal(str(r[5]))
+                unit = str(r[6]).strip() if len(r) > 6 and r[6] else "pcs"
+                rate = Decimal(str(r[7])) if len(r) > 7 and r[7] is not None else Decimal('0.00')
+                remark = str(r[8]).strip() if len(r) > 8 and r[8] else ""
+
+                if hasattr(return_date_val, 'date'):
+                    return_date = return_date_val.date()
+                elif hasattr(return_date_val, 'year'):
+                    return_date = return_date_val
+                elif return_date_val:
+                    try:
+                        return_date = datetime.strptime(str(return_date_val).strip(), '%Y-%m-%d').date()
+                    except Exception:
+                        return_date = timezone.now().date()
+                else:
+                    return_date = timezone.now().date()
+
+                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
+                if not item:
+                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
+                    continue
+
+                contractor = User.objects.filter(username=contractor_identifier).first() or User.objects.filter(first_name__icontains=contractor_identifier).first() or User.objects.filter(role='contractor').first()
+
+                ret, created = StoreMaterialReturn.objects.update_or_create(
+                    voucher_no=voucher_no,
+                    defaults={
+                        'return_date': return_date,
+                        'item': item,
+                        'contractor': contractor,
+                        'qty': qty,
+                        'unit': unit,
+                        'rate': rate,
+                        'remark': remark,
+                        'returned_by': request.user
+                    }
+                )
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+        return Response({
+            'message': f"Bulk Import Completed for {import_type.replace('_', ' ').title()}!",
+            'created_count': created_count,
+            'updated_count': updated_count,
+            'total_processed': created_count + updated_count,
+            'errors': errors
+        })
+
+
+class StoreExportSelectedView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        module = request.data.get('module', 'items')
+        selected_ids = request.data.get('selected_ids', [])
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+
+        header_fill = PatternFill(start_color="5C3A21", end_color="5C3A21", fill_type="solid")
+        header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+
+        if module == 'items':
+            ws.title = "Selected Items"
+            headers = ["Item Code", "Item Name", "Category", "Unit", "Base Rate (INR)", "Current Rate (INR)", "Total Inward", "Total Issued", "Balance Stock", "Total Value (INR)"]
+            ws.append(headers)
+
+            qs = StoreItem.objects.all()
+            if selected_ids:
+                qs = qs.filter(id__in=selected_ids)
+
+            for item in qs:
+                ws.append([
+                    item.item_code,
+                    item.item_name,
+                    item.category.name if item.category else "",
+                    item.unit,
+                    float(item.base_rate),
+                    float(item.current_rate),
+                    float(item.total_stock_qty),
+                    float(item.total_issued_qty),
+                    float(item.balance_stock_qty),
+                    float(item.total_stock_value)
+                ])
+
+        elif module == 'material_in':
+            ws.title = "Selected Material Inward"
+            headers = ["Voucher No", "Inward Date", "Item Code", "Item Name", "Supplier", "Quantity", "Unit", "Bill Rate (INR)", "Total Amount (INR)", "Bill No"]
+            ws.append(headers)
+
+            qs = StoreMaterialIn.objects.all()
+            if selected_ids:
+                qs = qs.filter(id__in=selected_ids)
+
+            for rec in qs:
+                ws.append([
+                    rec.voucher_no,
+                    rec.inward_date.strftime('%Y-%m-%d') if rec.inward_date else "",
+                    rec.item.item_code if rec.item else "",
+                    rec.item.item_name if rec.item else "",
+                    rec.supplier.name if rec.supplier else "",
+                    float(rec.qty),
+                    rec.unit,
+                    float(rec.bill_rate),
+                    float(rec.total_amount),
+                    rec.bill_no
+                ])
+
+        elif module == 'daily_issue':
+            ws.title = "Selected Daily Issues"
+            headers = ["Voucher No", "Issue Date", "Item Code", "Item Name", "Contractor", "Worker/Person", "Quantity", "Unit", "Rate (INR)", "Total Amount (INR)", "Status"]
+            ws.append(headers)
+
+            qs = StoreDailyIssue.objects.all()
+            if selected_ids:
+                qs = qs.filter(id__in=selected_ids)
+
+            for issue in qs:
+                ws.append([
+                    issue.voucher_no,
+                    issue.issue_date.strftime('%Y-%m-%d') if issue.issue_date else "",
+                    issue.item.item_code if issue.item else "",
+                    issue.item.item_name if issue.item else "",
+                    issue.contractor.get_full_name() or issue.contractor.username if issue.contractor else "",
+                    issue.contractor_person_name,
+                    float(issue.qty),
+                    issue.unit,
+                    float(issue.rate),
+                    float(issue.total_amount),
+                    issue.status
+                ])
+
+        elif module == 'material_return':
+            ws.title = "Selected Material Returns"
+            headers = ["Voucher No", "Return Date", "Item Code", "Item Name", "Contractor", "Quantity", "Unit", "Rate (INR)", "Total Amount (INR)", "Remark"]
+            ws.append(headers)
+
+            qs = StoreMaterialReturn.objects.all()
+            if selected_ids:
+                qs = qs.filter(id__in=selected_ids)
+
+            for ret in qs:
+                ws.append([
+                    ret.voucher_no,
+                    ret.return_date.strftime('%Y-%m-%d') if ret.return_date else "",
+                    ret.item.item_code if ret.item else "",
+                    ret.item.item_name if ret.item else "",
+                    ret.contractor.get_full_name() or ret.contractor.username if ret.contractor else "",
+                    float(ret.qty),
+                    ret.unit,
+                    float(ret.rate),
+                    float(ret.total_amount),
+                    ret.remark
+                ])
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            ws.column_dimensions[get_column_letter(col_num)].width = 22
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="store_{module}_selected_export.xlsx"'
+        return response
+
+
+class StoreBulkDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Only Admin users are authorized to perform bulk deletion.'}, status=status.HTTP_403_FORBIDDEN)
+
+        module = request.data.get('module', 'items')
+        selected_ids = request.data.get('selected_ids', [])
+
+        if not selected_ids:
+            return Response({'error': 'No records selected for deletion.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_count = 0
+        if module == 'items':
+            deleted_count, _ = StoreItem.objects.filter(id__in=selected_ids).delete()
+        elif module == 'material_in':
+            deleted_count, _ = StoreMaterialIn.objects.filter(id__in=selected_ids).delete()
+        elif module == 'daily_issue':
+            deleted_count, _ = StoreDailyIssue.objects.filter(id__in=selected_ids).delete()
+        elif module == 'material_return':
+            deleted_count, _ = StoreMaterialReturn.objects.filter(id__in=selected_ids).delete()
+
+        return Response({
+            'message': f'Successfully deleted {deleted_count} {module.replace("_", " ")} record(s).',
+            'deleted_count': deleted_count
+        })
 

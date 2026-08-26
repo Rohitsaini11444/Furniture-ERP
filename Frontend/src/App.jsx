@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle, AlertCircle, ArrowDownRight, ArrowUpRight, Undo2 } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -123,7 +123,8 @@ function Navbar() {
       }
     }
     if (n.link) {
-      navigate(n.link);
+      const targetLink = (n.link === '/active-devices' && user?.role !== 'admin') ? '/notifications' : n.link;
+      navigate(targetLink);
       setShowNotifications(false);
     }
   };
@@ -267,21 +268,50 @@ function Navbar() {
     }
   };
 
-  const renderNotificationIcon = (msg, isRead) => {
-    const msgLower = msg.toLowerCase();
-    const isSuccess = msgLower.includes('success') || msgLower.includes('verified') || msgLower.includes('received') || msgLower.includes('approved') || msgLower.includes('completed');
-    const isLogin = msgLower.includes('login') || msgLower.includes('logged');
-    
-    // Choose icon based on context
-    const Icon = isSuccess ? ShieldCheck : (isLogin ? Shield : Clock);
-    const bgColor = isSuccess ? '#f0fdf4' : '#fdfaf6';
-    const borderColor = isSuccess ? '#e6f4ea' : '#f5ece1';
-    const iconColor = isSuccess ? '#16a34a' : '#8b5a2b';
-    
+  const renderNotificationIcon = (titleStr = '', msgStr = '') => {
+    const combined = `${titleStr} ${msgStr}`.toLowerCase();
+    const isLowStock = combined.includes('low stock') || combined.includes('reorder');
+    const isStoreIn = combined.includes('material inward') || combined.includes('received');
+    const isStoreOut = combined.includes('material outward') || combined.includes('issued');
+    const isStoreReturn = combined.includes('material return') || combined.includes('restored');
+    const isLogin = combined.includes('login') || combined.includes('logged') || combined.includes('security');
+
+    let Icon = Clock;
+    let bgColor = '#fdfaf6';
+    let borderColor = '#f5ece1';
+    let iconColor = '#8b5a2b';
+
+    if (isLowStock) {
+      Icon = AlertCircle;
+      bgColor = '#fef2f2';
+      borderColor = '#fecaca';
+      iconColor = '#dc2626';
+    } else if (isStoreIn) {
+      Icon = ArrowDownRight;
+      bgColor = '#f0fdf4';
+      borderColor = '#bbf7d0';
+      iconColor = '#16a34a';
+    } else if (isStoreOut) {
+      Icon = ArrowUpRight;
+      bgColor = '#fff7ed';
+      borderColor = '#fed7aa';
+      iconColor = '#ea580c';
+    } else if (isStoreReturn) {
+      Icon = Undo2;
+      bgColor = '#fffbe6';
+      borderColor = '#ffe58f';
+      iconColor = '#d97706';
+    } else if (isLogin) {
+      Icon = ShieldCheck;
+      bgColor = '#eff6ff';
+      borderColor = '#bfdbfe';
+      iconColor = '#2563eb';
+    }
+
     return (
       <div style={{
-        width: '32px',
-        height: '32px',
+        width: '34px',
+        height: '34px',
         borderRadius: '50%',
         backgroundColor: bgColor,
         border: `1.2px solid ${borderColor}`,
@@ -290,7 +320,7 @@ function Navbar() {
         justifyContent: 'center',
         flexShrink: 0
       }}>
-        <Icon size={15} color={iconColor} />
+        <Icon size={16} color={iconColor} />
       </div>
     );
   };
@@ -382,25 +412,31 @@ function Navbar() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {notifications.map(n => {
-                    let title = n.message || '';
-                    let details = [];
-                    
-                    if (title.includes('\n')) {
-                      const lines = title.split('\n');
-                      title = lines[0];
-                      details = lines.slice(1);
-                    } else {
-                      const regex = /^New\s+login\s+detected\s+from\s+([^\s]+)\s*\((.+)\)$/i;
-                      const match = title.match(regex);
-                      if (match) {
-                        title = "New login detected";
-                        details = [
-                          `from ${match[1]}`,
-                          match[2]
-                        ];
+                    let title = (n.title || '').replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim();
+                    if (!title || title === 'Notification') {
+                      if (n.category === 'security' || (n.message && n.message.toLowerCase().includes('login'))) {
+                        title = 'Successful Login';
+                      } else if (n.category === 'inventory') {
+                        if (n.message && n.message.toLowerCase().includes('inward')) title = 'Material Inward Recorded';
+                        else if (n.message && (n.message.toLowerCase().includes('outward') || n.message.toLowerCase().includes('issued'))) title = 'Material Outward Issue';
+                        else if (n.message && (n.message.toLowerCase().includes('return') || n.message.toLowerCase().includes('restored'))) title = 'Material Return Recorded';
+                        else if (n.message && n.message.toLowerCase().includes('stock')) title = 'Low Stock Alert';
+                        else title = 'Inventory Update';
+                      } else {
+                        title = 'System Notification';
                       }
                     }
-                    
+                    let details = [];
+
+                    if (n.message) {
+                      if (n.message.includes('\n')) {
+                        const lines = n.message.split('\n');
+                        details = lines.map(line => line.startsWith('from ') ? `IP Address: ${line.replace('from ', '')}` : (line.length > 50 ? `${line.slice(0, 50)}…` : line));
+                      } else {
+                        details = [n.message];
+                      }
+                    }
+
                     return (
                       <div 
                         key={n.id} 
@@ -423,7 +459,7 @@ function Navbar() {
                           e.currentTarget.style.transform = 'translateX(0)';
                         }}
                       >
-                        {renderNotificationIcon(n.message, n.is_read)}
+                        {renderNotificationIcon(title, n.message, n.is_read)}
                         
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.15rem' }}>
@@ -1559,7 +1595,7 @@ function AppLayout() {
             <Route
               path="/active-devices"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <ActiveDevicesPage />
                 </ProtectedRoute>
               }
