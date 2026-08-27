@@ -70,16 +70,18 @@ function InteractiveStoreChart({ storeData, startAnimation }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const [animatedHeights, setAnimatedHeights] = useState([]);
 
-  const monthlyStoreMovement = [
-    { month: 'Jan', inward: 1250, outward: 820 },
-    { month: 'Feb', inward: 1480, outward: 950 },
-    { month: 'Mar', inward: 1920, outward: 1350 },
-    { month: 'Apr', inward: 1650, outward: 1100 },
-    { month: 'May', inward: 2200, outward: 1680 },
-    { month: 'Jun', inward: 1890, outward: 1420 },
-    { month: 'Jul', inward: 2650, outward: 1980 },
-    { month: 'Aug', inward: 2100, outward: 1540 }
+  const defaultMonthlyMovement = [
+    { month: 'Mar', inward: 0, outward: 0 },
+    { month: 'Apr', inward: 0, outward: 0 },
+    { month: 'May', inward: 0, outward: 0 },
+    { month: 'Jun', inward: 0, outward: 0 },
+    { month: 'Jul', inward: 0, outward: 0 },
+    { month: 'Aug', inward: 0, outward: 0 }
   ];
+
+  const monthlyStoreMovement = (storeData?.monthly_movement && storeData.monthly_movement.length > 0)
+    ? storeData.monthly_movement
+    : defaultMonthlyMovement;
 
   useEffect(() => {
     if (startAnimation) {
@@ -97,12 +99,12 @@ function InteractiveStoreChart({ storeData, startAnimation }) {
     } else {
       setAnimatedHeights(monthlyStoreMovement.map(() => 0));
     }
-  }, [startAnimation]);
+  }, [startAnimation, monthlyStoreMovement]);
 
-  const maxVal = Math.max(...monthlyStoreMovement.map(d => Math.max(d.inward, d.outward)), 1000);
-  const totalInward = storeData?.total_stock_qty || monthlyStoreMovement.reduce((s, d) => s + d.inward, 0);
-  const totalOutward = storeData?.total_issued_qty || monthlyStoreMovement.reduce((s, d) => s + d.outward, 0);
-  const balanceQty = storeData?.total_balance_qty || (totalInward - totalOutward);
+  const maxVal = Math.max(...monthlyStoreMovement.map(d => Math.max(d.inward, d.outward)), 10);
+  const totalInward = storeData?.total_stock_qty !== undefined ? storeData.total_stock_qty : monthlyStoreMovement.reduce((s, d) => s + d.inward, 0);
+  const totalOutward = storeData?.total_issued_qty !== undefined ? storeData.total_issued_qty : monthlyStoreMovement.reduce((s, d) => s + d.outward, 0);
+  const balanceQty = storeData?.total_balance_qty !== undefined ? storeData.total_balance_qty : (totalInward - totalOutward);
 
   const count = monthlyStoreMovement.length;
   const svgWidth = 640;
@@ -116,7 +118,7 @@ function InteractiveStoreChart({ storeData, startAnimation }) {
   return (
     <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
       {/* Metric Badges */}
-      <div style={{
+      <div className="store-chart-legend-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
         gap: '0.6rem',
@@ -992,45 +994,36 @@ function Dashboard() {
               </div>
               
               <div className="pipeline-progress-list" style={{ marginTop: '0.5rem' }}>
-                <div className="pipeline-item">
-                  <div className="pipeline-item-label">
-                    <span>Hardware & Metal Fittings</span>
-                    <span>85% Stocked</span>
+                {(storeStats?.category_health && storeStats.category_health.length > 0) ? (
+                  storeStats.category_health.map((cat, idx) => {
+                    const colors = ['#0284c7', '#16a34a', '#a855f7', '#ea580c', '#d97706', '#059669', '#dc2626'];
+                    const color = colors[idx % colors.length];
+                    return (
+                      <div key={idx} className="pipeline-item">
+                        <div className="pipeline-item-label">
+                          <span style={{ fontWeight: 700, color: '#334155' }}>{cat.category_name}</span>
+                          <span style={{ fontWeight: 700, color: cat.stock_percent < 50 ? '#dc2626' : '#16a34a' }}>
+                            {cat.stock_percent}% Stocked ({cat.healthy_count}/{cat.total_count} Healthy)
+                          </span>
+                        </div>
+                        <div className="pipeline-bar-track">
+                          <div
+                            className="pipeline-bar-fill"
+                            style={{
+                              width: startChartAnimation ? `${cat.stock_percent}%` : '0%',
+                              background: cat.stock_percent < 50 ? '#dc2626' : color,
+                              transition: 'width 1.5s ease'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: '1.5rem' }}>
+                    No store category stock data found.
                   </div>
-                  <div className="pipeline-bar-track">
-                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '85%' : '0%', background: '#0284c7', transition: 'width 1.5s ease' }} />
-                  </div>
-                </div>
-
-                <div className="pipeline-item">
-                  <div className="pipeline-item-label">
-                    <span>Timber & Teak Wood</span>
-                    <span>92% Stocked</span>
-                  </div>
-                  <div className="pipeline-bar-track">
-                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '92%' : '0%', background: '#16a34a', transition: 'width 1.5s ease' }} />
-                  </div>
-                </div>
-
-                <div className="pipeline-item">
-                  <div className="pipeline-item-label">
-                    <span>Finishing Materials & Polish</span>
-                    <span>68% Stocked</span>
-                  </div>
-                  <div className="pipeline-bar-track">
-                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '68%' : '0%', background: '#a855f7', transition: 'width 1.5s ease' }} />
-                  </div>
-                </div>
-
-                <div className="pipeline-item">
-                  <div className="pipeline-item-label">
-                    <span>Plywood & Panels</span>
-                    <span>78% Stocked</span>
-                  </div>
-                  <div className="pipeline-bar-track">
-                    <div className="pipeline-bar-fill" style={{ width: startChartAnimation ? '78%' : '0%', background: '#ea580c', transition: 'width 1.5s ease' }} />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </>

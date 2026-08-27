@@ -1026,7 +1026,7 @@ class StoreItem(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['item_code']
+        ordering = ['-created_at']
         verbose_name = "Store Item"
         verbose_name_plural = "Store Items"
 
@@ -1175,7 +1175,7 @@ class StoreMaterialIn(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-inward_date', '-created_at']
+        ordering = ['-created_at', '-inward_date']
 
     def save(self, *args, **kwargs):
         if hasattr(self.inward_date, 'date'):
@@ -1221,7 +1221,7 @@ class StoreDailyIssue(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-issue_date', '-created_at']
+        ordering = ['-created_at', '-issue_date']
 
     def save(self, *args, **kwargs):
         if hasattr(self.issue_date, 'date'):
@@ -1269,7 +1269,7 @@ class StoreMaterialReturn(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-return_date', '-created_at']
+        ordering = ['-created_at', '-return_date']
 
     def save(self, *args, **kwargs):
         if hasattr(self.return_date, 'date'):

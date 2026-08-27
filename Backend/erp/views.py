@@ -5688,7 +5688,7 @@ class StoreStockSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        items = StoreItem.objects.select_related('category').all()
+        items = StoreItem.objects.select_related('category').order_by('-created_at')
         
         # Pre-aggregate totals across all items in 4 single bulk SQL queries instead of 4*N queries
         inward_map = dict(
@@ -5755,12 +5755,76 @@ class StoreStockSummaryView(APIView):
                 'is_low_stock': bal_qty <= item.reorder_level
             })
 
+        # Calculate dynamic Monthly Inward vs Outward Movement from DB
+        from django.db.models.functions import TruncMonth
+        months_map = {}
+        
+        inward_by_month = (
+            StoreMaterialIn.objects
+            .annotate(month=TruncMonth('inward_date'))
+            .values('month')
+            .annotate(total=Sum('qty'))
+            .order_by('month')
+        )
+        for row in inward_by_month:
+            if row['month']:
+                m_str = row['month'].strftime('%b')
+                if m_str not in months_map:
+                    months_map[m_str] = {'month': m_str, 'inward': 0.0, 'outward': 0.0, '_date': row['month']}
+                months_map[m_str]['inward'] = float(row['total'] or 0)
+
+        issued_by_month = (
+            StoreDailyIssue.objects
+            .annotate(month=TruncMonth('issue_date'))
+            .values('month')
+            .annotate(total=Sum('qty'))
+            .order_by('month')
+        )
+        for row in issued_by_month:
+            if row['month']:
+                m_str = row['month'].strftime('%b')
+                if m_str not in months_map:
+                    months_map[m_str] = {'month': m_str, 'inward': 0.0, 'outward': 0.0, '_date': row['month']}
+                months_map[m_str]['outward'] = float(row['total'] or 0)
+
+        monthly_movement = sorted(list(months_map.values()), key=lambda x: x['_date'])
+        for d in monthly_movement:
+            d.pop('_date', None)
+
+        # Calculate dynamic Category Health Statistics from DB
+        cat_health_map = {}
+        for rec in summary_list:
+            c_name = rec['category_name']
+            if c_name not in cat_health_map:
+                cat_health_map[c_name] = {'category_name': c_name, 'total_count': 0, 'healthy_count': 0, 'low_stock_count': 0}
+            
+            cat_health_map[c_name]['total_count'] += 1
+            if rec['is_low_stock']:
+                cat_health_map[c_name]['low_stock_count'] += 1
+            else:
+                cat_health_map[c_name]['healthy_count'] += 1
+
+        category_health = []
+        for c_name, c_data in cat_health_map.items():
+            tot = c_data['total_count']
+            healthy = c_data['healthy_count']
+            pct = round((healthy / tot) * 100) if tot > 0 else 100
+            category_health.append({
+                'category_name': c_name,
+                'total_count': tot,
+                'healthy_count': healthy,
+                'low_stock_count': c_data['low_stock_count'],
+                'stock_percent': pct
+            })
+
         return Response({
             'total_items_count': len(items),
             'total_stock_qty': float(tot_stock),
             'total_issued_qty': float(tot_issued),
             'total_balance_qty': float(tot_balance),
             'total_inventory_valuation': float(tot_valuation),
+            'monthly_movement': monthly_movement,
+            'category_health': category_health,
             'items': summary_list
         })
 

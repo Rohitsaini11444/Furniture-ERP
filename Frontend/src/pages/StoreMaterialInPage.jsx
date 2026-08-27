@@ -212,7 +212,7 @@ export default function StoreMaterialInPage() {
               </span>
             </div>
             <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
-              📥 Material In (Credit Stock) Entry
+            Material In (Credit Stock) Entry
             </h1>
           </div>
         </div>

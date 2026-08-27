@@ -6,6 +6,32 @@ import {
 import api from '../api/axios';
 import Pagination from '../components/Pagination';
 import AuditDiffModal from '../components/AuditDiffModal';
+import CustomSelect from '../components/CustomSelect';
+import { CustomDatePicker } from '../components/CustomDatePicker';
+
+const ACTION_OPTIONS = [
+  { value: '', label: 'All Actions' },
+  { value: 'CREATE', label: 'CREATE (Created)' },
+  { value: 'UPDATE', label: 'UPDATE (Updated)' },
+  { value: 'DELETE', label: 'DELETE (Deleted)' },
+  { value: 'LOGIN', label: 'LOGIN (Auth)' },
+  { value: 'EXPORT', label: 'EXPORT (Excel/PDF)' },
+  { value: 'IMPORT', label: 'IMPORT (Bulk Upload)' }
+];
+
+const MODULE_OPTIONS = [
+  { value: '', label: 'All ERP Modules' },
+  { value: 'Store Management', label: 'Store Management' },
+  { value: 'Buyers Directory', label: 'Buyers Directory' },
+  { value: 'Buyer Masters', label: 'Buyer Masters' },
+  { value: 'Performa Invoices (PI)', label: 'Performa Invoices (PI)' },
+  { value: 'Supplier Purchase Orders', label: 'Supplier Purchase Orders' },
+  { value: 'Supplier Management', label: 'Supplier Management' },
+  { value: 'Sample Management', label: 'Sample Management' },
+  { value: 'Finishing Module', label: 'Finishing Module' },
+  { value: 'Production Pipeline', label: 'Production Pipeline' },
+  { value: 'Unit Management', label: 'Unit Management' }
+];
 
 export default function AuditTrailPage() {
   const [logs, setLogs] = useState([]);
@@ -220,55 +246,42 @@ export default function AuditTrailPage() {
         </div>
 
         {/* Action Select */}
-        <select
-          value={actionFilter}
-          onChange={(e) => { setActionFilter(e.target.value); setCurrentPage(1); }}
-          style={{ padding: '0.45rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', backgroundColor: '#ffffff' }}
-        >
-          <option value="">All Actions</option>
-          <option value="CREATE">CREATE (Created)</option>
-          <option value="UPDATE">UPDATE (Updated)</option>
-          <option value="DELETE">DELETE (Deleted)</option>
-          <option value="LOGIN">LOGIN (Auth)</option>
-          <option value="EXPORT">EXPORT (Excel/PDF)</option>
-          <option value="IMPORT">IMPORT (Bulk Upload)</option>
-        </select>
+        <div style={{ minWidth: '185px' }}>
+          <CustomSelect
+            value={actionFilter}
+            onChange={(e) => { setActionFilter(e?.target ? e.target.value : e); setCurrentPage(1); }}
+            placeholder="All Actions"
+            options={ACTION_OPTIONS}
+          />
+        </div>
 
         {/* Module Select */}
-        <select
-          value={moduleFilter}
-          onChange={(e) => { setModuleFilter(e.target.value); setCurrentPage(1); }}
-          style={{ padding: '0.45rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', backgroundColor: '#ffffff' }}
-        >
-          <option value="">All ERP Modules</option>
-          <option value="Store Management">Store Management</option>
-          <option value="Buyers Directory">Buyers Directory</option>
-          <option value="Buyer Masters">Buyer Masters</option>
-          <option value="Performa Invoices (PI)">Performa Invoices (PI)</option>
-          <option value="Supplier Purchase Orders">Supplier Purchase Orders</option>
-          <option value="Supplier Management">Supplier Management</option>
-          <option value="Sample Management">Sample Management</option>
-          <option value="Finishing Module">Finishing Module</option>
-          <option value="Production Pipeline">Production Pipeline</option>
-          <option value="Unit Management">Unit Management</option>
-        </select>
+        <div style={{ minWidth: '210px' }}>
+          <CustomSelect
+            value={moduleFilter}
+            onChange={(e) => { setModuleFilter(e?.target ? e.target.value : e); setCurrentPage(1); }}
+            placeholder="All ERP Modules"
+            options={MODULE_OPTIONS}
+          />
+        </div>
 
         {/* Date pickers */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#64748b' }}>
-          <Calendar size={15} />
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
-            style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-          />
-          <span>to</span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
-            style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: '150px' }}>
+            <CustomDatePicker
+              placeholder="dd - mm - yyyy"
+              value={startDate}
+              onChange={(val) => { setStartDate(val || ''); setCurrentPage(1); }}
+            />
+          </div>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>to</span>
+          <div style={{ minWidth: '150px' }}>
+            <CustomDatePicker
+              placeholder="dd - mm - yyyy"
+              value={endDate}
+              onChange={(val) => { setEndDate(val || ''); setCurrentPage(1); }}
+            />
+          </div>
         </div>
       </div>
 

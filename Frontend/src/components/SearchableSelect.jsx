@@ -353,7 +353,9 @@ export function SearchableSelect({
                 const code = typeof opt === 'object' ? (opt[codeKey] || opt.item_code || opt.sample_id || opt.style_no || opt.code || '') : '';
                 const title = typeof opt === 'object' ? (opt[titleKey] || opt.item_name || opt.product_name || opt.name || opt.label || opt.full_name || opt.username || '') : String(opt);
                 const unit = typeof opt === 'object' ? (opt.unit || '') : '';
-                const stockQty = typeof opt === 'object' ? (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : opt.balance_qty) : null;
+                const stockQty = typeof opt === 'object' 
+                  ? (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : (opt.balance_qty !== undefined ? opt.balance_qty : null)) 
+                  : null;
 
                 return (
                   <div
@@ -390,10 +392,10 @@ export function SearchableSelect({
                             {title}
                           </span>
                         </div>
-                        {(unit || stockQty !== null) && (
+                        {(unit || (stockQty !== null && stockQty !== undefined)) && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
                             {unit && <span>Unit: <strong>{unit}</strong></span>}
-                            {stockQty !== null && (
+                            {stockQty !== null && stockQty !== undefined && (
                               <span style={{ color: parseFloat(stockQty) <= 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
                                 Stock: {stockQty} {unit}
                               </span>

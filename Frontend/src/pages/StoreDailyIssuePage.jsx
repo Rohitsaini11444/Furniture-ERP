@@ -294,7 +294,7 @@ export default function StoreDailyIssuePage() {
               </span>
             </div>
             <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
-              📤 Daily Issue Entry (Outward Stock)
+            Daily Issue Entry (Outward Stock)
             </h1>
           </div>
         </div>

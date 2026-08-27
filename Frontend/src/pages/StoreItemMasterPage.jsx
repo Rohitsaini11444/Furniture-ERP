@@ -755,32 +755,36 @@ export default function StoreItemMasterPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           padding: '1.75rem'
         }}>
-          {/* Instructions Box & Template Download */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '1.25rem',
-            borderRadius: '12px',
-            backgroundColor: '#fff7ed',
-            border: '1px solid #ffedd5',
-            marginBottom: '1.5rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <div>
+          {/* Excel Import Format Guide */}
+          <div
+            className="bulk-import-guide-card"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '1.25rem',
+              borderRadius: '12px',
+              backgroundColor: '#fff7ed',
+              border: '1px solid #ffedd5',
+              marginBottom: '1.5rem',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}
+          >
+            <div className="bulk-import-guide-text" style={{ flex: '1 1 240px', minWidth: 0 }}>
               <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#c2410c' }}>
                 Bulk Excel Import Guide
               </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#9a3412' }}>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#9a3412', lineHeight: 1.45 }}>
                 Upload an Excel file containing headers: <strong>Item Code, Item Name, Category Name, Unit, Base Rate, Reorder Level, Default Status</strong>.
               </p>
             </div>
             <button
               type="button"
               onClick={handleDownloadTemplate}
+              className="bulk-import-btn"
               style={{
-                padding: '0.6rem 1.25rem',
+                padding: '0.6rem 1rem',
                 borderRadius: '8px',
                 border: '1px solid #ea580c',
                 backgroundColor: '#ffffff',
@@ -790,11 +794,14 @@ export default function StoreItemMasterPage() {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '0.45rem',
-                whiteSpace: 'nowrap'
+                maxWidth: '100%',
+                boxSizing: 'border-box'
               }}
             >
-              <Download size={16} /> Download Sample Template (.xlsx)
+              <Download size={16} style={{ flexShrink: 0 }} />
+              <span>Download Sample Template (.xlsx)</span>
             </button>
           </div>
 

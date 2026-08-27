@@ -1223,7 +1223,6 @@ select[multiple] option:checked {
 /* ═══════════════════════════════════════════════════════════════
    USER MANAGEMENT PAGE
 ═══════════════════════════════════════════════════════════════ */
-.um-container { }
 .um-title { font-size: 1.5rem; font-weight: 800; color: var(--text-main); letter-spacing: -0.02em; }
 .um-subtitle { color: var(--text-muted); font-size: 0.875rem; margin-top: 0.2rem; }
 .um-add-btn { display: flex; align-items: center; gap: 6px; }
@@ -1334,7 +1333,6 @@ select[multiple] option:checked {
 /* ═══════════════════════════════════════════════════════════════
    SANDING PAGE
 ═══════════════════════════════════════════════════════════════ */
-.sanding-page { }
 .sanding-page-header {
   display: flex;
   align-items: flex-start;
@@ -1399,7 +1397,6 @@ select[multiple] option:checked {
 .sanding-tab-content { animation: fadeIn 0.2s; }
 .sanding-loading { text-align: center; padding: 3rem; color: var(--text-muted); }
 
-.sanding-section { }
 .sanding-section-header {
   display: flex;
   align-items: flex-start;
@@ -1607,7 +1604,6 @@ select[multiple] option:checked {
   border-radius: 8px;
   margin-bottom: 1rem;
 }
-.sanding-qc-history { }
 .sanding-history-title {
   font-size: 0.85rem;
   font-weight: 700;
@@ -2886,6 +2882,11 @@ select[multiple] option:checked {
   margin: auto !important;
   position: relative !important;
   animation: modalPopIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+.modal-content.modal-content-wide,
+.modal-content-wide {
+  max-width: 880px !important;
 }
 
 @keyframes modalPopIn {
@@ -5394,6 +5395,112 @@ select.filter-input {
     width: 100% !important;
     justify-content: center !important;
     white-space: normal !important;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     STORE MANAGER MOBILE DASHBOARD RESPONSIVE ENHANCEMENTS
+     (Applies strictly on mobile <= 768px — desktop is untouched)
+     ═══════════════════════════════════════════════════════════════ */
+  .dashboard-welcome-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    padding: 1.25rem !important;
+    gap: 0.75rem !important;
+  }
+
+  .dashboard-welcome-card h2 {
+    font-size: 1.3rem !important;
+  }
+
+  .admin-quick-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.6rem !important;
+  }
+
+  .quick-action-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 0.65rem 0.5rem !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .admin-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.65rem !important;
+  }
+
+  .admin-kpi-card {
+    padding: 0.85rem 0.95rem !important;
+    border-radius: 14px !important;
+  }
+
+  .kpi-icon-wrap {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 10px !important;
+  }
+
+  .kpi-value {
+    font-size: 1.2rem !important;
+    margin: 0.15rem 0 !important;
+  }
+
+  .kpi-title {
+    font-size: 0.74rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .admin-charts-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  .admin-chart-card {
+    padding: 1rem !important;
+    border-radius: 14px !important;
+  }
+
+  .admin-chart-header {
+    margin-bottom: 0.75rem !important;
+    padding-bottom: 0.5rem !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.35rem !important;
+  }
+
+  .admin-chart-title {
+    font-size: 0.95rem !important;
+  }
+
+  .store-chart-legend-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+    padding: 0.5rem !important;
+  }
+
+  .bulk-import-guide-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding: 0.85rem 1rem !important;
+    gap: 0.65rem !important;
+  }
+
+  .bulk-import-guide-text {
+    flex: none !important;
+    width: 100% !important;
+  }
+
+  .bulk-import-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: normal !important;
+    padding: 0.6rem 0.75rem !important;
   }
 }
 

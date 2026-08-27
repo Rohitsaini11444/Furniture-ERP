@@ -116,47 +116,47 @@ export default function StoreExcelImportModal({ isOpen, onClose, onImportSuccess
   return (
     <div className="modal-overlay" style={{ zIndex: 99999 }} onClick={onClose}>
       <div 
-        className="modal-content" 
-        style={{ maxWidth: '680px', borderRadius: '16px', padding: '1.75rem', border: '1px solid #e2e8f0', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }} 
+        className="modal-content modal-content-wide" 
+        style={{ width: '92%', maxWidth: '880px', borderRadius: '20px', padding: '2.25rem', border: '1px solid #e2e8f0', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }} 
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <UploadCloud size={24} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div style={{ width: '48px', height: '48px', borderRadius: '14px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UploadCloud size={26} />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0f172a' }}>
                 Bulk Excel Importer
               </h2>
-              <p style={{ margin: '2px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+              <p style={{ margin: '3px 0 0 0', fontSize: '0.88rem', color: '#64748b' }}>
                 Import store records in bulk to populate inventory balances
               </p>
             </div>
           </div>
           <button className="modal-close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
-            <X size={20} />
+            <X size={22} />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: '#f8fafc', padding: '0.35rem', borderRadius: '10px', marginBottom: '1.25rem', overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: '0.4rem', backgroundColor: '#f8fafc', padding: '0.4rem', borderRadius: '12px', marginBottom: '1.5rem', overflowX: 'auto', scrollbarWidth: 'none' }}>
           {['items', 'material_in', 'daily_issue', 'material_return'].map((tabKey) => (
             <button
               key={tabKey}
               onClick={() => { setActiveTab(tabKey); setFile(null); setResult(null); setError(''); }}
               style={{
                 flex: 1,
-                padding: '0.55rem 0.75rem',
-                borderRadius: '8px',
+                padding: '0.65rem 0.65rem',
+                borderRadius: '9px',
                 border: 'none',
-                fontSize: '0.8rem',
+                fontSize: '0.82rem',
                 fontWeight: 700,
                 cursor: 'pointer',
                 backgroundColor: activeTab === tabKey ? '#ffffff' : 'transparent',
                 color: activeTab === tabKey ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === tabKey ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+                boxShadow: activeTab === tabKey ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
                 transition: 'all 0.15s ease',
                 whiteSpace: 'nowrap'
               }}

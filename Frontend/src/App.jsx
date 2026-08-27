@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle, AlertCircle, ArrowDownRight, ArrowUpRight, Undo2 } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle, AlertCircle, ArrowDownRight, ArrowUpRight, Undo2, Package } from 'lucide-react';
 import api from './api/axios';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -231,18 +231,45 @@ function Navbar() {
     setSearchLoading(true);
     setShowSearchDrop(true);
     searchDebounceRef.current = setTimeout(() => {
-      api.get('/samples/', { params: { search: val.trim(), page_size: 8, compact: true } })
-        .then(res => {
-          setSearchResults(res.data.results || res.data || []);
-        })
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
+      if (user?.role === 'store_manager') {
+        api.get('/store/stock-summary/')
+          .then(res => {
+            const allItems = res.data?.items || res.data || [];
+            const query = val.trim().toLowerCase();
+            const filtered = allItems.filter(item => 
+              (item.item_name && item.item_name.toLowerCase().includes(query)) ||
+              (item.item_code && item.item_code.toLowerCase().includes(query)) ||
+              (item.category_name && item.category_name.toLowerCase().includes(query))
+            ).slice(0, 8);
+            setSearchResults(filtered);
+          })
+          .catch(() => setSearchResults([]))
+          .finally(() => setSearchLoading(false));
+      } else {
+        api.get('/samples/', { params: { search: val.trim(), page_size: 8, compact: true } })
+          .then(res => {
+            setSearchResults(res.data.results || res.data || []);
+          })
+          .catch(() => setSearchResults([]))
+          .finally(() => setSearchLoading(false));
+      }
     }, 300);
   };
 
-  const handleSearchSelect = (sample) => {
+  const handleSearchSelect = (item) => {
     handleCloseSearch();
-    navigate(`/samples/${sample.id}`);
+    if (user?.role === 'store_manager') {
+      navigate('/store-management', {
+        state: {
+          selectedItemId: item.id,
+          itemData: item,
+          openDetail: true,
+          ts: Date.now()
+        }
+      });
+    } else {
+      navigate(`/samples/${item.id}`);
+    }
   };
 
   const formatNotificationTime = (dateStr) => {
@@ -810,7 +837,7 @@ function Navbar() {
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search Buyer, Supplier, PO, PI..."
+              placeholder={user?.role === 'store_manager' ? "Search store items by code, name..." : "Search Buyer, Supplier, PO, PI..."}
               value={searchQuery}
               onChange={handleSearchChange}
               onFocus={() => searchQuery.trim() && setShowSearchDrop(true)}
@@ -860,53 +887,123 @@ function Navbar() {
 
             {!searchLoading && searchResults.length === 0 && (
               <div style={{ padding: '1.1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem' }}>
-                No samples found
+                {user?.role === 'store_manager' ? 'No matching store items found' : 'No samples found'}
               </div>
             )}
 
-            {!searchLoading && searchResults.map((sample, idx) => (
-              <div
-                key={sample.id}
-                className="search-result-row"
-                style={{
-                  borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
-                  animationDelay: `${idx * 0.045}s`
-                }}
-                onClick={() => {
-                  handleSearchSelect(sample);
-                  handleCloseSearch();
-                }}
-              >
-                <div style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                  background: '#f1f5f9',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '1px solid #e2e8f0'
-                }}>
-                  {sample.images?.[0]?.image ? (
-                    <img src={sample.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      <circle cx="8.5" cy="8.5" r="1.5"/>
-                      <path d="m21 15-5-5L5 21"/>
-                    </svg>
-                  )}
+            {!searchLoading && searchResults.map((item, idx) => {
+              if (user?.role === 'store_manager') {
+                return (
+                  <div
+                    key={item.id}
+                    className="search-result-row"
+                    style={{
+                      borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                      animationDelay: `${idx * 0.045}s`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.6rem 0.85rem'
+                    }}
+                    onClick={() => {
+                      handleSearchSelect(item);
+                      handleCloseSearch();
+                    }}
+                  >
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      background: '#fff7ed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid #ffedd5'
+                    }}>
+                      {item.image ? (
+                        <img src={item.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <Package size={18} color="#ea580c" />
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
+                          {item.item_code}
+                        </span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.item_name}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                        Category: <strong>{item.category_name || 'General'}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                        color: item.is_low_stock ? '#dc2626' : '#16a34a',
+                        backgroundColor: item.is_low_stock ? '#fef2f2' : '#f0fdf4',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        border: `1px solid ${item.is_low_stock ? '#fca5a5' : '#bbf7d0'}`
+                      }}>
+                        Stock: {item.balance_qty} {item.unit}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={item.id}
+                  className="search-result-row"
+                  style={{
+                    borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    animationDelay: `${idx * 0.045}s`
+                  }}
+                  onClick={() => {
+                    handleSearchSelect(item);
+                    handleCloseSearch();
+                  }}
+                >
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    background: '#f1f5f9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    {item.images?.[0]?.image ? (
+                      <img src={item.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="m21 15-5-5L5 21"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
+                    {item.style_no || item.id || '—'}
+                  </span>
+                  <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.product_name}
+                  </span>
                 </div>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
-                  {sample.style_no || sample.id || '—'}
-                </span>
-                <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {sample.product_name}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -918,7 +1015,7 @@ function Navbar() {
             <Search size={16} color="#94a3b8" className="navbar-search-icon" />
             <input
               type="text"
-              placeholder="Search samples by style no. or name…"
+              placeholder={user?.role === 'store_manager' ? "Search store items by code, name, or category..." : "Search samples by style no. or name…"}
               className="navbar-search-input"
               value={searchQuery}
               onChange={handleSearchChange}
@@ -940,50 +1037,117 @@ function Navbar() {
 
               {!searchLoading && searchResults.length === 0 && (
                 <div style={{ padding: '1.1rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.84rem' }}>
-                  No samples found
+                  {user?.role === 'store_manager' ? 'No matching store items found' : 'No samples found'}
                 </div>
               )}
 
-              {!searchLoading && searchResults.map((sample, idx) => (
-                <div
-                  key={sample.id}
-                  className="search-result-row"
-                  style={{
-                    borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
-                    animationDelay: `${idx * 0.045}s`
-                  }}
-                  onClick={() => handleSearchSelect(sample)}
-                >
-                  <div style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    background: '#f1f5f9',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    {sample.images?.[0]?.image ? (
-                      <img src={sample.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                        <path d="m21 15-5-5L5 21"/>
-                      </svg>
-                    )}
+              {!searchLoading && searchResults.map((item, idx) => {
+                if (user?.role === 'store_manager') {
+                  return (
+                    <div
+                      key={item.id}
+                      className="search-result-row"
+                      style={{
+                        borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        animationDelay: `${idx * 0.045}s`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.6rem 0.85rem'
+                      }}
+                      onClick={() => handleSearchSelect(item)}
+                    >
+                      <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        flexShrink: 0,
+                        background: '#fff7ed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid #ffedd5'
+                      }}>
+                        {item.image ? (
+                          <img src={item.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <Package size={18} color="#ea580c" />
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
+                            {item.item_code}
+                          </span>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {item.item_name}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                          Category: <strong>{item.category_name || 'General'}</strong>
+                        </span>
+                      </div>
+
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          color: item.is_low_stock ? '#dc2626' : '#16a34a',
+                          backgroundColor: item.is_low_stock ? '#fef2f2' : '#f0fdf4',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          border: `1px solid ${item.is_low_stock ? '#fca5a5' : '#bbf7d0'}`
+                        }}>
+                          Stock: {item.balance_qty} {item.unit}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={item.id}
+                    className="search-result-row"
+                    style={{
+                      borderBottom: idx < searchResults.length - 1 ? '1px solid #f1f5f9' : 'none',
+                      animationDelay: `${idx * 0.045}s`
+                    }}
+                    onClick={() => handleSearchSelect(item)}
+                  >
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      background: '#f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid #e2e8f0'
+                    }}>
+                      {item.images?.[0]?.image ? (
+                        <img src={item.images[0].image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
+                          <rect x="3" y="3" width="18" height="18" rx="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <path d="m21 15-5-5L5 21"/>
+                        </svg>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
+                      {item.style_no || item.id || '—'}
+                    </span>
+                    <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.product_name}
+                    </span>
                   </div>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5a2b', minWidth: '72px', flexShrink: 0 }}>
-                    {sample.style_no || sample.id || '—'}
-                  </span>
-                  <span style={{ fontSize: '0.83rem', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {sample.product_name}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

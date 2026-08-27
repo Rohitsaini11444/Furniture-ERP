@@ -395,6 +395,18 @@ export default function StoreManagement() {
     }
   }, [activeTab, fetchTabData]);
 
+  // Handle auto-opening item detail modal when navigated from top Navbar Search
+  useEffect(() => {
+    if (location.state?.selectedItemId || location.state?.itemData) {
+      const targetId = location.state?.selectedItemId || location.state?.itemData?.id;
+      const targetItem = (stockSummaryData?.items || []).find(it => String(it.id) === String(targetId)) || location.state?.itemData;
+      if (targetItem) {
+        setSelectedDetailItem(targetItem);
+        setIsDetailModalOpen(true);
+      }
+    }
+  }, [location.state, stockSummaryData]);
+
   // Filtered Stock Summary Items
   const filteredStockItems = (stockSummaryData?.items || []).filter(item => {
     const matchesSearch = item.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -575,7 +587,7 @@ export default function StoreManagement() {
             </h1>
           </div>
           <p style={{ margin: '8px 0 0 0', fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
-            Manage store materials (Fevicol, Hardware, Bond, Lacquer, Thinner, Sand paper, Tapes), Stock Credit/Debit, Contractor Issues & Monthly Deduction Billing
+          
           </p>
         </div>
 

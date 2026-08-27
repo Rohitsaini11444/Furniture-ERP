@@ -219,7 +219,7 @@ export default function StoreMaterialReturnPage() {
               </span>
             </div>
             <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
-              ↩️ Record Store Material Return
+              ↩ Record Store Material Return
             </h1>
           </div>
         </div>
