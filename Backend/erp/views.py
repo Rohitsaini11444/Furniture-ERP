@@ -6941,43 +6941,85 @@ class StoreExcelImportView(APIView):
         })
 
     @staticmethod
-    def _get_or_create_category(cat_name):
+    def _get_or_create_category(cat_name, cat_name_map=None, cat_code_map=None, existing_codes=None):
         if not cat_name:
             return StoreItemCategory.objects.first()
         cleaned_name = str(cat_name).strip()
         if not cleaned_name:
             return StoreItemCategory.objects.first()
 
+        # If in-memory maps provided
+        if cat_name_map is not None and cleaned_name.lower() in cat_name_map:
+            return cat_name_map[cleaned_name.lower()]
+
         # 1. Search by name (case-insensitive)
         cat = StoreItemCategory.objects.filter(name__iexact=cleaned_name).first()
         if cat:
+            if cat_name_map is not None:
+                cat_name_map[cleaned_name.lower()] = cat
             return cat
 
         # 2. Search by code
         base_code = re.sub(r'[^A-Z0-9]', '', cleaned_name.upper())[:10] or "GEN"
+        if cat_code_map is not None and base_code in cat_code_map:
+            return cat_code_map[base_code]
+
         cat = StoreItemCategory.objects.filter(code__iexact=base_code).first()
         if cat:
+            if cat_code_map is not None:
+                cat_code_map[base_code] = cat
             return cat
 
         # 3. Create new with unique code
         unique_code = base_code
         counter = 1
-        while StoreItemCategory.objects.filter(code__iexact=unique_code).exists():
+        code_set = existing_codes if existing_codes is not None else set(StoreItemCategory.objects.values_list('code', flat=True))
+        while unique_code in code_set or StoreItemCategory.objects.filter(code__iexact=unique_code).exists():
             unique_code = f"{base_code[:7]}_{counter}"
             counter += 1
 
         try:
-            return StoreItemCategory.objects.create(name=cleaned_name, code=unique_code)
+            new_cat = StoreItemCategory.objects.create(name=cleaned_name, code=unique_code)
+            if cat_name_map is not None:
+                cat_name_map[cleaned_name.lower()] = new_cat
+            if cat_code_map is not None:
+                cat_code_map[unique_code.upper()] = new_cat
+            if existing_codes is not None:
+                existing_codes.add(unique_code.upper())
+            return new_cat
         except Exception:
             return StoreItemCategory.objects.filter(Q(name__iexact=cleaned_name) | Q(code__iexact=unique_code)).first() or StoreItemCategory.objects.first()
 
     def _handle_single_sheet_import(self, request, wb, import_type):
-        """Robust single sheet upload supporting all tabs."""
+        """Robust high-performance single sheet upload supporting all tabs with in-memory caching."""
         ws = wb.active
         created_count = 0
         updated_count = 0
         skipped_count = 0
         errors = []
+
+        # Preload Categories
+        all_cats = list(StoreItemCategory.objects.all())
+        cat_name_map = {c.name.lower(): c for c in all_cats if c.name}
+        cat_code_map = {c.code.upper(): c for c in all_cats if c.code}
+        existing_cat_codes = set(cat_code_map.keys())
+        default_cat = all_cats[0] if all_cats else StoreItemCategory.objects.create(name="General Materials", code="GEN_MAT")
+
+        # Preload Items
+        all_items = list(StoreItem.objects.all())
+        items_by_code = {it.item_code.upper(): it for it in all_items if it.item_code}
+        items_by_name = {self._clean_key(it.item_name): it for it in all_items if it.item_name}
+
+        # Preload Suppliers
+        suppliers_by_name = {self._clean_key(s.name): s for s in Supplier.objects.all() if s.name}
+
+        # Preload Contractors
+        contractors_by_name = {}
+        for u in User.objects.filter(role='contractor'):
+            if u.username:
+                contractors_by_name[self._clean_key(u.username)] = u
+            if u.first_name:
+                contractors_by_name[self._clean_key(u.first_name)] = u
 
         with transaction.atomic():
             if import_type in ('items', 'item_master'):
@@ -6985,12 +7027,13 @@ class StoreExcelImportView(APIView):
                     ws, ['code', 'name', 'item', 'unit', 'rate', 'status', 'category'], max_search_rows=5
                 )
 
-                def get_c(row, *keywords, default=""):
-                    for kw in keywords:
-                        for h_name, c_idx in col_map.items():
-                            if kw in h_name.lower():
-                                if c_idx < len(row) and row[c_idx] is not None:
-                                    return row[c_idx]
+                def get_c(row, *keywords, default=None):
+                    if col_map:
+                        for kw in keywords:
+                            for h_name, c_idx in col_map.items():
+                                if kw in h_name.lower():
+                                    if c_idx < len(row) and row[c_idx] is not None:
+                                        return row[c_idx]
                     return default
 
                 for idx, r in enumerate(data_rows, start=header_row + 1):
@@ -7016,15 +7059,18 @@ class StoreExcelImportView(APIView):
                         reorder_level = Decimal('10.00')
                         remark = ""
 
-                    if not item_code or not item_name:
+                    if not item_code and not item_name:
                         continue
 
-                    default_status = 'non-charge' if 'non' in status_raw else 'charge'
-                    cat = self._get_or_create_category(cat_name) if cat_name else StoreItemCategory.objects.first()
+                    if not item_code:
+                        item_code = f"IT{idx:03d}"
 
-                    existing_item = StoreItem.objects.filter(item_code=item_code).first()
+                    default_status = 'non-charge' if 'non' in status_raw else 'charge'
+                    cat = self._get_or_create_category(cat_name, cat_name_map, cat_code_map, existing_cat_codes) if cat_name else default_cat
+
+                    existing_item = items_by_code.get(item_code.upper()) or items_by_name.get(self._clean_key(item_name))
                     if not existing_item:
-                        StoreItem.objects.create(
+                        new_item = StoreItem.objects.create(
                             item_code=item_code,
                             item_name=item_name,
                             category=cat,
@@ -7036,23 +7082,22 @@ class StoreExcelImportView(APIView):
                             remark=remark,
                             is_active=True
                         )
+                        items_by_code[item_code.upper()] = new_item
+                        if item_name:
+                            items_by_name[self._clean_key(item_name)] = new_item
                         created_count += 1
                     else:
                         changed = False
-                        if existing_item.item_name != item_name:
+                        if item_name and existing_item.item_name != item_name:
                             existing_item.item_name = item_name
                             changed = True
                         if cat and existing_item.category != cat:
                             existing_item.category = cat
                             changed = True
-                        if existing_item.unit != unit:
+                        if unit and existing_item.unit != unit:
                             existing_item.unit = unit
                             changed = True
-                        if rate > 0 and existing_item.base_rate == Decimal('0.00'):
-                            existing_item.base_rate = rate
-                            existing_item.current_rate = rate
-                            changed = True
-                        elif rate > 0 and existing_item.base_rate != rate:
+                        if rate > 0 and existing_item.base_rate != rate:
                             existing_item.base_rate = rate
                             existing_item.current_rate = rate
                             changed = True
@@ -7074,13 +7119,16 @@ class StoreExcelImportView(APIView):
                     ws, ['voucher', 'bill', 'supplier', 'item', 'qty', 'date', 'rate'], max_search_rows=5
                 )
 
-                def get_c(row, *keywords, default=""):
-                    for kw in keywords:
-                        for h_name, c_idx in col_map.items():
-                            if kw in h_name.lower():
-                                if c_idx < len(row) and row[c_idx] is not None:
-                                    return row[c_idx]
+                def get_c(row, *keywords, default=None):
+                    if col_map:
+                        for kw in keywords:
+                            for h_name, c_idx in col_map.items():
+                                if kw in h_name.lower():
+                                    if c_idx < len(row) and row[c_idx] is not None:
+                                        return row[c_idx]
                     return default
+
+                existing_inward_vouchers = set(StoreMaterialIn.objects.values_list('voucher_no', flat=True))
 
                 for idx, r in enumerate(data_rows, start=header_row + 1):
                     if not r or all(c is None for c in r):
@@ -7113,16 +7161,26 @@ class StoreExcelImportView(APIView):
                         v_num = f"INW-{idx:04d}"
 
                     item = None
-                    if item_code:
-                        item = StoreItem.objects.filter(item_code=item_code).first()
-                    if not item and item_name:
-                        item = StoreItem.objects.filter(item_name__iexact=item_name).first()
+                    if item_code and item_code.upper() in items_by_code:
+                        item = items_by_code[item_code.upper()]
+                    elif item_name and self._clean_key(item_name) in items_by_name:
+                        item = items_by_name[self._clean_key(item_name)]
 
                     if not item:
-                        errors.append(f"Row {idx}: Item '{item_name or item_code}' not found in Item Master.")
+                        errors.append({
+                            'sheet': 'Material Inward Receipts',
+                            'row': idx,
+                            'field': 'Item Code / Name',
+                            'error': f"Item '{item_name or item_code}' not found in Item Master."
+                        })
                         continue
 
-                    sup, _ = Supplier.objects.get_or_create(name=sup_name)
+                    sup_key = self._clean_key(sup_name)
+                    sup = suppliers_by_name.get(sup_key)
+                    if not sup:
+                        sup = Supplier.objects.create(name=sup_name)
+                        suppliers_by_name[sup_key] = sup
+
                     mat_in, created = StoreMaterialIn.objects.update_or_create(
                         voucher_no=v_num,
                         defaults={
@@ -7130,14 +7188,16 @@ class StoreExcelImportView(APIView):
                             'item': item,
                             'supplier': sup,
                             'qty': qty,
-                            'unit': unit,
-                            'bill_rate': bill_rate,
+                            'unit': unit or item.unit,
+                            'bill_rate': bill_rate or item.base_rate,
+                            'total_amount': qty * (bill_rate or item.base_rate),
                             'bill_no': bill_no or v_num,
                             'received_by': request.user
                         }
                     )
                     if created:
                         created_count += 1
+                        existing_inward_vouchers.add(v_num)
                     else:
                         updated_count += 1
 
@@ -7146,12 +7206,13 @@ class StoreExcelImportView(APIView):
                     ws, ['voucher', 'contractor', 'item', 'qty', 'date', 'rate', 'unit'], max_search_rows=5
                 )
 
-                def get_c(row, *keywords, default=""):
-                    for kw in keywords:
-                        for h_name, c_idx in col_map.items():
-                            if kw in h_name.lower():
-                                if c_idx < len(row) and row[c_idx] is not None:
-                                    return row[c_idx]
+                def get_c(row, *keywords, default=None):
+                    if col_map:
+                        for kw in keywords:
+                            for h_name, c_idx in col_map.items():
+                                if kw in h_name.lower():
+                                    if c_idx < len(row) and row[c_idx] is not None:
+                                        return row[c_idx]
                     return default
 
                 for idx, r in enumerate(data_rows, start=header_row + 1):
@@ -7181,14 +7242,14 @@ class StoreExcelImportView(APIView):
                         status_raw = self._clean_str(r[8] if len(r) > 8 else "charge").lower()
 
                     item = None
-                    if item_code:
-                        item = StoreItem.objects.filter(item_code=item_code).first()
-                    if not item and item_name:
-                        item = StoreItem.objects.filter(item_name__iexact=item_name).first()
+                    if item_code and item_code.upper() in items_by_code:
+                        item = items_by_code[item_code.upper()]
+                    elif item_name and self._clean_key(item_name) in items_by_name:
+                        item = items_by_name[self._clean_key(item_name)]
 
                     if not item:
                         errors.append({
-                            'sheet': 'Daily Issue Entry',
+                            'sheet': 'Daily Outward Issues',
                             'row': idx,
                             'field': 'Item Code / Name',
                             'error': f"Item '{item_name or item_code}' not found in Item Master. Please add item first."
@@ -7197,16 +7258,20 @@ class StoreExcelImportView(APIView):
 
                     contractor = None
                     if cont_name:
-                        contractor = User.objects.filter(Q(username__iexact=cont_name) | Q(first_name__iexact=cont_name)).first()
+                        c_key = self._clean_key(cont_name)
+                        contractor = contractors_by_name.get(c_key)
                         if not contractor:
-                            contractor = User.objects.create_user(username=cont_name, first_name=cont_name, role='contractor')
+                            uname = re.sub(r'[^a-zA-Z0-9]', '_', cont_name.lower())[:25]
+                            contractor = User.objects.create_user(username=uname, first_name=cont_name, role='contractor')
+                            contractors_by_name[c_key] = contractor
 
                     issue_status = 'non-charge' if 'non' in status_raw else 'charge'
                     if rate == 0 and item.base_rate > 0:
                         rate = item.base_rate
 
-                    chargeable_tot = (qty * rate) if issue_status == 'charge' else Decimal('0.00')
-                    non_chargeable_tot = Decimal('0.00') if issue_status == 'charge' else (qty * rate)
+                    tot_amt = qty * rate
+                    chargeable_tot = tot_amt if issue_status == 'charge' else Decimal('0.00')
+                    non_chargeable_tot = Decimal('0.00') if issue_status == 'charge' else tot_amt
 
                     issue, created = StoreDailyIssue.objects.update_or_create(
                         voucher_no=v_num,
@@ -7216,9 +7281,10 @@ class StoreExcelImportView(APIView):
                             'contractor': contractor,
                             'contractor_person_name': worker or (contractor.first_name if contractor else ""),
                             'qty': qty,
-                            'unit': unit,
+                            'unit': unit or item.unit,
                             'rate': rate,
                             'status': issue_status,
+                            'total_amount': tot_amt,
                             'chargeable_total': chargeable_tot,
                             'non_chargeable_total': non_chargeable_tot,
                             'issued_by': request.user
@@ -7234,12 +7300,13 @@ class StoreExcelImportView(APIView):
                     ws, ['voucher', 'contractor', 'item', 'qty', 'date', 'rate', 'unit'], max_search_rows=5
                 )
 
-                def get_c(row, *keywords, default=""):
-                    for kw in keywords:
-                        for h_name, c_idx in col_map.items():
-                            if kw in h_name.lower():
-                                if c_idx < len(row) and row[c_idx] is not None:
-                                    return row[c_idx]
+                def get_c(row, *keywords, default=None):
+                    if col_map:
+                        for kw in keywords:
+                            for h_name, c_idx in col_map.items():
+                                if kw in h_name.lower():
+                                    if c_idx < len(row) and row[c_idx] is not None:
+                                        return row[c_idx]
                     return default
 
                 for idx, r in enumerate(data_rows, start=header_row + 1):
@@ -7255,10 +7322,10 @@ class StoreExcelImportView(APIView):
                     rate = self._parse_num(get_c(r, 'rate', default=None), Decimal('0.00'))
                     remark = self._clean_str(get_c(r, 'remark', default=""))
 
-                    item = StoreItem.objects.filter(Q(item_code=item_ident) | Q(item_name__iexact=item_ident)).first()
+                    item = items_by_code.get(item_ident.upper()) or items_by_name.get(self._clean_key(item_ident))
                     if not item:
                         errors.append({
-                            'sheet': 'Material Return',
+                            'sheet': 'Material Returns',
                             'row': idx,
                             'field': 'Item Code / Name',
                             'error': f"Item '{item_ident}' not found in Item Master."
@@ -7267,9 +7334,12 @@ class StoreExcelImportView(APIView):
 
                     contractor = None
                     if cont_ident:
-                        contractor = User.objects.filter(Q(username__iexact=cont_ident) | Q(first_name__iexact=cont_ident)).first()
+                        c_key = self._clean_key(cont_ident)
+                        contractor = contractors_by_name.get(c_key)
                         if not contractor:
-                            contractor = User.objects.create_user(username=cont_ident, first_name=cont_ident, role='contractor')
+                            uname = re.sub(r'[^a-zA-Z0-9]', '_', cont_ident.lower())[:25]
+                            contractor = User.objects.create_user(username=uname, first_name=cont_ident, role='contractor')
+                            contractors_by_name[c_key] = contractor
 
                     ret, created = StoreMaterialReturn.objects.update_or_create(
                         voucher_no=v_num,
@@ -7278,8 +7348,8 @@ class StoreExcelImportView(APIView):
                             'item': item,
                             'contractor': contractor,
                             'qty': qty,
-                            'unit': unit,
-                            'rate': rate,
+                            'unit': unit or item.unit,
+                            'rate': rate or item.base_rate,
                             'remark': remark,
                             'returned_by': request.user
                         }
@@ -7288,6 +7358,25 @@ class StoreExcelImportView(APIView):
                         created_count += 1
                     else:
                         updated_count += 1
+
+                # Single summary AuditLog for single sheet
+                try:
+                    AuditLog.objects.create(
+                        user=request.user,
+                        username=request.user.get_full_name() or request.user.username,
+                        user_role=getattr(request.user, 'role', 'store_manager'),
+                        action=AuditAction.CREATE,
+                        module_name="Store Management",
+                        model_name=f"Excel {import_type.title()} Import",
+                        object_repr=f"Imported {created_count + updated_count} {import_type} records",
+                        changes={
+                            'created_count': created_count,
+                            'updated_count': updated_count,
+                            'skipped_count': skipped_count
+                        }
+                    )
+                except Exception:
+                    pass
 
         if errors and (created_count == 0 and updated_count == 0):
             return Response({
