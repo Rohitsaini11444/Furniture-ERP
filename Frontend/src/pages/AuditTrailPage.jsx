@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Shield, Search, Filter, RefreshCw, Calendar, User, Eye, Download,
   Trash2, PlusCircle, Edit3, LogIn, FileSpreadsheet, Layers, CheckCircle2
