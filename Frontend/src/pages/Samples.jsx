@@ -289,26 +289,34 @@ function Samples() {
       .catch(err => console.error(err));
   };
 
+  const [debouncedSearch, setDebouncedSearch] = useState(filterSearch);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(filterSearch);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [filterSearch]);
+
   const fetchSamples = useCallback(() => {
     setLoading(true);
-    const params = { page: currentPage, ordering: ordering };
-    if (filterSearch) params.search = filterSearch;
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterBuyer) params.buyer = filterBuyer;
     if (filterMaterial) params.material = filterMaterial;
     api.get('/samples/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setSamples(data);
         setFiltered(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [filterSearch, filterBuyer, filterMaterial, currentPage, ordering]);
+  }, [debouncedSearch, filterBuyer, filterMaterial, currentPage, ordering]);
 
   useEffect(() => {
     fetchBuyers();
@@ -368,7 +376,7 @@ function Samples() {
     try {
       const payload = {
         sample_ids: Array.from(selectedRowIds),
-        q: filterSearch,
+        q: debouncedSearch,
         buyer_id: filterBuyer
       };
       const response = await api.post('/samples/export-excel/', payload, {
@@ -399,15 +407,7 @@ function Samples() {
     }
     setCurrentPage(1);
     setSelectedRowIds(new Set());
-  }, [filterBuyer, filterMaterial, ordering]);
-
-  // Local filter (instant feedback while typing)
-  useEffect(() => {
-    let f = samples;
-    if (filterBuyer) f = f.filter(s => s.buyer === filterBuyer);
-    if (filterMaterial) f = f.filter(s => s.material?.toLowerCase().includes(filterMaterial.toLowerCase()));
-    setFiltered(f);
-  }, [filterBuyer, filterMaterial, samples]);
+  }, [debouncedSearch, filterBuyer, filterMaterial, ordering]);
 
   // Load sample on id change (routing edit) or restore draft
   useEffect(() => {

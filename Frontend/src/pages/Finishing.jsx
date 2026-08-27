@@ -265,30 +265,48 @@ function Finishing() {
   };
 
   // ── Fetch Finishes ─────────────────────────────────────────────────────────
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
   const fetchFinishes = useCallback(() => {
     setLoading(true);
-    const params = { page: currentPage, ordering };
-    if (searchTerm) params.search = searchTerm;
+    const params = { page: currentPage, page_size: 20, ordering };
+    if (debouncedSearch) params.search = debouncedSearch;
     if (filterWoodType) params.wood_type = filterWoodType;
 
     api.get('/finishes/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setFinishes(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 20));
+          setTotalPages(Math.ceil(res.data.count / 20) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error('Error fetching finishes:', err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, searchTerm, filterWoodType]);
+  }, [currentPage, ordering, debouncedSearch, filterWoodType]);
 
   useEffect(() => {
     fetchFinishes();
   }, [fetchFinishes]);
+
+  // Reset page when filters change
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setCurrentPage(1);
+    setSelectedFinishIds(new Set());
+  }, [debouncedSearch, filterWoodType, ordering]);
 
   // Handle URL parameter for detail/edit page or restore draft
   useEffect(() => {

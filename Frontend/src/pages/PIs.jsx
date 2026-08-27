@@ -127,25 +127,36 @@ function PIs() {
 
   const [formData, setFormData] = useState(emptyForm);
 
-  const fetchPIs = () => {
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const fetchPIs = useCallback(() => {
     setLoading(true);
-    const params = { page: currentPage, ordering: ordering };
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) {
+      params.search = debouncedSearch;
+    }
     if (filterBuyerId) {
       params.buyer = filterBuyerId;
     }
     api.get('/performa-invoices/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setPis(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error('Failed to fetch PIs', err))
       .finally(() => setLoading(false));
-  };
+  }, [currentPage, ordering, debouncedSearch, filterBuyerId]);
 
   const fetchBuyers = () => {
     api.get('/buyers/', { params: { nopage: true } })
@@ -174,11 +185,11 @@ function PIs() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, filterBuyerId, ordering]);
+  }, [debouncedSearch, filterBuyerId, ordering]);
 
   useEffect(() => {
     fetchPIs();
-  }, [currentPage, ordering, filterBuyerId]);
+  }, [fetchPIs]);
 
   useEffect(() => {
     if (id && id !== 'new') {
@@ -398,11 +409,7 @@ function PIs() {
   const totalAmt = formData.items.reduce((acc, item) => acc + (parseFloat(item.amount_usd) || 0), 0);
   const wordsRepresentation = num2words(totalAmt);
 
-  const filteredPIs = pis.filter(p =>
-    (p.pi_no && p.pi_no.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.buyer_detail && p.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.buyer_order_no && p.buyer_order_no.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredPIs = pis;
 
   return (
     <div>

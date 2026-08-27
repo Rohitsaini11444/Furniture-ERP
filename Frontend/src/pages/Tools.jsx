@@ -142,9 +142,9 @@ function Tools() {
 
   // Fetch Buyers
   useEffect(() => {
-    api.get('/buyers/')
+    api.get('/buyers/', { params: { nopage: true } })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setBuyers(data);
       })
       .catch(err => console.error(err));
@@ -154,14 +154,14 @@ function Tools() {
   const fetchItems = useCallback(() => {
     setLoading(true);
     if (itemSource === 'buyer_masters') {
-      const params = { page: currentPage };
+      const params = { page: currentPage, page_size: 50, ordering: '-created_at' };
       if (selectedBuyerId) params.buyer = selectedBuyerId;
       api.get('/buyer-masters/', { params })
         .then(res => {
-          const data = res.data.results || res.data;
+          const data = res.data.results || res.data || [];
           setBuyerMasters(data);
           if (res.data.count !== undefined) {
-            setTotalPages(Math.ceil(res.data.count / 50));
+            setTotalPages(Math.ceil(res.data.count / 50) || 1);
           } else {
             setTotalPages(1);
           }
@@ -169,14 +169,14 @@ function Tools() {
         .catch(err => console.error(err))
         .finally(() => setLoading(false));
     } else {
-      const params = { page: currentPage };
+      const params = { page: currentPage, page_size: 50, ordering: '-created_at' };
       if (selectedBuyerId) params.buyer = selectedBuyerId;
       api.get('/samples/', { params })
         .then(res => {
-          const data = res.data.results || res.data;
+          const data = res.data.results || res.data || [];
           setSamples(data);
           if (res.data.count !== undefined) {
-            setTotalPages(Math.ceil(res.data.count / 50));
+            setTotalPages(Math.ceil(res.data.count / 50) || 1);
           } else {
             setTotalPages(1);
           }

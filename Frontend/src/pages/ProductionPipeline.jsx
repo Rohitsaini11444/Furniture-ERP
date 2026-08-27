@@ -75,7 +75,7 @@ export default function ProductionPipeline() {
     if (modalDataLoaded) return;
     try {
       const [stockRes, contractorRes] = await Promise.all([
-        api.get('/stock/'),
+        api.get('/stock/', { params: { nopage: true } }),
         isSupervisor ? api.get('/users/', { params: { role: 'contractor', nopage: true } }) : Promise.resolve({ data: [] })
       ]);
       setStockItems(stockRes.data.results || stockRes.data || []);
@@ -89,8 +89,8 @@ export default function ProductionPipeline() {
   const fetchData = () => {
     setLoading(true);
     Promise.all([
-      api.get('/production-jobs/'),
-      api.get('/production-units/')
+      api.get('/production-jobs/', { params: { nopage: true } }),
+      api.get('/production-units/', { params: { nopage: true } })
     ]).then(([jobsRes, unitRes]) => {
       const jData = jobsRes.data.results || jobsRes.data || [];
       const uData = unitRes.data.results || unitRes.data || [];

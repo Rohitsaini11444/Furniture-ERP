@@ -71,25 +71,35 @@ function Buyers() {
   };
   const [formData, setFormData] = useState(emptyForm);
 
-  const fetchBuyers = () => {
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const fetchBuyers = useCallback(() => {
     setLoading(true);
-    api.get('/buyers/', { params: { page: currentPage, ordering: ordering } })
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) params.search = debouncedSearch;
+    api.get('/buyers/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setBuyers(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  };
+  }, [currentPage, ordering, debouncedSearch]);
 
   useEffect(() => {
     fetchBuyers();
-  }, [currentPage, ordering]);
+  }, [fetchBuyers]);
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -98,7 +108,7 @@ function Buyers() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, ordering]);
+  }, [debouncedSearch, ordering]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

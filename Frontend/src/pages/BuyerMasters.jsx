@@ -252,12 +252,22 @@ function BuyerMasters() {
     }
   };
 
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   const fetchData = () => {
     setLoading(true);
     if (!isNewFormMode) {
-      api.get('/buyer-masters/', { params: { nopage: true, ordering: ordering } })
+      const params = { nopage: true, ordering: ordering };
+      if (debouncedSearch) params.search = debouncedSearch;
+      api.get('/buyer-masters/', { params })
         .then(res => {
-          const data = res.data.results || res.data;
+          const data = res.data.results || res.data || [];
           setBuyerMasters(data);
         })
         .catch(err => console.error(err))
@@ -265,7 +275,6 @@ function BuyerMasters() {
     } else {
       setLoading(false);
     }
-
 
     api.get('/buyers/', { params: { nopage: true } })
       .then(res => setBuyers(res.data))
@@ -282,7 +291,7 @@ function BuyerMasters() {
 
   useEffect(() => {
     fetchData();
-  }, [currentPage, ordering]);
+  }, [currentPage, ordering, debouncedSearch]);
 
   // Reset page when search changes (skip initial mount)
   const isFirstRender = useRef(true);
@@ -292,7 +301,7 @@ function BuyerMasters() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, ordering]);
+  }, [debouncedSearch, ordering]);
 
   const [materialsList, setMaterialsList] = useState(['']);
   const [finishesList, setFinishesList] = useState(['']);

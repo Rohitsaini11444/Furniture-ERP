@@ -50,12 +50,31 @@ export default function AuditTrailPage() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Reset page on filter changes
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setCurrentPage(1);
+  }, [debouncedSearch, actionFilter, moduleFilter, startDate, endDate]);
+
   const fetchAuditLogs = useCallback(async () => {
     setLoading(true);
     try {
       const params = {
         page: currentPage,
-        search: search || undefined,
+        page_size: 50,
+        search: debouncedSearch || undefined,
         action: actionFilter || undefined,
         module: moduleFilter || undefined,
         start_date: startDate || undefined,
@@ -67,11 +86,7 @@ export default function AuditTrailPage() {
 
       if (res.data.count !== undefined) {
         setTotalCount(res.data.count);
-        // Determine backend page size dynamically if next page exists, fallback to 50
-        const pageSize = (res.data.results && res.data.results.length > 0 && res.data.next)
-          ? res.data.results.length
-          : 50;
-        const calculatedPages = Math.ceil(res.data.count / pageSize) || 1;
+        const calculatedPages = Math.ceil(res.data.count / 50) || 1;
         setTotalPages(calculatedPages);
       } else {
         setTotalCount(Array.isArray(data) ? data.length : 0);
@@ -82,7 +97,7 @@ export default function AuditTrailPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, search, actionFilter, moduleFilter, startDate, endDate]);
+  }, [currentPage, debouncedSearch, actionFilter, moduleFilter, startDate, endDate]);
 
   useEffect(() => {
     fetchAuditLogs();

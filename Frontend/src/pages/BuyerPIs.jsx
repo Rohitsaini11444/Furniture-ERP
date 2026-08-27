@@ -184,25 +184,36 @@ function BuyerPIs() {
     }
   }, [id, location.state]);
 
-  const fetchPIs = () => {
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const fetchPIs = useCallback(() => {
     setLoading(true);
-    const params = { page: currentPage, ordering: ordering };
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) {
+      params.search = debouncedSearch;
+    }
     if (filterBuyerId) {
       params.buyer = filterBuyerId;
     }
     api.get('/buyer-pis/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setPis(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error('Failed to fetch Buyer PIs', err))
       .finally(() => setLoading(false));
-  };
+  }, [currentPage, ordering, debouncedSearch, filterBuyerId]);
 
   const fetchBuyers = () => {
     api.get('/buyers/', { params: { nopage: true } })
@@ -231,11 +242,11 @@ function BuyerPIs() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, filterBuyerId, ordering]);
+  }, [debouncedSearch, filterBuyerId, filterAllocationStatus, ordering]);
 
   useEffect(() => {
     fetchPIs();
-  }, [currentPage, ordering, filterBuyerId]);
+  }, [fetchPIs]);
 
   const handleBuyerChange = (eOrVal) => {
     const buyerId = (typeof eOrVal === 'object' && eOrVal?.target) ? eOrVal.target.value : eOrVal;
@@ -447,13 +458,6 @@ function BuyerPIs() {
   const wordsRepresentation = num2words(totalAmt);
 
   const filteredPIs = pis.filter(p => {
-    const matchesSearch = !searchTerm || (
-      (p.pi_no && p.pi_no.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.buyer_detail && p.buyer_detail.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (p.delivered_to_name && p.delivered_to_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-    if (!matchesSearch) return false;
-
     if (filterAllocationStatus && filterAllocationStatus !== 'ALL') {
       const pItems = p.items || [];
       const pUnits = p.total_units !== undefined ? p.total_units : pItems.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);

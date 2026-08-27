@@ -916,6 +916,14 @@ function POs() {
 
   const [pos, setPos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(null);
@@ -936,19 +944,23 @@ function POs() {
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
-    api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering } })
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (statusFilter) params.status = statusFilter;
+
+    api.get('/supplier-pos/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setPos(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering]);
+  }, [currentPage, ordering, debouncedSearch, statusFilter]);
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
 
@@ -959,7 +971,7 @@ function POs() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, ordering]);
+  }, [debouncedSearch, statusFilter, ordering]);
 
   const handleCancelPO = async (poItem, e) => {
     if (e) e.stopPropagation();
@@ -1037,13 +1049,7 @@ function POs() {
     );
   }
 
-  const filteredPOs = pos.filter(p => {
-    const matchSearch = !searchTerm ||
-      p.po_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.supplier_detail?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = !statusFilter || p.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const filteredPOs = pos;
 
   // Stats
   const stats = {

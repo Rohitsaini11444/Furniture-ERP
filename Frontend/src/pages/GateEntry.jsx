@@ -1113,6 +1113,14 @@ export default function GateEntry() {
   const navigate = useNavigate();
   const [pos, setPos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   const [loading, setLoading] = useState(true);
 
   // Pagination & Ordering
@@ -1136,22 +1144,24 @@ export default function GateEntry() {
 
   const fetchPOs = useCallback(() => {
     setLoading(true);
-    api.get('/supplier-pos/', { params: { page: currentPage, ordering: ordering } })
+    const params = { page: currentPage, page_size: 50, ordering: ordering };
+    if (debouncedSearch) params.search = debouncedSearch;
+
+    api.get('/supplier-pos/', { params })
       .then(res => {
-        const data = res.data.results || res.data;
+        const data = res.data.results || res.data || [];
         setPos(data);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 50));
+          setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
           setTotalPages(1);
         }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering]);
+  }, [currentPage, ordering, debouncedSearch]);
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
-
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -1160,7 +1170,7 @@ export default function GateEntry() {
       return;
     }
     setCurrentPage(1);
-  }, [searchTerm, ordering]);
+  }, [debouncedSearch, ordering]);
 
   const handleScanSuccess = async (scannedCode) => {
     setShowScanner(false);
@@ -1180,11 +1190,7 @@ export default function GateEntry() {
     return <QCForm poId={id} onBack={() => { navigate('/pos?tab=gate-entry'); fetchPOs(); }} />;
   }
 
-  const filteredPOs = pos.filter(p => {
-    return !searchTerm || 
-      p.po_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.supplier_detail?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+  const filteredPOs = pos;
 
   return (
     <div>

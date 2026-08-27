@@ -442,6 +442,12 @@ class SampleViewSet(viewsets.ModelViewSet):
                     output_field=IntegerField(),
                 )
             ).order_by('match_priority', 'style_no')
+        else:
+            ordering = self.request.query_params.get('ordering')
+            if ordering:
+                qs = qs.order_by(ordering)
+            else:
+                qs = qs.order_by('-created_at')
 
         return qs   
 
@@ -767,7 +773,23 @@ class BuyerViewSet(viewsets.ModelViewSet):
         return BuyerSerializer
 
     def get_queryset(self):
-        return Buyer.objects.filter(is_deleted=False).order_by('name')
+        qs = Buyer.objects.filter(is_deleted=False)
+        search = self.request.query_params.get('search')
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(code__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone__icontains=search) |
+                Q(address__icontains=search)
+            )
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('name')
+        return qs
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -818,8 +840,24 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         buyer_id = self.request.query_params.get('buyer')
+        search = self.request.query_params.get('search')
         if buyer_id:
             qs = qs.filter(buyer_id=buyer_id)
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(style_no__icontains=search) |
+                Q(product_name__icontains=search) |
+                Q(buyer_code__icontains=search) |
+                Q(buyer__name__icontains=search) |
+                Q(wood_type__icontains=search) |
+                Q(finish_color__icontains=search)
+            )
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-created_at')
         return qs
 
     def get_permissions(self):
@@ -1539,11 +1577,30 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         if buyer_id:
             qs = qs.filter(items__buyer_id=buyer_id).distinct()
         status_f = self.request.query_params.get('status')
-        if status_f:
+        if status_f and status_f != 'all':
             qs = qs.filter(status=status_f)
         exclude_status = self.request.query_params.get('exclude_status')
         if exclude_status:
             qs = qs.exclude(status=exclude_status)
+        search = self.request.query_params.get('search')
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(po_number__icontains=search) |
+                Q(supplier__name__icontains=search) |
+                Q(supervisor__username__icontains=search) |
+                Q(supervisor__first_name__icontains=search) |
+                Q(supervisor__last_name__icontains=search) |
+                Q(items__style_no__icontains=search) |
+                Q(items__description__icontains=search) |
+                Q(mode_of_payment__icontains=search) |
+                Q(terms_of_delivery__icontains=search)
+            ).distinct()
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-created_at')
         return qs
 
     def get_permissions(self):
@@ -2276,13 +2333,17 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
         stage_param = self.request.query_params.get('stage')
         status_param = self.request.query_params.get('status')
         contractor_param = self.request.query_params.get('contractor')
+        unit_param = self.request.query_params.get('production_unit') or self.request.query_params.get('unit_id')
+        search = self.request.query_params.get('search')
         
-        if stage_param:
+        if stage_param and stage_param != 'all':
             qs = qs.filter(stage=stage_param)
-        if status_param:
+        if status_param and status_param != 'all':
             qs = qs.filter(status=status_param)
-        if contractor_param:
+        if contractor_param and contractor_param != 'all':
             qs = qs.filter(contractor_id=contractor_param)
+        if unit_param and unit_param != 'all':
+            qs = qs.filter(production_unit_id=unit_param)
             
         if user.role == 'contractor':
             qs = qs.filter(contractor=user)
@@ -2291,6 +2352,24 @@ class ProductionJobViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(Q(assigned_by=user) | Q(production_unit=user.production_unit) | Q(assigned_by__isnull=True))
             else:
                 qs = qs.filter(Q(assigned_by=user) | Q(assigned_by__isnull=True))
+
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(style_no__icontains=search) |
+                Q(item_name__icontains=search) |
+                Q(contractor__username__icontains=search) |
+                Q(contractor__first_name__icontains=search) |
+                Q(contractor__last_name__icontains=search) |
+                Q(buyer__name__icontains=search) |
+                Q(contractor_notes__icontains=search)
+            )
+
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-created_at')
             
         return qs
 
@@ -2472,8 +2551,23 @@ class PerformaInvoiceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         buyer_id = self.request.query_params.get('buyer')
+        search = self.request.query_params.get('search')
         if buyer_id:
             qs = qs.filter(buyer_id=buyer_id)
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(pi_no__icontains=search) |
+                Q(buyer__name__icontains=search) |
+                Q(buyer__code__icontains=search) |
+                Q(buyer_order_no__icontains=search) |
+                Q(category_header__icontains=search)
+            )
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-created_at')
         return qs
 
     def get_permissions(self):
@@ -2850,8 +2944,23 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         buyer_id = self.request.query_params.get('buyer')
+        search = self.request.query_params.get('search')
         if buyer_id:
             qs = qs.filter(buyer_id=buyer_id)
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(pi_no__icontains=search) |
+                Q(buyer__name__icontains=search) |
+                Q(buyer__code__icontains=search) |
+                Q(delivered_to_company__icontains=search) |
+                Q(remarks__icontains=search)
+            )
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-created_at')
         return qs
 
     def get_serializer_context(self):
@@ -3829,9 +3938,32 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
     Automatically updates PO item passed/rejected quantities and generates
     Tally Debit Notes (auto-split if rejection exceeds Rs 2 Lakhs E-Way bill threshold).
     """
-    queryset = GateInwardReceipt.objects.select_related('supplier_po', 'po_item', 'supplier_po__supplier').all()
+    queryset = GateInwardReceipt.objects.select_related('supplier_po', 'po_item', 'supplier_po__supplier', 'inspected_by').all()
     serializer_class = GateInwardReceiptSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        po_id = self.request.query_params.get('supplier_po') or self.request.query_params.get('po')
+        search = self.request.query_params.get('search')
+        if po_id:
+            qs = qs.filter(supplier_po_id=po_id)
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(grn_number__icontains=search) |
+                Q(challan_no__icontains=search) |
+                Q(supplier_invoice_no__icontains=search) |
+                Q(supplier_po__po_number__icontains=search) |
+                Q(supplier_po__supplier__name__icontains=search) |
+                Q(vehicle_no__icontains=search)
+            )
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-receipt_date', '-created_at')
+        return qs
 
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -7651,4 +7783,51 @@ class StoreBulkDeleteView(APIView):
             'message': f'Successfully deleted {deleted_count} {module.replace("_", " ")} record(s).',
             'deleted_count': deleted_count
         })
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AuditLog.objects.select_related('user').all().order_by('-timestamp')
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = AuditLog.objects.select_related('user').all().order_by('-timestamp')
+        search = self.request.query_params.get('search')
+        action_param = self.request.query_params.get('action')
+        module_param = self.request.query_params.get('module')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if search:
+            search = search.strip()
+            qs = qs.filter(
+                Q(username__icontains=search) |
+                Q(model_name__icontains=search) |
+                Q(object_repr__icontains=search) |
+                Q(module_name__icontains=search)
+            )
+        if action_param:
+            qs = qs.filter(action=action_param)
+        if module_param:
+            qs = qs.filter(module_name=module_param)
+        if start_date:
+            qs = qs.filter(timestamp__date__gte=start_date)
+        if end_date:
+            qs = qs.filter(timestamp__date__lte=end_date)
+        return qs
+
+
+class HealthCheckView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"status": "ok", "timestamp": timezone.now().isoformat()})
+
+
+class DatabaseRelationshipsPDFView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        return generate_db_relationships_pdf()
+
 
