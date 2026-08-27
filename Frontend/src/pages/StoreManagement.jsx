@@ -99,7 +99,17 @@ export default function StoreManagement() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedContractorFilter, setSelectedContractorFilter] = useState('');
+  const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('Jul-26');
+
+  // Total count states for Server-Side Pagination
+  const [itemMasterTotalCount, setItemMasterTotalCount] = useState(0);
+  const [materialInTotalCount, setMaterialInTotalCount] = useState(0);
+  const [dailyIssuesTotalCount, setDailyIssuesTotalCount] = useState(0);
+  const [materialReturnsTotalCount, setMaterialReturnsTotalCount] = useState(0);
+  const [requisitionsTotalCount, setRequisitionsTotalCount] = useState(0);
+  const [stockAdjustmentsTotalCount, setStockAdjustmentsTotalCount] = useState(0);
+  const [contractorsTotalCount, setContractorsTotalCount] = useState(0);
 
   // Modal states
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -180,12 +190,12 @@ export default function StoreManagement() {
     setExportingExcel(true);
     try {
       const moduleKey = getActiveModuleKey();
-      const response = await api.post('/store/export-selected/', {
+      const res = await api.post('/store/export-selected/', {
         module: moduleKey,
         selected_ids: Array.from(selectedRowIds)
       }, { responseType: 'blob' });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `Store_${moduleKey}_Selected_${selectedRowIds.size}.xlsx`);
@@ -236,34 +246,98 @@ export default function StoreManagement() {
     units: false,
   });
 
-  // Lazy-load data for a specific active tab on-demand
-  const fetchTabData = useCallback(async (tabKey, force = false) => {
+  // Lazy-load data for a specific active tab on-demand with Server-Side Pagination
+  const fetchTabData = useCallback(async (tabKey, force = false, targetPage, targetSearch, targetCategory, targetStatus, targetContractor, targetSupplier) => {
     setLoading(true);
+    const searchVal = targetSearch !== undefined ? targetSearch : searchQuery;
+    const catVal = targetCategory !== undefined ? targetCategory : selectedCategory;
+    const statusVal = targetStatus !== undefined ? targetStatus : selectedStatus;
+    const contVal = targetContractor !== undefined ? targetContractor : selectedContractorFilter;
+    const supVal = targetSupplier !== undefined ? targetSupplier : selectedSupplierFilter;
+
     try {
       if (tabKey === 'item-master') {
-        const res = await api.get('/store/items/');
+        const p = targetPage !== undefined ? targetPage : pageItemMaster;
+        const res = await api.get('/store/items/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            category: catVal || undefined,
+            default_status: statusVal || undefined,
+          }
+        });
         setItemsList(res.data.results || res.data || []);
+        setItemMasterTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'material-in') {
-        const res = await api.get('/store/material-in/');
+        const p = targetPage !== undefined ? targetPage : pageMaterialIn;
+        const res = await api.get('/store/material-in/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            supplier: supVal || undefined,
+          }
+        });
         setMaterialInList(res.data.results || res.data || []);
+        setMaterialInTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'daily-issue') {
-        const res = await api.get('/store/daily-issues/');
+        const p = targetPage !== undefined ? targetPage : pageDailyIssue;
+        const res = await api.get('/store/daily-issues/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            contractor: contVal || undefined,
+            status: statusVal || undefined,
+          }
+        });
         setDailyIssuesList(res.data.results || res.data || []);
+        setDailyIssuesTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'material-returns') {
-        const res = await api.get('/store/material-returns/');
+        const p = targetPage !== undefined ? targetPage : pageMaterialReturns;
+        const res = await api.get('/store/material-returns/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            contractor: contVal || undefined,
+          }
+        });
         setMaterialReturnsList(res.data.results || res.data || []);
+        setMaterialReturnsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'requisitions') {
-        const res = await api.get('/store/requisitions/');
+        const p = targetPage !== undefined ? targetPage : pageRequisitions;
+        const res = await api.get('/store/requisitions/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            status: statusVal || undefined,
+          }
+        });
         setRequisitionsList(res.data.results || res.data || []);
+        setRequisitionsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'adjustments') {
-        const res = await api.get('/store/stock-adjustments/');
+        const p = targetPage !== undefined ? targetPage : pageAdjustments;
+        const res = await api.get('/store/stock-adjustments/', {
+          params: {
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined,
+            status: statusVal || undefined,
+          }
+        });
         setStockAdjustmentsList(res.data.results || res.data || []);
+        setStockAdjustmentsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'contractors' || tabKey === 'billing') {
+        const p = targetPage !== undefined ? targetPage : (tabKey === 'contractors' ? pageContractors : pageBilling);
         const [cRes, cpRes] = await Promise.all([
-          api.get('/users/', { params: { role: 'contractor' } }),
+          api.get('/users/', { params: { role: 'contractor', page: p, page_size: ITEMS_PER_PAGE, search: searchVal || undefined } }),
           api.get('/store/contractor-persons/'),
         ]);
         setContractors(cRes.data.results || cRes.data || []);
+        setContractorsTotalCount(cRes.data.count ?? (cRes.data.results || cRes.data || []).length);
         setContractorPersons(cpRes.data.results || cpRes.data || []);
       }
       setLoadedTabs(prev => ({ ...prev, [tabKey]: true }));
@@ -272,21 +346,47 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
+  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter, pageItemMaster, pageMaterialIn, pageDailyIssue, pageMaterialReturns, pageRequisitions, pageAdjustments, pageContractors, pageBilling]);
+
+  // Fetch categories once on mount
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await api.get('/store/categories/');
+      setCategories(res.data.results || res.data || []);
+    } catch (err) {
+      console.error('Failed to load categories', err);
+    }
   }, []);
 
-  // Fetch initial baseline data (Only Stock Summary & Categories - 2 requests)
-  const fetchBaselineData = useCallback(async () => {
+  // Fetch only Stock Summary with Server-Side Pagination
+  const fetchStockSummary = useCallback(async (targetPage = pageStockSummary, targetSearch = searchQuery, targetCategory = selectedCategory) => {
     setLoading(true);
     try {
-      const results = await Promise.allSettled([
-        api.get('/store/stock-summary/'),
-        api.get('/store/categories/'),
-      ]);
+      const res = await api.get('/store/stock-summary/', {
+        params: {
+          page: targetPage,
+          page_size: ITEMS_PER_PAGE,
+          search: targetSearch || undefined,
+          category: targetCategory || undefined,
+        }
+      });
+      setStockSummaryData(res.data);
+      setLoadedTabs(prev => ({ ...prev, 'stock-summary': true }));
+    } catch (err) {
+      console.error('Failed to load stock summary', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [pageStockSummary, searchQuery, selectedCategory]);
 
-      if (results[0].status === 'fulfilled') setStockSummaryData(results[0].value.data);
-      if (results[1].status === 'fulfilled') setCategories(results[1].value.data.results || results[1].value.data || []);
-      setLoadedTabs({ 'stock-summary': true });
-      // Also refresh active tab if not stock-summary
+  // Combined baseline fetch for initial load / manual refresh
+  const fetchBaselineData = useCallback(async (targetPage = 1, targetSearch = searchQuery, targetCategory = selectedCategory) => {
+    setLoading(true);
+    try {
+      await Promise.allSettled([
+        fetchStockSummary(targetPage, targetSearch, targetCategory),
+        fetchCategories(),
+      ]);
       if (activeTab !== 'stock-summary') {
         fetchTabData(activeTab, true);
       }
@@ -295,7 +395,7 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, fetchTabData]);
+  }, [activeTab, fetchCategories, fetchStockSummary, fetchTabData, searchQuery, selectedCategory]);
 
   // Ensure dropdown data for modals is loaded on-demand
   const ensureModalOptions = useCallback(async (optionsList = []) => {
@@ -308,7 +408,7 @@ export default function StoreManagement() {
       toFetch.push(api.get('/store/contractor-persons/').then(r => setContractorPersons(r.data.results || r.data || [])));
     }
     if (optionsList.includes('items') && !modalOptionsLoaded.items && itemsList.length === 0) {
-      toFetch.push(api.get('/store/items/').then(r => setItemsList(r.data.results || r.data || [])));
+      toFetch.push(api.get('/store/items/', { params: { nopage: true } }).then(r => setItemsList(r.data.results || r.data || [])));
     }
     if (optionsList.includes('units') && !modalOptionsLoaded.units) {
       toFetch.push(api.get('/production-units/').then(r => setProductionUnits(r.data.results || r.data || [])));
@@ -336,7 +436,7 @@ export default function StoreManagement() {
     try {
       await api.delete(`${endpoint}${id}/`, { data: { reason } });
       alert(`Voucher #${voucherNo} voided successfully. Audit log recorded and store inventory balance recalculated.`);
-      fetchBaselineData();
+      fetchStockSummary();
       fetchTabData(activeTab, true);
     } catch (err) {
       console.error('Error voiding voucher:', err);
@@ -348,7 +448,7 @@ export default function StoreManagement() {
   const handleApproveRequisition = async (id) => {
     try {
       await api.post(`/store/requisitions/${id}/approve/`);
-      fetchBaselineData();
+      fetchStockSummary();
       fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to approve requisition.');
@@ -360,7 +460,7 @@ export default function StoreManagement() {
     if (reason === null) return;
     try {
       await api.post(`/store/requisitions/${id}/reject/`, { reason });
-      fetchBaselineData();
+      fetchStockSummary();
       fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to reject requisition.');
@@ -372,7 +472,7 @@ export default function StoreManagement() {
     try {
       await api.post(`/store/stock-adjustments/${id}/approve/`);
       alert('Stock variance adjustment approved and store inventory synced!');
-      fetchBaselineData();
+      fetchStockSummary();
       fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to approve adjustment.');
@@ -382,22 +482,63 @@ export default function StoreManagement() {
   const handleRejectAdjustment = async (id) => {
     try {
       await api.post(`/store/stock-adjustments/${id}/reject/`);
-      fetchBaselineData();
+      fetchStockSummary();
       fetchTabData(activeTab, true);
     } catch (err) {
       alert(err.response?.data?.detail || 'Failed to reject adjustment.');
     }
   };
 
+  // Fetch categories once on mount
   useEffect(() => {
-    fetchBaselineData();
-  }, [location.key, fetchBaselineData]);
+    fetchCategories();
+  }, [fetchCategories]);
 
+  // Trigger server-side fetch only for stock-summary when page, search, or filter changes
+  useEffect(() => {
+    if (activeTab === 'stock-summary') {
+      const timer = setTimeout(() => {
+        fetchStockSummary(pageStockSummary, searchQuery, selectedCategory);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, fetchStockSummary, pageStockSummary, searchQuery, selectedCategory]);
+
+  // Trigger server-side fetch for other tabs when activeTab, page, search, or filters change
   useEffect(() => {
     if (activeTab !== 'stock-summary') {
-      fetchTabData(activeTab);
+      const timer = setTimeout(() => {
+        let currentPage = 1;
+        if (activeTab === 'item-master') currentPage = pageItemMaster;
+        else if (activeTab === 'material-in') currentPage = pageMaterialIn;
+        else if (activeTab === 'daily-issue') currentPage = pageDailyIssue;
+        else if (activeTab === 'material-returns') currentPage = pageMaterialReturns;
+        else if (activeTab === 'requisitions') currentPage = pageRequisitions;
+        else if (activeTab === 'adjustments') currentPage = pageAdjustments;
+        else if (activeTab === 'contractors') currentPage = pageContractors;
+        else if (activeTab === 'billing') currentPage = pageBilling;
+
+        fetchTabData(activeTab, true, currentPage);
+      }, 200);
+      return () => clearTimeout(timer);
     }
-  }, [activeTab, fetchTabData]);
+  }, [
+    activeTab,
+    fetchTabData,
+    searchQuery,
+    selectedCategory,
+    selectedStatus,
+    selectedContractorFilter,
+    selectedSupplierFilter,
+    pageItemMaster,
+    pageMaterialIn,
+    pageDailyIssue,
+    pageMaterialReturns,
+    pageRequisitions,
+    pageAdjustments,
+    pageContractors,
+    pageBilling
+  ]);
 
   // Handle auto-opening item detail modal when navigated from top Navbar Search
   useEffect(() => {
@@ -411,39 +552,29 @@ export default function StoreManagement() {
     }
   }, [location.state, stockSummaryData]);
 
-  // Filtered Stock Summary Items
-  const filteredStockItems = (stockSummaryData?.items || []).filter(item => {
-    const matchesSearch = item.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          item.item_code.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory ? item.category_name === selectedCategory : true;
-    return matchesSearch && matchesCategory;
-  });
-
-  // Filtered Daily Issues List
-  const filteredDailyIssues = dailyIssuesList.filter(issue => {
-    const matchesSearch = issue.item_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          issue.contractor_person_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          issue.voucher_no?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesContractor = selectedContractorFilter ? String(issue.contractor) === String(selectedContractorFilter) : true;
-    const matchesStatus = selectedStatus ? issue.status === selectedStatus : true;
-    return matchesSearch && matchesContractor && matchesStatus;
-  });
-
+  // Reset page to 1 across all tabs when search or filter changes
   useEffect(() => {
     setPageStockSummary(1);
+    setPageItemMaster(1);
+    setPageMaterialIn(1);
     setPageDailyIssue(1);
-  }, [searchQuery, selectedCategory, selectedContractorFilter, selectedStatus]);
+    setPageMaterialReturns(1);
+    setPageRequisitions(1);
+    setPageAdjustments(1);
+    setPageContractors(1);
+    setPageBilling(1);
+  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter]);
 
-  // Paginated lists (20 per page)
-  const paginatedStockItems = filteredStockItems.slice((pageStockSummary - 1) * ITEMS_PER_PAGE, pageStockSummary * ITEMS_PER_PAGE);
-  const paginatedItemMaster = itemsList.slice((pageItemMaster - 1) * ITEMS_PER_PAGE, pageItemMaster * ITEMS_PER_PAGE);
-  const paginatedMaterialIn = materialInList.slice((pageMaterialIn - 1) * ITEMS_PER_PAGE, pageMaterialIn * ITEMS_PER_PAGE);
-  const paginatedDailyIssues = filteredDailyIssues.slice((pageDailyIssue - 1) * ITEMS_PER_PAGE, pageDailyIssue * ITEMS_PER_PAGE);
-  const paginatedContractors = contractors.slice((pageContractors - 1) * ITEMS_PER_PAGE, pageContractors * ITEMS_PER_PAGE);
-  const paginatedBillingContractors = contractors.slice((pageBilling - 1) * ITEMS_PER_PAGE, pageBilling * ITEMS_PER_PAGE);
-  const paginatedMaterialReturns = materialReturnsList.slice((pageMaterialReturns - 1) * ITEMS_PER_PAGE, pageMaterialReturns * ITEMS_PER_PAGE);
-  const paginatedRequisitions = requisitionsList.slice((pageRequisitions - 1) * ITEMS_PER_PAGE, pageRequisitions * ITEMS_PER_PAGE);
-  const paginatedAdjustments = stockAdjustmentsList.slice((pageAdjustments - 1) * ITEMS_PER_PAGE, pageAdjustments * ITEMS_PER_PAGE);
+  // Server-side paginated items directly from API responses
+  const paginatedStockItems = stockSummaryData?.items || [];
+  const paginatedItemMaster = itemsList;
+  const paginatedMaterialIn = materialInList;
+  const paginatedDailyIssues = dailyIssuesList;
+  const paginatedContractors = contractors;
+  const paginatedBillingContractors = contractors;
+  const paginatedMaterialReturns = materialReturnsList;
+  const paginatedRequisitions = requisitionsList;
+  const paginatedAdjustments = stockAdjustmentsList;
 
   return (
     <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
@@ -1682,8 +1813,8 @@ export default function StoreManagement() {
 
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
-              currentPage={pageStockSummary}
-              totalPages={Math.ceil(filteredStockItems.length / ITEMS_PER_PAGE)}
+              currentPage={stockSummaryData?.current_page || pageStockSummary}
+              totalPages={stockSummaryData?.total_pages || 1}
               onPageChange={setPageStockSummary}
             />
           </div>
@@ -1697,7 +1828,17 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Item Master Catalog & Historical Rate Tracker
             </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search item code or name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
               <button
                 onClick={() => setIsCategoryModalOpen(true)}
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #d6c7b2', backgroundColor: '#faf6f0', color: '#8b5a2b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -1845,7 +1986,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageItemMaster}
-              totalPages={Math.ceil(itemsList.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(itemMasterTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageItemMaster}
             />
           </div>
@@ -1859,12 +2000,24 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Material Inward Receipts Log (Excel Sheet 4)
             </h3>
-            <button
-              onClick={() => navigate('/store-management/material-in')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <ArrowDownRight size={16} /> Record Material In
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search voucher, bill, supplier, item..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+              <button
+                onClick={() => navigate('/store-management/material-in')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ArrowDownRight size={16} /> Record Material In
+              </button>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -1971,7 +2124,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageMaterialIn}
-              totalPages={Math.ceil(materialInList.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(materialInTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageMaterialIn}
             />
           </div>
@@ -1985,12 +2138,24 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Daily Store Issue Entries (Outward Ledger - Excel Sheet 2)
             </h3>
-            <button
-              onClick={() => navigate('/store-management/daily-issue')}
-              style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <ArrowUpRight size={16} /> Record Issue Entry
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search voucher, contractor, worker, item..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+              <button
+                onClick={() => navigate('/store-management/daily-issue')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ArrowUpRight size={16} /> Record Issue Entry
+              </button>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -2123,7 +2288,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageDailyIssue}
-              totalPages={Math.ceil(filteredDailyIssues.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(dailyIssuesTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageDailyIssue}
             />
           </div>
@@ -2142,12 +2307,24 @@ export default function StoreManagement() {
                 Unused stock returned by contractors credited back into Store Inventory
               </p>
             </div>
-            <button
-              onClick={() => setIsMaterialReturnModalOpen(true)}
-              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <RotateCcw size={16} /> Record Material Return
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search voucher, contractor, item..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+              <button
+                onClick={() => setIsMaterialReturnModalOpen(true)}
+                style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RotateCcw size={16} /> Record Material Return
+              </button>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -2225,7 +2402,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageMaterialReturns}
-              totalPages={Math.ceil(materialReturnsList.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(materialReturnsTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageMaterialReturns}
             />
           </div>
@@ -2244,12 +2421,24 @@ export default function StoreManagement() {
                 Supervisor material request ➔ Store Manager Approval ➔ Stock Issue
               </p>
             </div>
-            <button
-              onClick={() => setIsRequisitionModalOpen(true)}
-              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Plus size={16} /> New Material Requisition
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search MRN #, item, requester..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+              <button
+                onClick={() => setIsRequisitionModalOpen(true)}
+                style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Plus size={16} /> New Material Requisition
+              </button>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -2382,6 +2571,14 @@ export default function StoreManagement() {
               </div>
             ))}
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageRequisitions}
+              totalPages={Math.ceil(requisitionsTotalCount / ITEMS_PER_PAGE) || 1}
+              onPageChange={setPageRequisitions}
+            />
+          </div>
         </div>
       )}
 
@@ -2397,12 +2594,24 @@ export default function StoreManagement() {
                 Record liquid evaporation, wastage, damage, or audit count adjustments (Requires Admin Approval)
               </p>
             </div>
-            <button
-              onClick={() => setIsAdjustmentModalOpen(true)}
-              style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <ShieldAlert size={16} /> Log Stock Variance
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search adjustment #, item, reason..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+              <button
+                onClick={() => setIsAdjustmentModalOpen(true)}
+                style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <ShieldAlert size={16} /> Log Stock Variance
+              </button>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -2534,6 +2743,14 @@ export default function StoreManagement() {
               </div>
             ))}
           </div>
+
+          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+            <Pagination
+              currentPage={pageAdjustments}
+              totalPages={Math.ceil(stockAdjustmentsTotalCount / ITEMS_PER_PAGE) || 1}
+              onPageChange={setPageAdjustments}
+            />
+          </div>
         </div>
       )}
 
@@ -2544,6 +2761,18 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Contractors & Worker Delegate Directory (Excel Sheet 3)
             </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search contractor name, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
@@ -2621,7 +2850,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageContractors}
-              totalPages={Math.ceil(contractors.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(contractorsTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageContractors}
             />
           </div>
@@ -2635,6 +2864,18 @@ export default function StoreManagement() {
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
               Monthly Contractor Settlement & Store Material Deduction Bills
             </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+                <Search size={16} color="#94a3b8" />
+                <input
+                  type="text"
+                  placeholder="Search contractor name, phone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                />
+              </div>
+            </div>
           </div>
 
           <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
@@ -2670,7 +2911,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageBilling}
-              totalPages={Math.ceil(contractors.length / ITEMS_PER_PAGE)}
+              totalPages={Math.ceil(contractorsTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageBilling}
             />
           </div>

@@ -287,6 +287,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = User.objects.all().order_by('role', 'username')
         role = self.request.query_params.get('role')
+        search = self.request.query_params.get('search')
         if role:
             qs = qs.filter(role=role)
         supervisor_id = self.request.query_params.get('supervisor')
@@ -294,6 +295,14 @@ class UserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(supervisor_id=supervisor_id)
         if user.role == 'supervisor' and role == 'contractor':
             qs = qs.filter(Q(supervisor=user) | Q(supervisor__isnull=True))
+        if search:
+            qs = qs.filter(
+                Q(username__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone_number__icontains=search) |
+                Q(email__icontains=search)
+            )
         return qs
 
     def perform_update(self, serializer):
@@ -5043,7 +5052,12 @@ class StoreItemViewSet(viewsets.ModelViewSet):
         if category:
             qs = qs.filter(category_id=category)
         if search:
-            qs = qs.filter(Q(item_code__icontains=search) | Q(item_name__icontains=search))
+            qs = qs.filter(
+                Q(item_code__icontains=search) |
+                Q(item_name__icontains=search) |
+                Q(category__name__icontains=search) |
+                Q(remark__icontains=search)
+            )
         if status_param:
             qs = qs.filter(default_status=status_param)
         
@@ -5051,7 +5065,7 @@ class StoreItemViewSet(viewsets.ModelViewSet):
             low_ids = [item.id for item in qs if item.balance_stock_qty <= item.reorder_level]
             qs = qs.filter(id__in=low_ids)
 
-        return qs
+        return qs.order_by('item_code')
 
     @action(detail=True, methods=['post'], url_path='revise-rate')
     def revise_rate(self, request, pk=None):
@@ -5327,10 +5341,11 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = StoreMaterialIn.objects.all()
+        qs = StoreMaterialIn.objects.select_related('item', 'supplier', 'received_by').all().order_by('-inward_date', '-created_at')
         supplier_id = self.request.query_params.get('supplier')
         month = self.request.query_params.get('month')
         item_id = self.request.query_params.get('item')
+        search = self.request.query_params.get('search')
 
         if supplier_id:
             qs = qs.filter(supplier_id=supplier_id)
@@ -5338,6 +5353,14 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
             qs = qs.filter(month_year__icontains=month)
         if item_id:
             qs = qs.filter(item_id=item_id)
+        if search:
+            qs = qs.filter(
+                Q(voucher_no__icontains=search) |
+                Q(bill_no__icontains=search) |
+                Q(supplier__name__icontains=search) |
+                Q(item__item_name__icontains=search) |
+                Q(item__item_code__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
@@ -5407,11 +5430,12 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = StoreDailyIssue.objects.all()
+        qs = StoreDailyIssue.objects.select_related('item', 'contractor', 'issued_by', 'production_unit').all().order_by('-issue_date', '-created_at')
         contractor_id = self.request.query_params.get('contractor')
         month = self.request.query_params.get('month')
         status_param = self.request.query_params.get('status')
         unit_id = self.request.query_params.get('production_unit')
+        search = self.request.query_params.get('search')
 
         if contractor_id:
             qs = qs.filter(contractor_id=contractor_id)
@@ -5421,6 +5445,15 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
             qs = qs.filter(status=status_param)
         if unit_id:
             qs = qs.filter(production_unit_id=unit_id)
+        if search:
+            qs = qs.filter(
+                Q(voucher_no__icontains=search) |
+                Q(contractor__username__icontains=search) |
+                Q(contractor__first_name__icontains=search) |
+                Q(contractor_person_name__icontains=search) |
+                Q(item__item_name__icontains=search) |
+                Q(item__item_code__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
@@ -5438,7 +5471,7 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
                     link="/store-management"
                 )
         else:
-            c_name = issue.contractor_person_name or (issue.contractor.name if issue.contractor else 'Department')
+            c_name = issue.contractor_person_name or (issue.contractor.first_name or issue.contractor.username if issue.contractor else 'Department')
             for u in store_recipients:
                 Notification.objects.create(
                     user=u,
@@ -5473,11 +5506,12 @@ class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = StoreMaterialReturn.objects.all()
+        qs = StoreMaterialReturn.objects.select_related('item', 'contractor', 'returned_by', 'production_unit').all().order_by('-return_date', '-created_at')
         contractor_id = self.request.query_params.get('contractor')
         month = self.request.query_params.get('month')
         status_param = self.request.query_params.get('status')
         unit_id = self.request.query_params.get('production_unit')
+        search = self.request.query_params.get('search')
 
         if contractor_id:
             qs = qs.filter(contractor_id=contractor_id)
@@ -5487,6 +5521,15 @@ class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
             qs = qs.filter(status=status_param)
         if unit_id:
             qs = qs.filter(production_unit_id=unit_id)
+        if search:
+            qs = qs.filter(
+                Q(voucher_no__icontains=search) |
+                Q(contractor__username__icontains=search) |
+                Q(contractor__first_name__icontains=search) |
+                Q(item__item_name__icontains=search) |
+                Q(item__item_code__icontains=search) |
+                Q(remark__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
@@ -5527,9 +5570,10 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = StoreRequisition.objects.select_related('requested_by', 'approved_by', 'item', 'production_unit').all().order_by('-created_at')
         status_param = self.request.query_params.get('status')
         unit_id = self.request.query_params.get('production_unit')
+        search = self.request.query_params.get('search')
         user = self.request.user
 
         if status_param:
@@ -5539,6 +5583,14 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
 
         if user.role in ['supervisor', 'contractor']:
             qs = qs.filter(requested_by=user)
+        if search:
+            qs = qs.filter(
+                Q(requisition_no__icontains=search) |
+                Q(item__item_name__icontains=search) |
+                Q(item__item_code__icontains=search) |
+                Q(requested_by__username__icontains=search) |
+                Q(purpose__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
@@ -5601,10 +5653,19 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = StoreStockAdjustment.objects.select_related('item', 'logged_by', 'approved_by').all().order_by('-created_at')
         status_param = self.request.query_params.get('status')
+        search = self.request.query_params.get('search')
         if status_param:
             qs = qs.filter(status=status_param)
+        if search:
+            qs = qs.filter(
+                Q(adjustment_no__icontains=search) |
+                Q(item__item_name__icontains=search) |
+                Q(item__item_code__icontains=search) |
+                Q(reason__icontains=search) |
+                Q(admin_remark__icontains=search)
+            )
         return qs
 
     def perform_create(self, serializer):
@@ -5679,18 +5740,27 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
 class StoreStockSummaryView(APIView):
     """
     GET /api/store/stock-summary/
-    Returns real-time aggregated inventory stats for Store Items matching Excel Sheet 1:
-    - Total Items Count
-    - Total Inward Stock Qty
-    - Total Issued Stock Qty
-    - Net Available Stock Qty
-    - Total Inventory Valuation (₹)
-    - Detailed list of item inventory records
+    Supports server-side pagination and filtering via ?page=1&page_size=20&search=...&category=...&low_stock=true
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        items = StoreItem.objects.select_related('category').order_by('-created_at')
+        search_query = request.query_params.get('search', '').strip()
+        category_filter = request.query_params.get('category', '').strip()
+        low_stock_only = request.query_params.get('low_stock', '').lower() in ('true', '1')
+        nopage = request.query_params.get('nopage', '').lower() in ('true', '1')
+
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+        except (ValueError, TypeError):
+            page = 1
+
+        try:
+            page_size = max(1, min(100, int(request.query_params.get('page_size', 20))))
+        except (ValueError, TypeError):
+            page_size = 20
+
+        items = StoreItem.objects.select_related('category').order_by('item_code')
         
         # Pre-aggregate totals across all items in 4 single bulk SQL queries instead of 4*N queries
         inward_map = dict(
@@ -5715,7 +5785,7 @@ class StoreStockSummaryView(APIView):
             .values_list('item_id', 'total')
         )
 
-        summary_list = []
+        full_summary_list = []
         tot_stock = Decimal('0.00')
         tot_issued = Decimal('0.00')
         tot_balance = Decimal('0.00')
@@ -5736,7 +5806,7 @@ class StoreStockSummaryView(APIView):
             tot_balance += bal_qty
             tot_valuation += val
 
-            summary_list.append({
+            full_summary_list.append({
                 'id': str(item.id),
                 'item_code': item.item_code,
                 'item_name': item.item_name,
@@ -5795,7 +5865,7 @@ class StoreStockSummaryView(APIView):
 
         # Calculate dynamic Category Health Statistics from DB
         cat_health_map = {}
-        for rec in summary_list:
+        for rec in full_summary_list:
             c_name = rec['category_name']
             if c_name not in cat_health_map:
                 cat_health_map[c_name] = {'category_name': c_name, 'total_count': 0, 'healthy_count': 0, 'low_stock_count': 0}
@@ -5819,15 +5889,47 @@ class StoreStockSummaryView(APIView):
                 'stock_percent': pct
             })
 
+        # Apply filtering for paginated table
+        filtered_items = full_summary_list
+        if search_query:
+            q_lower = search_query.lower()
+            filtered_items = [
+                it for it in filtered_items
+                if q_lower in it['item_code'].lower() or q_lower in it['item_name'].lower() or q_lower in it['category_name'].lower()
+            ]
+
+        if category_filter:
+            c_lower = category_filter.lower()
+            filtered_items = [it for it in filtered_items if c_lower == it['category_name'].lower()]
+
+        if low_stock_only:
+            filtered_items = [it for it in filtered_items if it['is_low_stock']]
+
+        total_filtered = len(filtered_items)
+
+        if nopage:
+            paginated_items = filtered_items
+            total_pages = 1
+        else:
+            total_pages = max(1, math.ceil(total_filtered / page_size)) if total_filtered > 0 else 1
+            if page > total_pages:
+                page = total_pages
+            start_idx = (page - 1) * page_size
+            paginated_items = filtered_items[start_idx : start_idx + page_size]
+
         return Response({
-            'total_items_count': len(items),
+            'total_items_count': len(full_summary_list),
             'total_stock_qty': float(tot_stock),
             'total_issued_qty': float(tot_issued),
             'total_balance_qty': float(tot_balance),
             'total_inventory_valuation': float(tot_valuation),
             'monthly_movement': monthly_movement,
             'category_health': category_health,
-            'items': summary_list
+            'current_page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+            'total_filtered_items': total_filtered,
+            'items': paginated_items
         })
 
 
