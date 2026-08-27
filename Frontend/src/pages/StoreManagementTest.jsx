@@ -434,8 +434,6 @@ export default function StoreManagement() {
       <style>{`
         @media (min-width: 769px) {
           .mobile-only { display: none !important; }
-          .desktop-only { display: block !important; }
-          .desktop-table-view { display: block !important; }
         }
         @media (max-width: 768px) {
           .desktop-only { display: none !important; }
