@@ -159,13 +159,14 @@ class LoginView(APIView):
         from .serializers import parse_user_agent
         parsed_ua = parse_user_agent(user_agent)
         
-        Notification.objects.create(
-            user=user,
-            title="Successful Login",
-            message=f"IP: {ip_address} • {parsed_ua['device_type'].capitalize()} ({parsed_ua['browser_name']})",
-            category="security",
-            link="/active-devices" if user.role == 'admin' else "/notifications"
-        )
+        if user.role == 'admin':
+            Notification.objects.create(
+                user=user,
+                title="Successful Login",
+                message=f"IP: {ip_address} • {parsed_ua['device_type'].capitalize()} ({parsed_ua['browser_name']})",
+                category="security",
+                link="/active-devices"
+            )
 
         return Response({
             'access': str(refresh.access_token),
@@ -3447,7 +3448,11 @@ class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+        user = self.request.user
+        qs = Notification.objects.filter(user=user)
+        if user.role == 'store_manager':
+            qs = qs.exclude(category='security')
+        return qs.order_by('-created_at')
 
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
@@ -5356,10 +5361,10 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
             item.current_rate = instance.bill_rate
             item.save(update_fields=['current_rate'])
 
-        # Notify store managers & admins of material inward
-        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+        # Notify store managers of material inward (fallback to admins if no active store manager)
+        store_recipients = get_store_notification_recipients()
         sup_name = instance.supplier.name if instance.supplier else 'Supplier'
-        for u in store_and_admins:
+        for u in store_recipients:
             Notification.objects.create(
                 user=u,
                 title="Material Inward Recorded",
@@ -5367,6 +5372,7 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
                 category="inventory",
                 link="/store-management/material-in" if u.role == 'store_manager' else "/store-management"
             )
+
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response({'detail': 'Only Admin users are authorized to void or delete store material in vouchers.'}, status=status.HTTP_403_FORBIDDEN)
@@ -5384,6 +5390,13 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
             request=request
         )
         return super().destroy(request, *args, **kwargs)
+
+
+def get_store_notification_recipients():
+    store_managers = User.objects.filter(role='store_manager', is_active=True)
+    if store_managers.exists():
+        return store_managers
+    return User.objects.filter(role='admin', is_active=True)
 
 
 class StoreDailyIssueViewSet(viewsets.ModelViewSet):
@@ -5411,10 +5424,10 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         issue = serializer.save(issued_by=self.request.user)
         item = issue.item
-        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
+        store_recipients = get_store_notification_recipients()
 
         if item and item.balance_stock_qty <= item.reorder_level:
-            for u in store_and_admins:
+            for u in store_recipients:
                 Notification.objects.create(
                     user=u,
                     title=f"Low Stock Alert: {item.item_name} ({item.item_code})",
@@ -5424,7 +5437,7 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
                 )
         else:
             c_name = issue.contractor_person_name or (issue.contractor.name if issue.contractor else 'Department')
-            for u in store_and_admins:
+            for u in store_recipients:
                 Notification.objects.create(
                     user=u,
                     title="Material Outward Issue",
@@ -5477,8 +5490,8 @@ class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         ret = serializer.save(returned_by=self.request.user)
         item = ret.item
-        store_and_admins = User.objects.filter(role__in=['admin', 'store_manager'], is_active=True)
-        for u in store_and_admins:
+        store_recipients = get_store_notification_recipients()
+        for u in store_recipients:
             Notification.objects.create(
                 user=u,
                 title="Material Return Recorded",
@@ -5531,7 +5544,17 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
         if not req_no:
             import uuid
             req_no = f"MRN-{uuid.uuid4().hex[:8].upper()}"
-        serializer.save(requested_by=self.request.user, requisition_no=req_no)
+        req = serializer.save(requested_by=self.request.user, requisition_no=req_no)
+        store_recipients = get_store_notification_recipients()
+        for u in store_recipients:
+            if u != self.request.user:
+                Notification.objects.create(
+                    user=u,
+                    title="New Material Requisition",
+                    message=f"MRN #{req.requisition_no}: {req.requested_by.username} requested {req.requested_qty} {req.unit} of {req.item.item_name}.",
+                    category="inventory",
+                    link="/store-management/requisition" if u.role == 'store_manager' else "/store-management"
+                )
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
@@ -5541,6 +5564,14 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
         mrn.status = 'approved'
         mrn.approved_by = request.user
         mrn.save()
+        if mrn.requested_by and mrn.requested_by != request.user:
+            Notification.objects.create(
+                user=mrn.requested_by,
+                title="Material Requisition Approved",
+                message=f"Your MRN #{mrn.requisition_no} for {mrn.item.item_name} has been approved.",
+                category="inventory",
+                link="/store-management/requisition"
+            )
         return Response(StoreRequisitionSerializer(mrn).data)
 
     @action(detail=True, methods=['post'], url_path='reject')
@@ -5551,6 +5582,14 @@ class StoreRequisitionViewSet(viewsets.ModelViewSet):
         mrn.status = 'rejected'
         mrn.rejection_reason = request.data.get('reason', 'Rejected by Store Management')
         mrn.save()
+        if mrn.requested_by and mrn.requested_by != request.user:
+            Notification.objects.create(
+                user=mrn.requested_by,
+                title="Material Requisition Rejected",
+                message=f"Your MRN #{mrn.requisition_no} for {mrn.item.item_name} was rejected. Reason: {mrn.rejection_reason}",
+                category="inventory",
+                link="/store-management/requisition"
+            )
         return Response(StoreRequisitionSerializer(mrn).data)
 
 
@@ -5571,7 +5610,18 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
         if not adj_no:
             import uuid
             adj_no = f"ADJ-{uuid.uuid4().hex[:8].upper()}"
-        serializer.save(logged_by=self.request.user, adjustment_no=adj_no)
+        adj = serializer.save(logged_by=self.request.user, adjustment_no=adj_no)
+        # Notify admins for stock adjustment approval
+        admins = User.objects.filter(role='admin', is_active=True)
+        for a in admins:
+            if a != self.request.user:
+                Notification.objects.create(
+                    user=a,
+                    title="Stock Adjustment Pending Approval",
+                    message=f"Adjustment #{adj.adjustment_no}: {adj.logged_by.username} logged {adj.adjustment_type} of {adj.quantity_delta} for {adj.item.item_name}.",
+                    category="inventory",
+                    link="/store-management/stock-adjustment"
+                )
 
     @action(detail=True, methods=['post'], url_path='approve')
     def approve(self, request, pk=None):
@@ -5582,6 +5632,15 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
         adj.approved_by = request.user
         adj.admin_remark = request.data.get('remark', 'Approved by Admin')
         adj.save()
+
+        if adj.logged_by and adj.logged_by != request.user:
+            Notification.objects.create(
+                user=adj.logged_by,
+                title="Stock Adjustment Approved",
+                message=f"Your Stock Adjustment #{adj.adjustment_no} for {adj.item.item_name} has been approved by Admin.",
+                category="inventory",
+                link="/store-management/stock-adjustment"
+            )
 
         log_audit_event(
             user=request.user,
@@ -5603,6 +5662,15 @@ class StoreStockAdjustmentViewSet(viewsets.ModelViewSet):
         adj.status = 'rejected'
         adj.admin_remark = request.data.get('remark', 'Rejected by Admin')
         adj.save()
+
+        if adj.logged_by and adj.logged_by != request.user:
+            Notification.objects.create(
+                user=adj.logged_by,
+                title="Stock Adjustment Rejected",
+                message=f"Your Stock Adjustment #{adj.adjustment_no} for {adj.item.item_name} was rejected by Admin.",
+                category="inventory",
+                link="/store-management/stock-adjustment"
+            )
         return Response(StoreStockAdjustmentSerializer(adj).data)
 
 

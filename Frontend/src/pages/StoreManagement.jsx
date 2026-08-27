@@ -42,6 +42,8 @@ export default function StoreManagement() {
   const [pageRequisitions, setPageRequisitions] = useState(1);
   const [pageAdjustments, setPageAdjustments] = useState(1);
   const [pageMaterialReturns, setPageMaterialReturns] = useState(1);
+  const [showMobileFabMenu, setShowMobileFabMenu] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // Sliding nav indicator state & refs
   const navTabRefs = React.useRef({});
@@ -463,8 +465,91 @@ export default function StoreManagement() {
         }
       `}</style>
 
-      {/* Header Banner */}
-      <div className="store-header-wrap" style={{
+      {/* Mobile App Navigation Header & Scrollable Module Chips Bar */}
+      <div className="mobile-only">
+        <div className="store-mobile-app-header">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '12px', backgroundColor: '#ea580c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(234, 88, 12, 0.3)' }}>
+                <Warehouse size={22} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>Store Management</h2>
+                <span style={{ fontSize: '0.72rem', color: '#fdba74', backgroundColor: 'rgba(234, 88, 12, 0.25)', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                  {user?.role === 'store_manager' ? 'Store Manager' : user?.role ? user.role.toUpperCase() : 'Store Hub'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setMobileSearchOpen(prev => !prev)}
+                style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'rgba(255,255,255,0.12)', border: 'none', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <Search size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchBaselineData()}
+                style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'rgba(255,255,255,0.12)', border: 'none', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <RefreshCw size={18} />
+              </button>
+            </div>
+          </div>
+
+          {mobileSearchOpen && (
+            <div style={{ marginTop: '0.85rem' }}>
+              <input
+                type="text"
+                placeholder="Search items, codes, vouchers..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: 'none', fontSize: '0.88rem', backgroundColor: '#ffffff', color: '#0f172a', boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable Module App Chips */}
+        <div className="store-mobile-chip-bar">
+          {[
+            { id: 'stock-summary', label: 'Stock Summary', icon: Package, color: '#0284c7' },
+            { id: 'item-master', label: 'Item Master', icon: Tag, color: '#8b5a2b' },
+            { id: 'material-in', label: 'Material In', icon: ArrowDownRight, color: '#16a34a' },
+            { id: 'daily-issue', label: 'Daily Issue', icon: ArrowUpRight, color: '#ea580c' },
+            { id: 'material-returns', label: 'Returns', icon: Undo2, color: '#d97706' },
+            { id: 'requisitions', label: 'Requisitions', icon: Plus, color: '#0284c7' },
+            { id: 'adjustments', label: 'Adjustments', icon: ShieldAlert, color: '#d97706' },
+            { id: 'contractors', label: 'Contractors', icon: Users, color: '#475569' },
+            { id: 'billing', label: 'Billing', icon: FileText, color: '#8b5a2b' },
+          ].map(chip => {
+            const IconComp = chip.icon;
+            const isActive = activeTab === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                className="store-mobile-chip"
+                onClick={() => setActiveTab(chip.id)}
+                style={{
+                  backgroundColor: isActive ? '#0f172a' : '#ffffff',
+                  color: isActive ? '#ffffff' : '#334155',
+                  border: isActive ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                  boxShadow: isActive ? '0 3px 8px rgba(15, 23, 42, 0.25)' : 'none'
+                }}
+              >
+                <IconComp size={15} color={isActive ? '#ffffff' : chip.color} />
+                <span>{chip.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Desktop Header Banner */}
+      <div className="desktop-only store-header-wrap" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -800,6 +885,7 @@ export default function StoreManagement() {
       {/* Low Stock Alert Reorder Indent Banner */}
       {lowStockItems.length > 0 && (
         <div
+          className="store-low-stock-banner"
           style={{
             padding: '0.9rem 1.25rem',
             backgroundColor: '#fffbeb',
@@ -814,11 +900,11 @@ export default function StoreManagement() {
             animation: 'fadeIn 0.2s ease-out'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="store-low-stock-banner-text" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div
               style={{
-                width: '36px',
-                height: '36px',
+                width: '38px',
+                height: '38px',
                 borderRadius: '10px',
                 backgroundColor: '#fef3c7',
                 border: '1px solid #fde68a',
@@ -832,10 +918,10 @@ export default function StoreManagement() {
               <AlertTriangle size={20} />
             </div>
             <div>
-              <strong style={{ fontSize: '0.92rem', color: '#78350f', display: 'block' }}>
+              <strong style={{ fontSize: '0.92rem', color: '#78350f', display: 'block', lineHeight: 1.2 }}>
                 ⚠️ Low Stock Alert: {lowStockItems.length} Store {lowStockItems.length === 1 ? 'Item is' : 'Items are'} below threshold!
               </strong>
-              <span style={{ fontSize: '0.78rem', color: '#92400e' }}>
+              <span style={{ fontSize: '0.78rem', color: '#92400e', lineHeight: 1.3 }}>
                 Generate batch purchase requisitions for Admin approval to restore inventory levels.
               </span>
             </div>
@@ -843,14 +929,15 @@ export default function StoreManagement() {
 
           <button
             type="button"
+            className="store-low-stock-banner-btn"
             onClick={() => setIsReorderIndentModalOpen(true)}
             style={{
               backgroundColor: '#5c3a21',
               color: '#ffffff',
               border: 'none',
               borderRadius: '10px',
-              padding: '0.55rem 1.1rem',
-              fontSize: '0.83rem',
+              padding: '0.65rem 1.25rem',
+              fontSize: '0.85rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
@@ -1117,7 +1204,7 @@ export default function StoreManagement() {
   )}
 
       {/* Navigation Tabs Bar */}
-      <div className="store-module-nav-container">
+      <div className="desktop-only store-module-nav-container">
         {/* Sliding Indicator Backdrop */}
         <div className="store-nav-sliding-indicator" style={navIndicatorStyle} />
 
@@ -1490,35 +1577,45 @@ export default function StoreManagement() {
                   cursor: 'pointer'
                 }}
               >
-                {/* Top Header: Box Icon Badge + Item Code + Item Name & Badges + Chevron */}
+                {/* Top Header: Box Icon Badge + Item Name + Item Code & Status Badges + Chevron */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                   <div style={{
-                    width: '46px',
-                    height: '46px',
+                    width: '42px',
+                    height: '42px',
                     borderRadius: '12px',
                     backgroundColor: item.is_low_stock ? '#fee2e2' : '#fef3c7',
                     color: item.is_low_stock ? '#dc2626' : '#8b5a2b',
                     display: 'flex',
-                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    <Package size={18} />
-                    <span style={{ fontSize: '0.66rem', fontWeight: 850, marginTop: '1px' }}>{item.item_code}</span>
+                    <Package size={20} />
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-                        {item.item_name}
-                      </h4>
+                    <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
+                      {item.item_name}
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        color: item.is_low_stock ? '#b91c1c' : '#8b5a2b',
+                        backgroundColor: item.is_low_stock ? '#fee2e2' : '#fff7ed',
+                        border: '1px solid ' + (item.is_low_stock ? '#fca5a5' : '#ffedd5'),
+                        padding: '2px 8px',
+                        borderRadius: '6px'
+                      }}>
+                        {item.item_code}
+                      </span>
                       {item.is_low_stock && (
                         <span style={{
-                          fontSize: '0.7rem',
+                          fontSize: '0.72rem',
                           fontWeight: 800,
                           color: '#dc2626',
-                          backgroundColor: '#fee2e2',
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fecaca',
                           padding: '2px 8px',
                           borderRadius: '6px'
                         }}>
@@ -1602,7 +1699,7 @@ export default function StoreManagement() {
             </div>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
@@ -1671,6 +1768,66 @@ export default function StoreManagement() {
             </table>
           </div>
 
+          {/* Mobile Item Master Card List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedItemMaster.map((item, idx) => (
+              <div
+                key={idx}
+                onClick={() => { setSelectedDetailItem(item); setIsDetailModalOpen(true); }}
+                className="store-mobile-card"
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#8b5a2b', backgroundColor: '#faf6f0', padding: '3px 8px', borderRadius: '8px', border: '1px solid #e7e5e4' }}>
+                    {item.item_code}
+                  </span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '3px 8px',
+                    borderRadius: '10px',
+                    backgroundColor: item.default_status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                    color: item.default_status === 'charge' ? '#c2410c' : '#16a34a'
+                  }}>
+                    {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                  </span>
+                </div>
+
+                <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                  {item.item_name}
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                  Category: <span style={{ fontWeight: 600, color: '#334155' }}>{item.category_name || '-'}</span> • Unit: <span style={{ fontWeight: 600 }}>{item.unit}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f8fafc', padding: '0.6rem 0.75rem', borderRadius: '10px', border: '1px solid #f1f5f9', marginBottom: '0.75rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>Master Rate</div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#334155' }}>₹ {parseFloat(item.base_rate).toFixed(2)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.68rem', color: '#0284c7', fontWeight: 600 }}>Current Rate</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0284c7' }}>₹ {parseFloat(item.current_rate || item.base_rate).toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
+                    style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                  >
+                    <TrendingUp size={14} /> Compare Rate
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Edit size={14} /> Edit
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageItemMaster}
@@ -1696,7 +1853,7 @@ export default function StoreManagement() {
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
                 <tr>
@@ -1750,6 +1907,53 @@ export default function StoreManagement() {
             </table>
           </div>
 
+          {/* Mobile Material In Card List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedMaterialIn.map((row, idx) => (
+              <div key={idx} className="store-mobile-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>
+                    Bill #{row.bill_no}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                    {row.inward_date}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  Supplier: <span style={{ color: '#0f172a' }}>{row.supplier_name}</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                  [{row.item_code}] {row.item_name}
+                </h4>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f0fdf4', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                  <div>
+                    <span style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 600 }}>Received Qty</span>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16a34a' }}>{row.qty} {row.unit}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 600 }}>Total Amount</span>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16a34a' }}>
+                      ₹ {parseFloat(row.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+
+                {user?.role === 'admin' && (
+                  <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                    <button
+                      onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
+                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Trash2 size={13} /> Void Voucher
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageMaterialIn}
@@ -1775,7 +1979,7 @@ export default function StoreManagement() {
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#fff7ed', borderBottom: '2px solid #fed7aa' }}>
                 <tr>
@@ -1844,6 +2048,64 @@ export default function StoreManagement() {
             </table>
           </div>
 
+          {/* Mobile Daily Issue Card List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedDailyIssues.map((row, idx) => (
+              <div key={idx} className="store-mobile-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '6px' }}>
+                    Voucher #{row.voucher_no}
+                  </span>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    backgroundColor: row.status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                    color: row.status === 'charge' ? '#c2410c' : '#16a34a'
+                  }}>
+                    {row.status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem' }}>
+                  Contractor: {row.contractor_name}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.4rem' }}>
+                  Worker Delegate: <span style={{ fontWeight: 700, color: '#8b5a2b' }}>{row.contractor_person_name || 'Self'}</span>
+                </div>
+
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                  {row.item_name}
+                </h4>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff7ed', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #fed7aa' }}>
+                  <div>
+                    <span style={{ fontSize: '0.7rem', color: '#9a3412', fontWeight: 600 }}>Issued Qty</span>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ea580c' }}>{row.qty} {row.unit}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#9a3412', fontWeight: 600 }}>Total Value</span>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#c2410c' }}>
+                      ₹ {parseFloat(row.status === 'charge' ? row.chargeable_total : row.non_chargeable_total).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {user?.role === 'admin' && (
+                  <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                    <button
+                      onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
+                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Trash2 size={13} /> Void Voucher
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageDailyIssue}
@@ -1874,7 +2136,7 @@ export default function StoreManagement() {
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
                 <tr>
@@ -1976,7 +2238,7 @@ export default function StoreManagement() {
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f0f9ff', borderBottom: '2px solid #bae6fd' }}>
                 <tr>
@@ -2055,6 +2317,57 @@ export default function StoreManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Requisitions Card List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedRequisitions.map((mrn, idx) => (
+              <div key={idx} className="store-mobile-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0284c7', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+                    MRN #{mrn.requisition_no}
+                  </span>
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: '10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    backgroundColor: mrn.status === 'approved' ? '#dcfce7' : mrn.status === 'rejected' ? '#fef2f2' : '#fef3c7',
+                    color: mrn.status === 'approved' ? '#15803d' : mrn.status === 'rejected' ? '#b91c1c' : '#b45309'
+                  }}>
+                    {mrn.status.toUpperCase()}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 700, marginBottom: '0.2rem' }}>
+                  Requested By: <span style={{ color: '#0f172a' }}>{mrn.requested_by_name}</span>
+                </div>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                  [{mrn.item_code}] {mrn.item_name}
+                </h4>
+
+                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0284c7', marginBottom: '0.65rem' }}>
+                  Requested: {mrn.requested_qty} {mrn.unit}
+                </div>
+
+                {mrn.status === 'pending' && ['admin', 'store_manager'].includes(user?.role) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => handleApproveRequisition(mrn.id)}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      <Check size={14} /> Approve
+                    </button>
+                    <button
+                      onClick={() => handleRejectRequisition(mrn.id)}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      <XCircle size={14} /> Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2078,7 +2391,7 @@ export default function StoreManagement() {
             </button>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
                 <tr>
@@ -2152,6 +2465,61 @@ export default function StoreManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Adjustments Card List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedAdjustments.map((adj, idx) => (
+              <div key={idx} className="store-mobile-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#d97706', backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
+                    ADJ #{adj.adjustment_no}
+                  </span>
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: '10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    backgroundColor: adj.status === 'approved' ? '#dcfce7' : adj.status === 'rejected' ? '#fef2f2' : '#fef3c7',
+                    color: adj.status === 'approved' ? '#15803d' : adj.status === 'rejected' ? '#b91c1c' : '#b45309'
+                  }}>
+                    {adj.status === 'pending_admin' ? 'PENDING ADMIN' : adj.status.toUpperCase()}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 700, marginBottom: '0.2rem' }}>
+                  Logged By: <span style={{ color: '#0f172a' }}>{adj.logged_by_name}</span> • Type: <span style={{ textTransform: 'capitalize' }}>{adj.adjustment_type.replace('_', ' ')}</span>
+                </div>
+
+                <h4 style={{ margin: '0 0 0.4rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                  [{adj.item_code}] {adj.item_name}
+                </h4>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Qty Delta:</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: parseFloat(adj.quantity_delta) < 0 ? '#dc2626' : '#16a34a' }}>
+                    {parseFloat(adj.quantity_delta) > 0 ? `+${adj.quantity_delta}` : adj.quantity_delta}
+                  </span>
+                </div>
+
+                {adj.status === 'pending_admin' && user?.role === 'admin' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => handleApproveAdjustment(adj.id)}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      <Check size={14} /> Approve
+                    </button>
+                    <button
+                      onClick={() => handleRejectAdjustment(adj.id)}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    >
+                      <XCircle size={14} /> Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -2164,7 +2532,7 @@ export default function StoreManagement() {
             </h3>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
+          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
@@ -2201,6 +2569,39 @@ export default function StoreManagement() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Contractors Directory List */}
+          <div className="mobile-only" style={{ padding: '0.85rem' }}>
+            {paginatedContractors.map((c, idx) => {
+              const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
+              return (
+                <div key={idx} className="store-mobile-card">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Users size={20} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                        {c.full_name || c.username}
+                      </h4>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.65rem' }}>
+                    Worker Delegate: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong>
+                  </div>
+
+                  <button
+                    onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <FileText size={15} /> Generate Monthly Bill
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
@@ -2381,6 +2782,62 @@ export default function StoreManagement() {
           </div>
         </div>
       )}
+      {/* Mobile Floating Action Speed Dial (FAB) */}
+      <div className="mobile-only store-mobile-fab-container">
+        {showMobileFabMenu && (
+          <div className="store-mobile-fab-menu">
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => { setShowMobileFabMenu(false); navigate('/store-management/material-in'); }}
+            >
+              <ArrowDownRight size={16} color="#16a34a" />
+              <span>Material In (Credit)</span>
+            </button>
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => { setShowMobileFabMenu(false); navigate('/store-management/daily-issue'); }}
+            >
+              <ArrowUpRight size={16} color="#ea580c" />
+              <span>Daily Issue (Outward)</span>
+            </button>
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => { setShowMobileFabMenu(false); setIsMaterialReturnModalOpen(true); }}
+            >
+              <Undo2 size={16} color="#d97706" />
+              <span>Record Return</span>
+            </button>
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => { setShowMobileFabMenu(false); navigate('/store-management/item-master/new'); }}
+            >
+              <Plus size={16} color="#8b5a2b" />
+              <span>New Item Master</span>
+            </button>
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => { setShowMobileFabMenu(false); setIsRequisitionModalOpen(true); }}
+            >
+              <ClipboardCheck size={16} color="#0284c7" />
+              <span>New Requisition</span>
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="store-mobile-fab-btn"
+          onClick={() => setShowMobileFabMenu(prev => !prev)}
+          style={{ transform: showMobileFabMenu ? 'rotate(45deg)' : 'none' }}
+        >
+          <Plus size={26} />
+        </button>
+      </div>
     </div>
   );
 }

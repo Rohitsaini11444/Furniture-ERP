@@ -6,9 +6,11 @@ import {
 } from 'lucide-react';
 import api from '../api/axios';
 import Breadcrumbs from '../components/Breadcrumbs';
+import { useAuth } from '../context/AuthContext';
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
+  const { user, isStoreManager } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'unread' | 'read'
@@ -325,7 +327,7 @@ export default function NotificationsPage() {
               }}
             >
               <option value="all">All Categories</option>
-              <option value="security">Security & Logins</option>
+              {!isStoreManager && <option value="security">Security & Logins</option>}
               <option value="inventory">Store & Stock</option>
               <option value="orders">Purchase & Orders</option>
               <option value="system">System Alerts</option>
