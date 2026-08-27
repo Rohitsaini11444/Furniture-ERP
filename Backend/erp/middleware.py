@@ -34,6 +34,14 @@ def get_user_agent(request=None):
         return ''
     return request.META.get('HTTP_USER_AGENT', '')
 
+def set_bulk_import_mode(active=True):
+    """Flags current thread as running high-throughput bulk import to bypass per-row signal overhead."""
+    _thread_locals.bulk_import = active
+
+def is_bulk_import_mode():
+    """Checks if current thread is executing in bulk import mode."""
+    return getattr(_thread_locals, 'bulk_import', False)
+
 
 class AuditLogMiddleware:
     """

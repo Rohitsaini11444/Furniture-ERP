@@ -45,6 +45,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .middleware import set_bulk_import_mode, is_bulk_import_mode
 from .db_diagram_pdf import generate_db_relationships_pdf
 from .models import (
     Buyer, BuyerMaster, BuyerMasterFinishingImage, BuyerPI, BuyerPIItem,
@@ -6323,13 +6324,17 @@ class StoreExcelImportView(APIView):
         except Exception as e:
             return Response({'error': f'Failed to parse Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Detect whether this is a Unified 4-in-1 Workbook or Single Sheet
-        is_unified = (import_type in ('unified', 'unified_master', 'all', 'master')) or len(wb.sheetnames) > 1
+        set_bulk_import_mode(True)
+        try:
+            # Detect whether this is a Unified 4-in-1 Workbook or Single Sheet
+            is_unified = (import_type in ('unified', 'unified_master', 'all', 'master')) or len(wb.sheetnames) > 1
 
-        if is_unified:
-            return self._handle_unified_import(request, wb)
-        else:
-            return self._handle_single_sheet_import(request, wb, import_type)
+            if is_unified:
+                return self._handle_unified_import(request, wb)
+            else:
+                return self._handle_single_sheet_import(request, wb, import_type)
+        finally:
+            set_bulk_import_mode(False)
 
     def _handle_unified_import(self, request, wb):
         """
@@ -6457,24 +6462,38 @@ class StoreExcelImportView(APIView):
 
         # ── C. Deep Relational Validation Pass on Sheet 3: Material In ──
         staged_material_in = []
+        # ── C. Deep Relational Validation Pass on Sheet 3: Material In ──
+        staged_material_in = []
         if ws_mat_in:
             h_row, col_map, data_rows = self._find_header_row_and_map(
-                ws_mat_in, ['supplier name', 'item name', 'item code', 'bill', 'qty', 'bill rate'], max_search_rows=5
+                ws_mat_in, ['supplier name', 'item name', 'item code', 'bill', 'qty', 'bill rate', 'date', 'supplier'], max_search_rows=5
             )
-            # Match standard user columns: Month(0), Date(1), Bill#(2), Supplier(3), ItemCode(4), ItemName(5), Qty(6), Unit(7), Rate(8), Amount(9)
+
+            def _get_mat_val(r, *keywords, fallback_idx=None):
+                if col_map:
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw == h_name.lower() or kw in h_name.lower():
+                                if c_idx < len(r) and r[c_idx] is not None:
+                                    return r[c_idx]
+                if fallback_idx is not None and fallback_idx < len(r):
+                    return r[fallback_idx]
+                return None
+
             for idx, r in enumerate(data_rows, start=h_row + 1):
                 if not r or all(c is None for c in r):
                     continue
-                month_val = self._clean_str(r[0] if len(r) > 0 else None)
-                date_raw = r[1] if len(r) > 1 else None
-                bill_no = self._clean_str(r[2] if len(r) > 2 else None)
-                sup_name = self._clean_str(r[3] if len(r) > 3 else None)
-                item_code_val = self._clean_str(r[4] if len(r) > 4 else None)
-                item_name_val = self._clean_str(r[5] if len(r) > 5 else None)
-                qty_raw = r[6] if len(r) > 6 else None
-                unit_val = self._clean_str(r[7] if len(r) > 7 else None) or "pcs"
-                rate_raw = r[8] if len(r) > 8 else None
-                amount_raw = r[9] if len(r) > 9 else None
+
+                month_val = self._clean_str(_get_mat_val(r, 'month', 'period', fallback_idx=0))
+                date_raw = _get_mat_val(r, 'inward date', 'date', 'grn date', 'rcvd date', fallback_idx=1)
+                bill_no = self._clean_str(_get_mat_val(r, 'bill no', 'bill #', 'bill_no', 'invoice', 'inv no', 'bill', 'voucher', fallback_idx=2))
+                sup_name = self._clean_str(_get_mat_val(r, 'supplier name', 'supplier', 'party', 'vendor', fallback_idx=3))
+                item_code_val = self._clean_str(_get_mat_val(r, 'item code', 'code', 'part no', fallback_idx=4))
+                item_name_val = self._clean_str(_get_mat_val(r, 'item name', 'item', 'material name', 'particulars', 'description', fallback_idx=5))
+                qty_raw = _get_mat_val(r, 'qty', 'quantity', 'rcvd qty', 'inward qty', fallback_idx=6)
+                unit_val = self._clean_str(_get_mat_val(r, 'unit', 'uom', fallback_idx=7)) or "pcs"
+                rate_raw = _get_mat_val(r, 'bill rate', 'rate', 'price', 'unit rate', fallback_idx=8)
+                amount_raw = _get_mat_val(r, 'total amount', 'amount', 'total', 'amt', fallback_idx=9)
 
                 # Check if row has any meaningful content
                 if not sup_name and not item_name_val and not item_code_val and qty_raw is None:
@@ -6552,23 +6571,35 @@ class StoreExcelImportView(APIView):
         staged_daily_issues = []
         if ws_daily_issue:
             h_row, col_map, data_rows = self._find_header_row_and_map(
-                ws_daily_issue, ['contractor', 'item', 'qty', 'rate', 'voucher'], max_search_rows=5
+                ws_daily_issue, ['contractor', 'item', 'qty', 'rate', 'voucher', 'issue date'], max_search_rows=5
             )
-            # Standard columns: Month(0), Date(1), Voucher(2), Contractor(3), Item(4), Qty(5), Unit(6), Rate(7), Status(8), Chargeable(9), NonChargeable(10), Unit/Factory(11), Remark(12)
+
+            def _get_issue_val(r, *keywords, fallback_idx=None):
+                if col_map:
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw == h_name.lower() or kw in h_name.lower():
+                                if c_idx < len(r) and r[c_idx] is not None:
+                                    return r[c_idx]
+                if fallback_idx is not None and fallback_idx < len(r):
+                    return r[fallback_idx]
+                return None
+
             for idx, r in enumerate(data_rows, start=h_row + 1):
                 if not r or all(c is None for c in r):
                     continue
-                month_val = self._clean_str(r[0] if len(r) > 0 else None)
-                date_raw = r[1] if len(r) > 1 else None
-                vch_val = self._clean_str(r[2] if len(r) > 2 else None)
-                contractor_val = self._clean_str(r[3] if len(r) > 3 else None)
-                item_val = self._clean_str(r[4] if len(r) > 4 else None)
-                qty_raw = r[5] if len(r) > 5 else None
-                unit_val = self._clean_str(r[6] if len(r) > 6 else None)
-                rate_raw = r[7] if len(r) > 7 else None
-                status_raw = self._clean_str(r[8] if len(r) > 8 else "charge").lower()
-                unit_no_val = self._clean_str(r[11] if len(r) > 11 else None)
-                remark_val = self._clean_str(r[12] if len(r) > 12 else None)
+
+                month_val = self._clean_str(_get_issue_val(r, 'month', 'period', fallback_idx=0))
+                date_raw = _get_issue_val(r, 'issue date', 'date', 'outward date', fallback_idx=1)
+                vch_val = self._clean_str(_get_issue_val(r, 'voucher no', 'voucher #', 'voucher', 'vch no', 'issue no', fallback_idx=2))
+                contractor_val = self._clean_str(_get_issue_val(r, 'contractor name', 'contractor', 'worker name', 'issued to', fallback_idx=3))
+                item_val = self._clean_str(_get_issue_val(r, 'item name', 'item code', 'item', 'material', 'particulars', 'description', fallback_idx=4))
+                qty_raw = _get_issue_val(r, 'qty', 'quantity', 'issue qty', 'issued qty', fallback_idx=5)
+                unit_val = self._clean_str(_get_issue_val(r, 'unit', 'uom', fallback_idx=6))
+                rate_raw = _get_issue_val(r, 'rate', 'issue rate', 'price', fallback_idx=7)
+                status_raw = self._clean_str(_get_issue_val(r, 'status', 'charge type', 'charge/non-charge', fallback_idx=8) or "charge").lower()
+                unit_no_val = self._clean_str(_get_issue_val(r, 'unit no', 'unit/factory', 'production unit', 'factory', 'plant', fallback_idx=11))
+                remark_val = self._clean_str(_get_issue_val(r, 'worker/person', 'worker', 'remark', 'contractor person', 'person', 'notes', fallback_idx=12))
 
                 if not contractor_val and not item_val and qty_raw is None:
                     continue
@@ -6672,11 +6703,31 @@ class StoreExcelImportView(APIView):
         daily_issue_created = 0
         daily_issue_skipped = 0
 
-        # Runtime Map for ForeignKey Linking
-        runtime_items = {}
+        # Runtime Map for ForeignKey Linking pre-populated with ALL DB entities
+        runtime_items = {it.item_code.upper(): it for it in StoreItem.objects.all() if it.item_code}
+        for it in StoreItem.objects.all():
+            if it.item_name:
+                runtime_items[self._clean_key(it.item_name)] = it
+
         runtime_contractors = {}
-        runtime_suppliers = {}
+        for u in User.objects.filter(role='contractor'):
+            if u.username:
+                runtime_contractors[self._clean_key(u.username)] = u
+            if u.first_name:
+                runtime_contractors[self._clean_key(u.first_name)] = u
+
+        runtime_suppliers = {self._clean_key(s.name): s for s in Supplier.objects.all() if s.name}
         runtime_units = {pu.name: pu for pu in ProductionUnit.objects.all()}
+        stock_supplier, _ = Supplier.objects.get_or_create(name="Stock (Internal Supply)")
+        runtime_suppliers['stock'] = stock_supplier
+        runtime_suppliers['internal'] = stock_supplier
+
+        # Pre-fetch existing voucher numbers to avoid 1000 individual queries
+        existing_mat_vouchers = set(StoreMaterialIn.objects.values_list('voucher_no', flat=True))
+        existing_mat_keys = set(StoreMaterialIn.objects.values_list('inward_date', 'item_id', 'supplier_id', 'qty'))
+
+        existing_issue_vouchers = set(StoreDailyIssue.objects.values_list('voucher_no', flat=True))
+        existing_issue_keys = set(StoreDailyIssue.objects.values_list('issue_date', 'contractor_id', 'item_id', 'qty', 'rate'))
 
         try:
             with transaction.atomic():
@@ -6685,9 +6736,8 @@ class StoreExcelImportView(APIView):
                 for it in staged_items:
                     code = it['item_code']
                     name = it['item_name']
-                    existing = StoreItem.objects.filter(Q(item_code=code) | Q(item_name__iexact=name)).first()
+                    existing = runtime_items.get(code.upper()) or runtime_items.get(self._clean_key(name))
                     if existing:
-                        # Update rate if existing rate is 0
                         if existing.base_rate == 0 and it['rate'] > 0:
                             existing.base_rate = it['rate']
                             existing.current_rate = it['rate']
@@ -6713,7 +6763,7 @@ class StoreExcelImportView(APIView):
                 for c in staged_contractors:
                     cname = c['contractor_name']
                     cunit = c['unit_no']
-                    c_user = User.objects.filter(Q(username__iexact=cname) | Q(first_name__iexact=cname) | Q(role='contractor', first_name__icontains=cname)).first()
+                    c_user = runtime_contractors.get(self._clean_key(cname))
                     if c_user:
                         contractors_skipped += 1
                         runtime_contractors[self._clean_key(cname)] = c_user
@@ -6745,8 +6795,8 @@ class StoreExcelImportView(APIView):
 
                 for s in staged_suppliers:
                     sname = s['supplier_name']
-                    existing_sup = Supplier.objects.filter(name__iexact=sname).first()
-                    if existing_sup:
+                    existing_sup = runtime_suppliers.get(self._clean_key(sname))
+                    if existing_sup and existing_sup is not True:
                         suppliers_skipped += 1
                         runtime_suppliers[self._clean_key(sname)] = existing_sup
                     else:
@@ -6758,104 +6808,71 @@ class StoreExcelImportView(APIView):
                         suppliers_created += 1
                         runtime_suppliers[self._clean_key(sname)] = new_sup
 
-                # Default Stock Supplier for internal inward entries
-                stock_supplier, _ = Supplier.objects.get_or_create(name="Stock (Internal Supply)")
-                runtime_suppliers['stock'] = stock_supplier
-                runtime_suppliers['internal'] = stock_supplier
-
                 # Step C: Ingest Material In (Inward Receipts)
                 for m in staged_material_in:
-                    # Resolve Item
                     item_obj = None
                     if m['item_code'] and m['item_code'].upper() in runtime_items:
                         item_obj = runtime_items[m['item_code'].upper()]
                     elif m['item_name'] and self._clean_key(m['item_name']) in runtime_items:
                         item_obj = runtime_items[self._clean_key(m['item_name'])]
-                    else:
-                        item_obj = StoreItem.objects.filter(Q(item_code=m['item_code']) | Q(item_name__iexact=m['item_name'])).first()
 
                     if not item_obj:
                         continue
 
-                    # Resolve Supplier
                     sup_obj = runtime_suppliers.get(self._clean_key(m['supplier_name']))
-                    if not sup_obj:
-                        sup_obj = Supplier.objects.filter(name__iexact=m['supplier_name']).first() or stock_supplier
+                    if not sup_obj or sup_obj is True:
+                        sup_obj = stock_supplier
 
-                    # Duplicate Check
-                    exists = StoreMaterialIn.objects.filter(
-                        Q(voucher_no=m['bill_no']) |
-                        Q(inward_date=m['inward_date'], item=item_obj, supplier=sup_obj, qty=m['qty'])
-                    ).exists()
+                    v_num = f"IN-{m['bill_no']}" if m['bill_no'] else f"IN-{m['inward_date'].strftime('%Y%m%d')}-{m['row_idx']}"
+                    duplicate_key = (m['inward_date'], item_obj.id, sup_obj.id, m['qty'])
 
-                    if exists:
+                    if v_num in existing_mat_vouchers or duplicate_key in existing_mat_keys:
                         mat_in_skipped += 1
                     else:
-                        v_num = f"IN-{m['inward_date'].strftime('%Y%m%d')}-{m['row_idx']}" if not m['bill_no'] else f"IN-{m['bill_no']}"
-                        if StoreMaterialIn.objects.filter(voucher_no=v_num).exists():
-                            v_num = f"{v_num}-{random.randint(10, 99)}"
-
+                        eff_rate = m['bill_rate'] or item_obj.base_rate
+                        tot_amt = m['amount'] or (m['qty'] * eff_rate)
                         StoreMaterialIn.objects.create(
                             voucher_no=v_num,
                             inward_date=m['inward_date'],
                             month_year=m['month_year'],
-                            bill_no=m['bill_no'],
+                            bill_no=m['bill_no'] or v_num,
                             supplier=sup_obj,
                             item=item_obj,
                             qty=m['qty'],
                             unit=m['unit'] or item_obj.unit,
-                            bill_rate=m['bill_rate'] or item_obj.base_rate,
-                            total_amount=m['amount'] or (m['qty'] * (m['bill_rate'] or item_obj.base_rate)),
+                            bill_rate=eff_rate,
+                            total_amount=tot_amt,
                             received_by=request.user
                         )
+                        existing_mat_vouchers.add(v_num)
+                        existing_mat_keys.add(duplicate_key)
                         mat_in_created += 1
 
                 # Step D: Ingest Daily Issue Entry (Outward Issues)
                 for d in staged_daily_issues:
-                    # Resolve Item
                     item_obj = None
                     if d['item_name']:
                         if d['item_name'].upper() in runtime_items:
                             item_obj = runtime_items[d['item_name'].upper()]
                         elif self._clean_key(d['item_name']) in runtime_items:
                             item_obj = runtime_items[self._clean_key(d['item_name'])]
-                        else:
-                            item_obj = StoreItem.objects.filter(Q(item_code=d['item_name']) | Q(item_name__iexact=d['item_name'])).first()
 
                     if not item_obj:
                         continue
 
-                    # Resolve Contractor
                     contractor_obj = runtime_contractors.get(self._clean_key(d['contractor_name']))
-                    if not contractor_obj:
-                        contractor_obj = User.objects.filter(Q(username__iexact=d['contractor_name']) | Q(first_name__iexact=d['contractor_name'])).first()
-
                     if not contractor_obj:
                         continue
 
-                    # Resolve Production Unit
-                    punit = None
-                    if d['unit_no']:
-                        punit = runtime_units.get(d['unit_no'])
-                        if not punit:
-                            punit = ProductionUnit.objects.filter(name__iexact=d['unit_no']).first()
-
-                    # Duplicate Check
+                    punit = runtime_units.get(d['unit_no']) if d['unit_no'] else None
                     vch = d['voucher_no']
-                    exists = StoreDailyIssue.objects.filter(
-                        Q(voucher_no=vch) |
-                        Q(issue_date=d['issue_date'], contractor=contractor_obj, item=item_obj, qty=d['qty'], rate=d['rate'])
-                    ).exists()
+                    duplicate_key = (d['issue_date'], contractor_obj.id, item_obj.id, d['qty'], d['rate'])
 
-                    if exists:
+                    if vch in existing_issue_vouchers or duplicate_key in existing_issue_keys:
                         daily_issue_skipped += 1
                     else:
-                        if StoreDailyIssue.objects.filter(voucher_no=vch).exists():
-                            vch = f"{vch}-{random.randint(10, 99)}"
-
                         eff_rate = d['rate'] or item_obj.current_rate or item_obj.base_rate
                         tot_amt = d['qty'] * eff_rate
-
                         StoreDailyIssue.objects.create(
                             voucher_no=vch,
                             issue_date=d['issue_date'],
@@ -6874,7 +6891,31 @@ class StoreExcelImportView(APIView):
                             remark=d['remark'],
                             issued_by=request.user
                         )
+                        existing_issue_vouchers.add(vch)
+                        existing_issue_keys.add(duplicate_key)
                         daily_issue_created += 1
+
+                # Single summary AuditLog for entire batch
+                total_processed = items_created + items_skipped + contractors_created + contractors_skipped + suppliers_created + suppliers_skipped + mat_in_created + mat_in_skipped + daily_issue_created + daily_issue_skipped
+                try:
+                    AuditLog.objects.create(
+                        user=request.user,
+                        username=request.user.get_full_name() or request.user.username,
+                        user_role=getattr(request.user, 'role', 'store_manager'),
+                        action=AuditAction.CREATE,
+                        module_name="Store Management",
+                        model_name="4-in-1 Unified Import",
+                        object_repr=f"Imported {total_processed} store records from Excel",
+                        changes={
+                            'items_created': items_created,
+                            'contractors_created': contractors_created,
+                            'suppliers_created': suppliers_created,
+                            'material_in_created': mat_in_created,
+                            'daily_issues_created': daily_issue_created
+                        }
+                    )
+                except Exception:
+                    pass
 
         except Exception as e:
             return Response({'error': f"Failed to commit store data: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

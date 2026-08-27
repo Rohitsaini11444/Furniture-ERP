@@ -10,7 +10,7 @@ from .models import (
     Supplier, StoreItem, StoreItemCategory, StoreMaterialIn, StoreDailyIssue,
     Sample, Finish, ProductionJob, ProductionUnit, User
 )
-from .middleware import get_current_user, get_client_ip, get_user_agent
+from .middleware import get_current_user, get_client_ip, get_user_agent, is_bulk_import_mode
 
 MODEL_MODULE_MAP = {
     Buyer: ("Buyers Directory", "Buyer"),
@@ -40,6 +40,8 @@ def serialize_val(val):
 
 @receiver(post_save)
 def auto_audit_log_save(sender, instance, created, **kwargs):
+    if is_bulk_import_mode():
+        return
     if sender not in MODEL_MODULE_MAP:
         return
     if sender == AuditLog:
