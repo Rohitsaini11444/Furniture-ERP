@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box, Boxes, FileText, ShoppingCart, Palette,
@@ -32,6 +32,15 @@ const WORKFLOW_STEPS = [
   { name: 'Polishing Stage',  icon: <Sparkles size={18} />,      color: '#a855f7' },
   { name: 'Packaging Stage',  icon: <Package size={18} />,       color: '#16a34a' },
   { name: 'Finished Goods',   icon: <Boxes size={18} />,         color: '#15803d' },
+];
+
+const DEFAULT_MONTHLY_MOVEMENT = [
+  { month: 'Mar', inward: 0, outward: 0 },
+  { month: 'Apr', inward: 0, outward: 0 },
+  { month: 'May', inward: 0, outward: 0 },
+  { month: 'Jun', inward: 0, outward: 0 },
+  { month: 'Jul', inward: 0, outward: 0 },
+  { month: 'Aug', inward: 0, outward: 0 }
 ];
 
 function AnimatedCounter({ value, duration = 1500, suffix = '', decimals = 0, start = false }) {
@@ -70,18 +79,11 @@ function InteractiveStoreChart({ storeData, startAnimation }) {
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const [animatedHeights, setAnimatedHeights] = useState([]);
 
-  const defaultMonthlyMovement = [
-    { month: 'Mar', inward: 0, outward: 0 },
-    { month: 'Apr', inward: 0, outward: 0 },
-    { month: 'May', inward: 0, outward: 0 },
-    { month: 'Jun', inward: 0, outward: 0 },
-    { month: 'Jul', inward: 0, outward: 0 },
-    { month: 'Aug', inward: 0, outward: 0 }
-  ];
-
-  const monthlyStoreMovement = (storeData?.monthly_movement && storeData.monthly_movement.length > 0)
-    ? storeData.monthly_movement
-    : defaultMonthlyMovement;
+  const monthlyStoreMovement = useMemo(() => {
+    return (storeData?.monthly_movement && storeData.monthly_movement.length > 0)
+      ? storeData.monthly_movement
+      : DEFAULT_MONTHLY_MOVEMENT;
+  }, [storeData?.monthly_movement]);
 
   useEffect(() => {
     if (startAnimation) {

@@ -32,6 +32,7 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.db import transaction
 from django.db.models import Case, Count, DecimalField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
@@ -5999,47 +6000,221 @@ class StoreExportTemplateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        template_type = request.query_params.get('type', 'items')
+        template_type = request.query_params.get('type', 'unified_master')
         wb = openpyxl.Workbook()
-        ws = wb.active
 
-        header_fill = PatternFill(start_color="5C3A21", end_color="5C3A21", fill_type="solid")
+        header_fill_dark = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+        header_fill_blue = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+        header_fill_green = PatternFill(start_color="065F46", end_color="065F46", fill_type="solid")
+        header_fill_orange = PatternFill(start_color="9A3412", end_color="9A3412", fill_type="solid")
         header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
 
-        if template_type == 'items':
+        thin_border = Border(
+            left=Side(style='thin', color='CBD5E1'),
+            right=Side(style='thin', color='CBD5E1'),
+            top=Side(style='thin', color='CBD5E1'),
+            bottom=Side(style='thin', color='CBD5E1')
+        )
+
+        if template_type in ('unified', 'unified_master', 'all', 'master'):
+            # ── 1. Sheet 1: Item Master ──
+            ws1 = wb.active
+            ws1.title = "Item Master"
+            ws1_headers = ["Item Code", "Item Name", "Unit", "Rate", "status"]
+            ws1.append(ws1_headers)
+            ws1_samples = [
+                ["IT001", "Rejmal 220", "pcs", 16.00, "charge"],
+                ["IT002", "Rejmal 320", "pcs", 16.00, "charge"],
+                ["IT004", "Grinder 5'120", "pkt", 15.75, "non-charge"],
+                ["IT005", "Grinder 5'80", "pkt", 15.75, "non-charge"],
+                ["IT009", "3M Gex 5'80", "pcs", 40.00, "charge"],
+                ["IT010", "3M Gex 6'80", "pcs", 50.00, "charge"],
+                ["IT016", "Iron Sheet", "pcs", 22.00, "charge"],
+                ["IT017", "Saree", "pcs", 28.00, "charge"],
+                ["IT020", "Sander Pad 5'", "pcs", 250.00, "non-charge"],
+                ["IT026", "0% Laquer", "ltr", 199.00, "non-charge"],
+                ["IT027", "NC Sealer", "ltr", 135.00, "non-charge"],
+                ["IT028", "RTU Sealer", "ltr", 135.00, "non-charge"],
+            ]
+            for row in ws1_samples:
+                ws1.append(row)
+
+            for col_num in range(1, len(ws1_headers) + 1):
+                cell = ws1.cell(row=1, column=col_num)
+                cell.fill = header_fill_blue
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws1.column_dimensions[get_column_letter(col_num)].width = 22
+
+            # ── 2. Sheet 2: Contractors-Supplier ──
+            ws2 = wb.create_sheet(title="Contractors-Supplier")
+            # Contractor headers in Col A-C, Supplier headers in Col G-I
+            ws2.cell(row=1, column=1, value="Contractor ID").fill = header_fill_dark
+            ws2.cell(row=1, column=2, value="Contractor Name").fill = header_fill_dark
+            ws2.cell(row=1, column=3, value="Unit No").fill = header_fill_dark
+            for c in (1, 2, 3):
+                ws2.cell(row=1, column=c).font = header_font
+                ws2.cell(row=1, column=c).alignment = Alignment(horizontal="center", vertical="center")
+
+            ws2.cell(row=1, column=7, value="Supplier Name").fill = header_fill_green
+            ws2.cell(row=1, column=8, value="Address").fill = header_fill_green
+            ws2.cell(row=1, column=9, value="Mobile #").fill = header_fill_green
+            for c in (7, 8, 9):
+                ws2.cell(row=1, column=c).font = header_font
+                ws2.cell(row=1, column=c).alignment = Alignment(horizontal="center", vertical="center")
+
+            contractors_sample = [
+                ("C001", "Babulal 1.NO", "Unit # 1"),
+                ("C002", "Bhuna 1.NO", "Unit # 1"),
+                ("C003", "Dharmender 1.NO", "Unit # 1"),
+                ("C004", "Lalu 1.NO", "Unit # 1"),
+                ("C005", "Mahender 1.NO", "Unit # 1"),
+                ("C006", "Ramavtar 1.NO", "Unit # 1"),
+                ("C008", "Digamber 4.NO", "Unit # 4"),
+                ("C009", "Hansraj 4.NO", "Unit # 4"),
+                ("C012", "Babulal Prajapat 5.NO", "Unit # 5"),
+                ("C017", "Sawariya Meena 5.NO", "Unit # 5"),
+                ("C026", "Dinesh 11.NO", "Unit # 11"),
+            ]
+            suppliers_sample = [
+                ("BASWA ENT.", "Jaipur Industrial Area", "9829011111"),
+                ("IDEAL COATING IND.", "Jaipur", "9829022222"),
+                ("ANUPAM PAINTS", "Jaipur", "9829033333"),
+                ("ABHINANDAN PACK.", "Jaipur", "9829044444"),
+                ("BS INDUSTRIES", "Jaipur", "9829055555"),
+                ("SAFFRON ENT.", "Jaipur", "9829066666"),
+                ("BHAVYA IND", "Jaipur", "9829077777"),
+                ("Naman Enterprises", "Jaipur", "9829088888"),
+            ]
+
+            max_rows = max(len(contractors_sample), len(suppliers_sample))
+            for i in range(max_rows):
+                r_idx = i + 2
+                if i < len(contractors_sample):
+                    cid, cname, uno = contractors_sample[i]
+                    ws2.cell(row=r_idx, column=1, value=cid)
+                    ws2.cell(row=r_idx, column=2, value=cname)
+                    ws2.cell(row=r_idx, column=3, value=uno)
+                if i < len(suppliers_sample):
+                    sname, saddr, smob = suppliers_sample[i]
+                    ws2.cell(row=r_idx, column=7, value=sname)
+                    ws2.cell(row=r_idx, column=8, value=saddr)
+                    ws2.cell(row=r_idx, column=9, value=smob)
+
+            ws2.column_dimensions['A'].width = 18
+            ws2.column_dimensions['B'].width = 28
+            ws2.column_dimensions['C'].width = 16
+            ws2.column_dimensions['D'].width = 8
+            ws2.column_dimensions['E'].width = 8
+            ws2.column_dimensions['F'].width = 8
+            ws2.column_dimensions['G'].width = 28
+            ws2.column_dimensions['H'].width = 26
+            ws2.column_dimensions['I'].width = 20
+
+            # ── 3. Sheet 3: Material In ──
+            ws3 = wb.create_sheet(title="Material In")
+            ws3.cell(row=1, column=1, value="Note: Header is in Row 2. Fill inward stock receipts below.")
+            ws3_headers = ["Month", "Date", "Bill #", "Supplier Name", "Item Code", "Item Name", "Qty", "Unit", "Bill Rate", "Amount"]
+            for c_idx, h_text in enumerate(ws3_headers, start=1):
+                cell = ws3.cell(row=2, column=c_idx, value=h_text)
+                cell.fill = header_fill_green
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws3.column_dimensions[get_column_letter(c_idx)].width = 20
+
+            ws3_samples = [
+                ["Aug-26", "2026-08-01", "BILL-101", "Stock", "IT001", "Rejmal 220", 500, "pcs", 16.00, 8000.00],
+                ["Aug-26", "2026-08-01", "BILL-102", "BASWA ENT.", "IT004", "Grinder 5'120", 200, "pkt", 15.75, 3150.00],
+                ["Aug-26", "2026-08-02", "BILL-103", "ANUPAM PAINTS", "IT027", "NC Sealer", 50, "ltr", 135.00, 6750.00],
+                ["Aug-26", "2026-08-03", "BILL-104", "BHAVYA IND", "IT017", "Saree", 100, "pcs", 28.00, 2800.00],
+            ]
+            for row in ws3_samples:
+                ws3.append(row)
+
+            # ── 4. Sheet 4: Daily Issue Entry ──
+            ws4 = wb.create_sheet(title="Daily Issue Entry")
+            ws4.cell(row=1, column=1, value="Note: Header is in Row 2. Fill daily issue records below.")
+            ws4_headers = ["Month", "Date", "Voucher No", "Contractor", "Item", "Qty", "Unit", "Rate", "Status", "Chargeable Total", "Non-Chargeable Total", "Unit", "Remark"]
+            for c_idx, h_text in enumerate(ws4_headers, start=1):
+                cell = ws4.cell(row=2, column=c_idx, value=h_text)
+                cell.fill = header_fill_orange
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws4.column_dimensions[get_column_letter(c_idx)].width = 20
+
+            ws4_samples = [
+                ["Aug-26", "2026-08-01", "VCH-001", "Ramavtar 1.NO", "3M Gex 6'80", 5, "pcs", 50.00, "charge", 250.00, 0.00, "Unit # 1", "banti"],
+                ["Aug-26", "2026-08-01", "VCH-002", "Mahender 1.NO", "NC Sealer", 20, "ltr", 135.00, "non-charge", 0.00, 2700.00, "Unit # 1", "mahender"],
+                ["Aug-26", "2026-08-01", "VCH-003", "Lalu 1.NO", "Rejmal 220", 30, "pcs", 16.00, "charge", 480.00, 0.00, "Unit # 1", "lalu"],
+                ["Aug-26", "2026-08-02", "VCH-004", "Sawariya Meena 5.NO", "Grinder 5'120", 2, "pkt", 15.75, "non-charge", 0.00, 31.50, "Unit # 5", "shrikant"],
+                ["Aug-26", "2026-08-02", "VCH-005", "Dinesh 11.NO", "Saree", 5, "pcs", 28.00, "charge", 140.00, 0.00, "Unit # 11", "dinesh"],
+            ]
+            for row in ws4_samples:
+                ws4.append(row)
+
+            filename = "Store_Master_Import_Template.xlsx"
+
+        elif template_type == 'items':
+            ws = wb.active
             ws.title = "Store Item Master"
-            headers = ["Item Code*", "Item Name*", "Category", "Unit", "Base Rate (INR)", "Reorder Level", "Default Status"]
-            sample_row = ["IT-101", "Hardware Screw 2 inch", "Hardware", "pcs", 12.50, 40, "charge"]
+            headers = ["Item Code", "Item Name", "Unit", "Rate", "status"]
+            sample_row = ["IT001", "Hardware Screw 2 inch", "pcs", 12.50, "charge"]
             ws.append(headers)
             ws.append(sample_row)
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.fill = header_fill_blue
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws.column_dimensions[get_column_letter(col_num)].width = 24
+            filename = "store_items_template.xlsx"
+
         elif template_type == 'material_in':
+            ws = wb.active
             ws.title = "Material Inward Receipts"
-            headers = ["Voucher No*", "Entry Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Supplier Name*", "Quantity*", "Unit", "Bill Rate (INR)*", "Supplier Bill No"]
-            sample_row = ["IN-2026-001", "2026-08-01", "IT-101", "Hardware Screw 2 inch", "Pinkcity Suppliers", 500, "pcs", 12.50, "BILL-901"]
+            headers = ["Month", "Date", "Bill #", "Supplier Name", "Item Code", "Item Name", "Qty", "Unit", "Bill Rate", "Amount"]
+            sample_row = ["Aug-26", "2026-08-01", "BILL-901", "Pinkcity Suppliers", "IT001", "Hardware Screw 2 inch", 500, "pcs", 12.50, 6250.00]
             ws.append(headers)
             ws.append(sample_row)
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.fill = header_fill_green
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws.column_dimensions[get_column_letter(col_num)].width = 24
+            filename = "store_material_in_template.xlsx"
+
         elif template_type == 'daily_issue':
+            ws = wb.active
             ws.title = "Daily Outward Issues"
-            headers = ["Voucher No*", "Issue Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Contractor Username/Name*", "Worker Delegate Name", "Quantity*", "Unit", "Rate (INR)*", "Status (charge/non_charge)"]
-            sample_row = ["OUT-2026-001", "2026-08-05", "IT-101", "Hardware Screw 2 inch", "suresh_contractor", "Raju Carpenter", 50, "pcs", 12.50, "charge"]
+            headers = ["Month", "Date", "Voucher No", "Contractor", "Item", "Qty", "Unit", "Rate", "Status", "Chargeable Total", "Non-Chargeable Total", "Unit", "Remark"]
+            sample_row = ["Aug-26", "2026-08-05", "OUT-2026-001", "Ramavtar 1.NO", "Hardware Screw 2 inch", 50, "pcs", 12.50, "charge", 625.00, 0.00, "Unit # 1", "banti"]
             ws.append(headers)
             ws.append(sample_row)
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.fill = header_fill_orange
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws.column_dimensions[get_column_letter(col_num)].width = 24
+            filename = "store_daily_issue_template.xlsx"
+
         elif template_type == 'material_return':
+            ws = wb.active
             ws.title = "Material Return Entries"
-            headers = ["Voucher No*", "Return Date (YYYY-MM-DD)*", "Item Code*", "Item Name", "Contractor Username/Name*", "Quantity*", "Unit", "Rate (INR)*", "Remark"]
-            sample_row = ["RET-2026-001", "2026-08-10", "IT-101", "Hardware Screw 2 inch", "suresh_contractor", 10, "pcs", 12.50, "Surplus material returned"]
+            headers = ["Voucher No", "Return Date (YYYY-MM-DD)", "Item Code", "Item Name", "Contractor Username/Name", "Quantity", "Unit", "Rate (INR)", "Remark"]
+            sample_row = ["RET-2026-001", "2026-08-10", "IT001", "Hardware Screw 2 inch", "Ramavtar 1.NO", 10, "pcs", 12.50, "Surplus material returned"]
             ws.append(headers)
             ws.append(sample_row)
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.fill = header_fill_dark
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+                ws.column_dimensions[get_column_letter(col_num)].width = 24
+            filename = "store_material_return_template.xlsx"
         else:
             return Response({'error': 'Invalid template type.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Style headers
-        for col_num in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col_num)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            ws.column_dimensions[get_column_letter(col_num)].width = 24
 
         output = io.BytesIO()
         wb.save(output)
@@ -6049,230 +6224,1045 @@ class StoreExportTemplateView(APIView):
             output.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="store_{template_type}_template.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
 
 class StoreExcelImportView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # ── Helpers for Sanitization & Matching ──
+    @staticmethod
+    def _clean_str(val):
+        if val is None:
+            return ""
+        s = str(val).strip()
+        if s.upper() in ("#NAME?", "#N/A", "#REF!", "#VALUE!", "#DIV/0!", "NONE", "NULL", "NAN", "-"):
+            return ""
+        return s
+
+    @staticmethod
+    def _clean_key(val):
+        if not val:
+            return ""
+        s = str(val).strip().lower()
+        if s.upper() in ("#NAME?", "#N/A", "#REF!", "#VALUE!", "NONE", "NULL", "NAN", "-"):
+            return ""
+        return re.sub(r'[\s_\-\.\#\(\)\/]+', '', s)
+
+    @staticmethod
+    def _parse_num(val, default=Decimal('0.00')):
+        if val is None:
+            return default
+        s = str(val).strip().replace('₹', '').replace(',', '').replace(' ', '')
+        if not s or s.upper() in ("#NAME?", "#N/A", "#REF!", "NONE", "NULL", "NAN", "-"):
+            return default
+        try:
+            return Decimal(s)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _parse_date_safe(val):
+        if not val:
+            return timezone.now().date()
+        if hasattr(val, 'date'):
+            return val.date()
+        if hasattr(val, 'year'):
+            return val
+        s = str(val).strip()
+        if not s or s.upper() in ("#NAME?", "#N/A", "#REF!", "NONE", "NULL"):
+            return timezone.now().date()
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d', '%d-%b-%Y', '%d-%b-%y', '%b-%y', '%B-%Y'):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except Exception:
+                pass
+        return timezone.now().date()
+
+    @staticmethod
+    def _find_sheet(wb, keywords):
+        for name in wb.sheetnames:
+            c_name = re.sub(r'[^a-zA-Z0-9]', '', name).lower()
+            for kw in keywords:
+                c_kw = re.sub(r'[^a-zA-Z0-9]', '', kw).lower()
+                if c_kw in c_name or c_name in c_kw:
+                    return wb[name], name
+        return None, None
+
+    @staticmethod
+    def _find_header_row_and_map(ws, required_keywords, max_search_rows=6):
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return 0, {}, []
+        for r_idx, r in enumerate(rows[:max_search_rows]):
+            if not r:
+                continue
+            cells = [str(c).strip().lower() if c is not None else "" for c in r]
+            matched_count = sum(1 for kw in required_keywords if any(kw in cell for cell in cells))
+            if matched_count >= 1:
+                col_map = {}
+                for c_idx, cell in enumerate(cells):
+                    if cell:
+                        col_map[cell] = c_idx
+                return r_idx + 1, col_map, rows[r_idx + 1:]
+        return 1, {}, rows[1:]
+
     def post(self, request):
         if request.user.role not in ['admin', 'store_manager']:
             return Response({'detail': 'Only Admin or Store Manager can import store data.'}, status=status.HTTP_403_FORBIDDEN)
 
         file_obj = request.FILES.get('file')
-        import_type = request.data.get('import_type', 'items')
+        import_type = request.data.get('import_type', 'unified')
 
         if not file_obj:
-            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No Excel file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             wb = openpyxl.load_workbook(file_obj, data_only=True)
-            ws = wb.active
         except Exception as e:
             return Response({'error': f'Failed to parse Excel file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows or len(rows) < 2:
-            return Response({'error': 'Excel file is empty or contains no data rows.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Detect whether this is a Unified 4-in-1 Workbook or Single Sheet
+        is_unified = (import_type in ('unified', 'unified_master', 'all', 'master')) or len(wb.sheetnames) > 1
 
-        created_count = 0
-        updated_count = 0
+        if is_unified:
+            return self._handle_unified_import(request, wb)
+        else:
+            return self._handle_single_sheet_import(request, wb, import_type)
+
+    def _handle_unified_import(self, request, wb):
+        """
+        Comprehensive 4-in-1 Workbook Importer:
+        1. Item Master
+        2. Contractors-Supplier
+        3. Material In (Inward Receipts)
+        4. Daily Issue Entry (Outward Issues)
+        """
+        # ── 1. Locate Sheets ──
+        ws_items, name_items = self._find_sheet(wb, ['item master', 'itemmaster', 'items', 'item_master'])
+        ws_cs, name_cs = self._find_sheet(wb, ['contractors-supplier', 'contractor-supplier', 'contractors_supplier', 'contractors', 'suppliers'])
+        ws_mat_in, name_mat_in = self._find_sheet(wb, ['material in', 'material_in', 'materialin', 'inward', 'grn'])
+        ws_daily_issue, name_daily_issue = self._find_sheet(wb, ['daily issue entry', 'daily issue', 'daily_issue', 'dailyissue', 'issue entry', 'issues'])
+
         errors = []
 
-        data_rows = rows[1:]
+        # ── 2. Phase 1: In-Memory Parsing & Entity Collection ──
+        # Existing DB Entities
+        db_items = list(StoreItem.objects.all())
+        valid_item_codes = {it.item_code.upper().strip(): it for it in db_items if it.item_code}
+        valid_item_names = {self._clean_key(it.item_name): it for it in db_items if it.item_name}
 
-        if import_type == 'items':
-            for idx, r in enumerate(data_rows, start=2):
-                if not r or r[0] is None or r[1] is None:
+        db_contractors = list(User.objects.filter(role='contractor'))
+        valid_contractors = {}
+        for u in db_contractors:
+            if u.username:
+                valid_contractors[self._clean_key(u.username)] = u
+            if u.first_name:
+                valid_contractors[self._clean_key(u.first_name)] = u
+            full_name = f"{u.first_name} {u.last_name}".strip()
+            if full_name:
+                valid_contractors[self._clean_key(full_name)] = u
+
+        db_suppliers = list(Supplier.objects.all())
+        valid_suppliers = {self._clean_key(s.name): s for s in db_suppliers if s.name}
+        # Allow system internal stock designations
+        for sys_kw in ('stock', 'internal', 'store', 'self'):
+            valid_suppliers[sys_kw] = True
+
+        # Staged Entities from Excel
+        staged_items = []
+        staged_contractors = []
+        staged_suppliers = []
+
+        # ── A. Parse Sheet 1: Item Master ──
+        if ws_items:
+            h_row, col_map, data_rows = self._find_header_row_and_map(ws_items, ['item code', 'item name', 'code', 'name'])
+            code_col = col_map.get('item code', 0)
+            name_col = col_map.get('item name', 1)
+            unit_col = col_map.get('unit', 2 if len(col_map) > 2 else 2)
+            rate_col = col_map.get('rate', 3 if len(col_map) > 3 else 3)
+            status_col = col_map.get('status', 4 if len(col_map) > 4 else 4)
+
+            for idx, r in enumerate(data_rows, start=h_row + 1):
+                if not r or all(c is None for c in r):
                     continue
-                item_code = str(r[0]).strip()
-                item_name = str(r[1]).strip()
-                cat_name = str(r[2]).strip() if len(r) > 2 and r[2] else "General"
-                unit = str(r[3]).strip() if len(r) > 3 and r[3] else "pcs"
-                base_rate = Decimal(str(r[4])) if len(r) > 4 and r[4] is not None else Decimal('0.00')
-                reorder_level = Decimal(str(r[5])) if len(r) > 5 and r[5] is not None else Decimal('10.00')
-                default_status = str(r[6]).strip() if len(r) > 6 and r[6] else "charge"
+                code_val = self._clean_str(r[code_col] if code_col < len(r) else None)
+                name_val = self._clean_str(r[name_col] if name_col < len(r) else None)
+                if not code_val and not name_val:
+                    continue
 
-                cat_code = re.sub(r'[^A-Z0-9]', '_', cat_name.upper())[:10] or "GEN"
-                cat = StoreItemCategory.objects.filter(name=cat_name).first() or StoreItemCategory.objects.filter(code=cat_code).first()
-                if not cat:
-                    cat = StoreItemCategory.objects.create(name=cat_name, code=cat_code)
+                unit_val = self._clean_str(r[unit_col] if unit_col < len(r) else "pcs") or "pcs"
+                rate_val = self._parse_num(r[rate_col] if rate_col < len(r) else None, Decimal('0.00'))
+                status_raw = self._clean_str(r[status_col] if status_col < len(r) else "charge").lower()
+                status_val = 'non-charge' if 'non' in status_raw else 'charge'
 
-                item, created = StoreItem.objects.update_or_create(
-                    item_code=item_code,
-                    defaults={
-                        'item_name': item_name,
-                        'category': cat,
-                        'unit': unit,
-                        'base_rate': base_rate,
-                        'current_rate': base_rate if base_rate > 0 else Decimal('0.00'),
-                        'reorder_level': reorder_level,
-                        'default_status': default_status
+                if not code_val and name_val:
+                    code_val = f"IT-{re.sub(r'[^A-Z0-9]', '', name_val.upper())[:8]}"
+
+                item_dict = {
+                    'row_idx': idx,
+                    'item_code': code_val,
+                    'item_name': name_val or code_val,
+                    'unit': unit_val,
+                    'rate': rate_val,
+                    'status': status_val,
+                }
+                staged_items.append(item_dict)
+
+                # Register in valid lookup maps for downstream relational checks
+                if code_val:
+                    valid_item_codes[code_val.upper()] = item_dict
+                if name_val:
+                    valid_item_names[self._clean_key(name_val)] = item_dict
+
+        # ── B. Parse Sheet 2: Contractors-Supplier ──
+        if ws_cs:
+            h_row, _, data_rows = self._find_header_row_and_map(ws_cs, ['contractor', 'supplier', 'unit no', 'contractor name'], max_search_rows=4)
+            for idx, r in enumerate(data_rows, start=h_row + 1):
+                if not r:
+                    continue
+                # Left Section: Contractor (Cols A-C)
+                c_id = self._clean_str(r[0] if len(r) > 0 else None)
+                c_name = self._clean_str(r[1] if len(r) > 1 else None)
+                c_unit = self._clean_str(r[2] if len(r) > 2 else None)
+
+                if c_name or c_id:
+                    final_name = c_name or c_id
+                    c_dict = {
+                        'contractor_id': c_id,
+                        'contractor_name': final_name,
+                        'unit_no': c_unit,
+                        'row_idx': idx
                     }
-                )
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                    staged_contractors.append(c_dict)
+                    valid_contractors[self._clean_key(final_name)] = c_dict
+                    if c_id:
+                        valid_contractors[self._clean_key(c_id)] = c_dict
 
-        elif import_type == 'material_in':
-            for idx, r in enumerate(data_rows, start=2):
-                if not r or r[0] is None or r[2] is None or r[4] is None or r[5] is None:
-                    continue
-                voucher_no = str(r[0]).strip()
-                entry_date_val = r[1]
-                item_identifier = str(r[2]).strip()
-                supplier_name = str(r[4]).strip()
-                qty = Decimal(str(r[5]))
-                unit = str(r[6]).strip() if len(r) > 6 and r[6] else "pcs"
-                bill_rate = Decimal(str(r[7])) if len(r) > 7 and r[7] is not None else Decimal('0.00')
-                bill_no = str(r[8]).strip() if len(r) > 8 and r[8] else f"BILL-{voucher_no}"
+                # Right Section: Supplier (Cols G-I / Indices 6-8)
+                s_name = self._clean_str(r[6] if len(r) > 6 else None)
+                s_addr = self._clean_str(r[7] if len(r) > 7 else None)
+                s_mob = self._clean_str(r[8] if len(r) > 8 else None)
 
-                if hasattr(entry_date_val, 'date'):
-                    entry_date = entry_date_val.date()
-                elif hasattr(entry_date_val, 'year'):
-                    entry_date = entry_date_val
-                elif entry_date_val:
-                    try:
-                        entry_date = datetime.strptime(str(entry_date_val).strip(), '%Y-%m-%d').date()
-                    except Exception:
-                        entry_date = timezone.now().date()
-                else:
-                    entry_date = timezone.now().date()
-
-                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
-                if not item:
-                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
-                    continue
-
-                supplier, _ = Supplier.objects.get_or_create(name=supplier_name)
-
-                mat_in, created = StoreMaterialIn.objects.update_or_create(
-                    voucher_no=voucher_no,
-                    defaults={
-                        'inward_date': entry_date,
-                        'item': item,
-                        'supplier': supplier,
-                        'qty': qty,
-                        'unit': unit,
-                        'bill_rate': bill_rate,
-                        'bill_no': bill_no,
-                        'received_by': request.user
+                if s_name:
+                    s_dict = {
+                        'supplier_name': s_name,
+                        'address': s_addr,
+                        'mobile': s_mob,
+                        'row_idx': idx
                     }
-                )
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                    staged_suppliers.append(s_dict)
+                    valid_suppliers[self._clean_key(s_name)] = s_dict
 
-        elif import_type == 'daily_issue':
-            for idx, r in enumerate(data_rows, start=2):
-                if not r or r[0] is None or r[2] is None or r[4] is None or r[6] is None:
+        # ── C. Deep Relational Validation Pass on Sheet 3: Material In ──
+        staged_material_in = []
+        if ws_mat_in:
+            h_row, col_map, data_rows = self._find_header_row_and_map(
+                ws_mat_in, ['supplier name', 'item name', 'item code', 'bill', 'qty', 'bill rate'], max_search_rows=5
+            )
+            # Match standard user columns: Month(0), Date(1), Bill#(2), Supplier(3), ItemCode(4), ItemName(5), Qty(6), Unit(7), Rate(8), Amount(9)
+            for idx, r in enumerate(data_rows, start=h_row + 1):
+                if not r or all(c is None for c in r):
                     continue
-                voucher_no = str(r[0]).strip()
-                issue_date_val = r[1]
-                item_identifier = str(r[2]).strip()
-                contractor_identifier = str(r[4]).strip()
-                worker_name = str(r[5]).strip() if len(r) > 5 and r[5] else ""
-                qty = Decimal(str(r[6]))
-                unit = str(r[7]).strip() if len(r) > 7 and r[7] else "pcs"
-                rate = Decimal(str(r[8])) if len(r) > 8 and r[8] is not None else Decimal('0.00')
-                issue_status = str(r[9]).strip() if len(r) > 9 and r[9] else "charge"
+                month_val = self._clean_str(r[0] if len(r) > 0 else None)
+                date_raw = r[1] if len(r) > 1 else None
+                bill_no = self._clean_str(r[2] if len(r) > 2 else None)
+                sup_name = self._clean_str(r[3] if len(r) > 3 else None)
+                item_code_val = self._clean_str(r[4] if len(r) > 4 else None)
+                item_name_val = self._clean_str(r[5] if len(r) > 5 else None)
+                qty_raw = r[6] if len(r) > 6 else None
+                unit_val = self._clean_str(r[7] if len(r) > 7 else None) or "pcs"
+                rate_raw = r[8] if len(r) > 8 else None
+                amount_raw = r[9] if len(r) > 9 else None
 
-                if hasattr(issue_date_val, 'date'):
-                    issue_date = issue_date_val.date()
-                elif hasattr(issue_date_val, 'year'):
-                    issue_date = issue_date_val
-                elif issue_date_val:
-                    try:
-                        issue_date = datetime.strptime(str(issue_date_val).strip(), '%Y-%m-%d').date()
-                    except Exception:
-                        issue_date = timezone.now().date()
-                else:
-                    issue_date = timezone.now().date()
-
-                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
-                if not item:
-                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
+                # Check if row has any meaningful content
+                if not sup_name and not item_name_val and not item_code_val and qty_raw is None:
                     continue
 
-                contractor = User.objects.filter(username=contractor_identifier).first() or User.objects.filter(first_name__icontains=contractor_identifier).first() or User.objects.filter(role='contractor').first()
+                qty_val = self._parse_num(qty_raw, Decimal('0.00'))
+                rate_val = self._parse_num(rate_raw, Decimal('0.00'))
+                amount_val = self._parse_num(amount_raw, Decimal('0.00'))
+                entry_date = self._parse_date_safe(date_raw)
 
-                issue, created = StoreDailyIssue.objects.update_or_create(
-                    voucher_no=voucher_no,
-                    defaults={
-                        'issue_date': issue_date,
-                        'item': item,
-                        'contractor': contractor,
-                        'contractor_person_name': worker_name,
-                        'qty': qty,
-                        'unit': unit,
-                        'rate': rate,
-                        'status': issue_status,
-                        'issued_by': request.user
-                    }
-                )
-                if created:
-                    created_count += 1
+                # Relational Check: Item must exist in DB or Item Master sheet
+                item_matched = False
+                matched_item_obj = None
+                if item_code_val and item_code_val.upper() in valid_item_codes:
+                    item_matched = True
+                    matched_item_obj = valid_item_codes[item_code_val.upper()]
+                elif item_name_val and self._clean_key(item_name_val) in valid_item_names:
+                    item_matched = True
+                    matched_item_obj = valid_item_names[self._clean_key(item_name_val)]
+
+                if not item_matched:
+                    err_item = item_name_val or item_code_val or "Unspecified Item"
+                    errors.append({
+                        'sheet': 'Material In',
+                        'row': idx,
+                        'field': 'Item',
+                        'value': err_item,
+                        'error': f"Item '{err_item}' does not exist in 'Item Master' sheet or Database."
+                    })
+
+                # Relational Check: Supplier must exist in DB or Contractors-Supplier sheet
+                sup_matched = False
+                if sup_name:
+                    sup_key = self._clean_key(sup_name)
+                    if sup_key in valid_suppliers:
+                        sup_matched = True
                 else:
-                    updated_count += 1
+                    sup_matched = True  # If empty, default to Stock / General
 
-        elif import_type == 'material_return':
-            for idx, r in enumerate(data_rows, start=2):
-                if not r or r[0] is None or r[2] is None or r[4] is None or r[5] is None:
+                if not sup_matched:
+                    errors.append({
+                        'sheet': 'Material In',
+                        'row': idx,
+                        'field': 'Supplier',
+                        'value': sup_name,
+                        'error': f"Supplier '{sup_name}' does not exist in 'Contractors-Supplier' sheet or Database."
+                    })
+
+                # Quantity Check
+                if qty_val <= 0 and (item_name_val or item_code_val):
+                    errors.append({
+                        'sheet': 'Material In',
+                        'row': idx,
+                        'field': 'Qty',
+                        'value': str(qty_raw),
+                        'error': f"Received Quantity must be greater than 0."
+                    })
+
+                staged_material_in.append({
+                    'row_idx': idx,
+                    'month_year': month_val or entry_date.strftime('%b-%y'),
+                    'inward_date': entry_date,
+                    'bill_no': bill_no or f"BILL-{idx}",
+                    'supplier_name': sup_name or "Stock",
+                    'item_code': item_code_val,
+                    'item_name': item_name_val,
+                    'matched_item_ref': matched_item_obj,
+                    'qty': qty_val,
+                    'unit': unit_val,
+                    'bill_rate': rate_val,
+                    'amount': amount_val or (qty_val * rate_val),
+                })
+
+        # ── D. Deep Relational Validation Pass on Sheet 4: Daily Issue Entry ──
+        staged_daily_issues = []
+        if ws_daily_issue:
+            h_row, col_map, data_rows = self._find_header_row_and_map(
+                ws_daily_issue, ['contractor', 'item', 'qty', 'rate', 'voucher'], max_search_rows=5
+            )
+            # Standard columns: Month(0), Date(1), Voucher(2), Contractor(3), Item(4), Qty(5), Unit(6), Rate(7), Status(8), Chargeable(9), NonChargeable(10), Unit/Factory(11), Remark(12)
+            for idx, r in enumerate(data_rows, start=h_row + 1):
+                if not r or all(c is None for c in r):
                     continue
-                voucher_no = str(r[0]).strip()
-                return_date_val = r[1]
-                item_identifier = str(r[2]).strip()
-                contractor_identifier = str(r[4]).strip()
-                qty = Decimal(str(r[5]))
-                unit = str(r[6]).strip() if len(r) > 6 and r[6] else "pcs"
-                rate = Decimal(str(r[7])) if len(r) > 7 and r[7] is not None else Decimal('0.00')
-                remark = str(r[8]).strip() if len(r) > 8 and r[8] else ""
+                month_val = self._clean_str(r[0] if len(r) > 0 else None)
+                date_raw = r[1] if len(r) > 1 else None
+                vch_val = self._clean_str(r[2] if len(r) > 2 else None)
+                contractor_val = self._clean_str(r[3] if len(r) > 3 else None)
+                item_val = self._clean_str(r[4] if len(r) > 4 else None)
+                qty_raw = r[5] if len(r) > 5 else None
+                unit_val = self._clean_str(r[6] if len(r) > 6 else None)
+                rate_raw = r[7] if len(r) > 7 else None
+                status_raw = self._clean_str(r[8] if len(r) > 8 else "charge").lower()
+                unit_no_val = self._clean_str(r[11] if len(r) > 11 else None)
+                remark_val = self._clean_str(r[12] if len(r) > 12 else None)
 
-                if hasattr(return_date_val, 'date'):
-                    return_date = return_date_val.date()
-                elif hasattr(return_date_val, 'year'):
-                    return_date = return_date_val
-                elif return_date_val:
-                    try:
-                        return_date = datetime.strptime(str(return_date_val).strip(), '%Y-%m-%d').date()
-                    except Exception:
-                        return_date = timezone.now().date()
-                else:
-                    return_date = timezone.now().date()
-
-                item = StoreItem.objects.filter(item_code=item_identifier).first() or StoreItem.objects.filter(item_name__icontains=item_identifier).first()
-                if not item:
-                    errors.append(f"Row {idx}: Item '{item_identifier}' not found in Item Master.")
+                if not contractor_val and not item_val and qty_raw is None:
                     continue
 
-                contractor = User.objects.filter(username=contractor_identifier).first() or User.objects.filter(first_name__icontains=contractor_identifier).first() or User.objects.filter(role='contractor').first()
+                qty_val = self._parse_num(qty_raw, Decimal('0.00'))
+                rate_val = self._parse_num(rate_raw, Decimal('0.00'))
+                issue_date = self._parse_date_safe(date_raw)
+                status_val = 'non-charge' if 'non' in status_raw else 'charge'
 
-                ret, created = StoreMaterialReturn.objects.update_or_create(
-                    voucher_no=voucher_no,
-                    defaults={
-                        'return_date': return_date,
-                        'item': item,
-                        'contractor': contractor,
-                        'qty': qty,
-                        'unit': unit,
-                        'rate': rate,
-                        'remark': remark,
-                        'returned_by': request.user
-                    }
-                )
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                # Relational Check: Item must exist in DB or Item Master sheet
+                item_matched = False
+                matched_item_obj = None
+                if item_val:
+                    if item_val.upper() in valid_item_codes:
+                        item_matched = True
+                        matched_item_obj = valid_item_codes[item_val.upper()]
+                    elif self._clean_key(item_val) in valid_item_names:
+                        item_matched = True
+                        matched_item_obj = valid_item_names[self._clean_key(item_val)]
+
+                if not item_matched:
+                    err_item = item_val or "Unspecified Item"
+                    errors.append({
+                        'sheet': 'Daily Issue Entry',
+                        'row': idx,
+                        'field': 'Item',
+                        'value': err_item,
+                        'error': f"Item '{err_item}' does not exist in 'Item Master' sheet or Database."
+                    })
+
+                # Relational Check: Contractor must exist in DB or Contractors-Supplier sheet
+                contractor_matched = False
+                matched_contractor_obj = None
+                if contractor_val:
+                    c_key = self._clean_key(contractor_val)
+                    if c_key in valid_contractors:
+                        contractor_matched = True
+                        matched_contractor_obj = valid_contractors[c_key]
+
+                if not contractor_matched:
+                    err_cont = contractor_val or "Unspecified Contractor"
+                    errors.append({
+                        'sheet': 'Daily Issue Entry',
+                        'row': idx,
+                        'field': 'Contractor',
+                        'value': err_cont,
+                        'error': f"Contractor '{err_cont}' does not exist in 'Contractors-Supplier' sheet or Database."
+                    })
+
+                # Quantity Check
+                if qty_val <= 0 and (item_val or contractor_val):
+                    errors.append({
+                        'sheet': 'Daily Issue Entry',
+                        'row': idx,
+                        'field': 'Qty',
+                        'value': str(qty_raw),
+                        'error': f"Issued Quantity must be greater than 0."
+                    })
+
+                staged_daily_issues.append({
+                    'row_idx': idx,
+                    'month_year': month_val or issue_date.strftime('%b-%y'),
+                    'issue_date': issue_date,
+                    'voucher_no': vch_val or f"ISS-{issue_date.strftime('%Y%m%d')}-{idx}",
+                    'contractor_name': contractor_val,
+                    'matched_contractor_ref': matched_contractor_obj,
+                    'item_name': item_val,
+                    'matched_item_ref': matched_item_obj,
+                    'qty': qty_val,
+                    'unit': unit_val,
+                    'rate': rate_val,
+                    'status': status_val,
+                    'unit_no': unit_no_val,
+                    'remark': remark_val,
+                })
+
+        # ── 3. Check for Any Validation Errors ──
+        if errors:
+            return Response({
+                'success': False,
+                'message': f"Validation Failed: {len(errors)} issue(s) detected across your Excel sheets. Please correct them and re-upload.",
+                'total_errors': len(errors),
+                'errors': errors,
+                'errors_by_sheet': {
+                    'Item Master': [e for e in errors if e.get('sheet') == 'Item Master'],
+                    'Contractors-Supplier': [e for e in errors if e.get('sheet') == 'Contractors-Supplier'],
+                    'Material In': [e for e in errors if e.get('sheet') == 'Material In'],
+                    'Daily Issue Entry': [e for e in errors if e.get('sheet') == 'Daily Issue Entry'],
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── 4. Phase 2: Transactional Ingestion (Atomic Commit) ──
+        items_created = 0
+        items_skipped = 0
+        contractors_created = 0
+        contractors_skipped = 0
+        suppliers_created = 0
+        suppliers_skipped = 0
+        mat_in_created = 0
+        mat_in_skipped = 0
+        daily_issue_created = 0
+        daily_issue_skipped = 0
+
+        # Runtime Map for ForeignKey Linking
+        runtime_items = {}
+        runtime_contractors = {}
+        runtime_suppliers = {}
+        runtime_units = {pu.name: pu for pu in ProductionUnit.objects.all()}
+
+        try:
+            with transaction.atomic():
+                # Step A: Ingest Item Master
+                default_cat, _ = StoreItemCategory.objects.get_or_create(name="General Materials", defaults={'code': 'GEN_MAT'})
+                for it in staged_items:
+                    code = it['item_code']
+                    name = it['item_name']
+                    existing = StoreItem.objects.filter(Q(item_code=code) | Q(item_name__iexact=name)).first()
+                    if existing:
+                        # Update rate if existing rate is 0
+                        if existing.base_rate == 0 and it['rate'] > 0:
+                            existing.base_rate = it['rate']
+                            existing.current_rate = it['rate']
+                            existing.save(update_fields=['base_rate', 'current_rate'])
+                        items_skipped += 1
+                        runtime_items[code.upper()] = existing
+                        runtime_items[self._clean_key(name)] = existing
+                    else:
+                        new_item = StoreItem.objects.create(
+                            item_code=code,
+                            item_name=name,
+                            category=default_cat,
+                            unit=it['unit'],
+                            base_rate=it['rate'],
+                            current_rate=it['rate'],
+                            default_status=it['status']
+                        )
+                        items_created += 1
+                        runtime_items[code.upper()] = new_item
+                        runtime_items[self._clean_key(name)] = new_item
+
+                # Step B: Ingest Contractors & Suppliers
+                for c in staged_contractors:
+                    cname = c['contractor_name']
+                    cunit = c['unit_no']
+                    c_user = User.objects.filter(Q(username__iexact=cname) | Q(first_name__iexact=cname) | Q(role='contractor', first_name__icontains=cname)).first()
+                    if c_user:
+                        contractors_skipped += 1
+                        runtime_contractors[self._clean_key(cname)] = c_user
+                        if c.get('contractor_id'):
+                            runtime_contractors[self._clean_key(c['contractor_id'])] = c_user
+                    else:
+                        punit = None
+                        if cunit:
+                            punit = runtime_units.get(cunit)
+                            if not punit:
+                                u_code = re.sub(r'[^A-Z0-9]', '', cunit.upper())[:10] or "UNIT"
+                                punit, _ = ProductionUnit.objects.get_or_create(name=cunit, defaults={'unit_code': u_code})
+                                runtime_units[cunit] = punit
+
+                        unique_uname = re.sub(r'[^a-zA-Z0-9]', '_', cname.lower())[:25] or f"contractor_{random.randint(100, 999)}"
+                        if User.objects.filter(username=unique_uname).exists():
+                            unique_uname = f"{unique_uname}_{random.randint(10, 99)}"
+
+                        new_contractor = User.objects.create_user(
+                            username=unique_uname,
+                            first_name=cname,
+                            role='contractor',
+                            production_unit=punit
+                        )
+                        contractors_created += 1
+                        runtime_contractors[self._clean_key(cname)] = new_contractor
+                        if c.get('contractor_id'):
+                            runtime_contractors[self._clean_key(c['contractor_id'])] = new_contractor
+
+                for s in staged_suppliers:
+                    sname = s['supplier_name']
+                    existing_sup = Supplier.objects.filter(name__iexact=sname).first()
+                    if existing_sup:
+                        suppliers_skipped += 1
+                        runtime_suppliers[self._clean_key(sname)] = existing_sup
+                    else:
+                        new_sup = Supplier.objects.create(
+                            name=sname,
+                            address=s.get('address') or "",
+                            phone=s.get('mobile') or ""
+                        )
+                        suppliers_created += 1
+                        runtime_suppliers[self._clean_key(sname)] = new_sup
+
+                # Default Stock Supplier for internal inward entries
+                stock_supplier, _ = Supplier.objects.get_or_create(name="Stock (Internal Supply)")
+                runtime_suppliers['stock'] = stock_supplier
+                runtime_suppliers['internal'] = stock_supplier
+
+                # Step C: Ingest Material In (Inward Receipts)
+                for m in staged_material_in:
+                    # Resolve Item
+                    item_obj = None
+                    if m['item_code'] and m['item_code'].upper() in runtime_items:
+                        item_obj = runtime_items[m['item_code'].upper()]
+                    elif m['item_name'] and self._clean_key(m['item_name']) in runtime_items:
+                        item_obj = runtime_items[self._clean_key(m['item_name'])]
+                    else:
+                        item_obj = StoreItem.objects.filter(Q(item_code=m['item_code']) | Q(item_name__iexact=m['item_name'])).first()
+
+                    if not item_obj:
+                        continue
+
+                    # Resolve Supplier
+                    sup_obj = runtime_suppliers.get(self._clean_key(m['supplier_name']))
+                    if not sup_obj:
+                        sup_obj = Supplier.objects.filter(name__iexact=m['supplier_name']).first() or stock_supplier
+
+                    # Duplicate Check
+                    exists = StoreMaterialIn.objects.filter(
+                        Q(voucher_no=m['bill_no']) |
+                        Q(inward_date=m['inward_date'], item=item_obj, supplier=sup_obj, qty=m['qty'])
+                    ).exists()
+
+                    if exists:
+                        mat_in_skipped += 1
+                    else:
+                        v_num = f"IN-{m['inward_date'].strftime('%Y%m%d')}-{m['row_idx']}" if not m['bill_no'] else f"IN-{m['bill_no']}"
+                        if StoreMaterialIn.objects.filter(voucher_no=v_num).exists():
+                            v_num = f"{v_num}-{random.randint(10, 99)}"
+
+                        StoreMaterialIn.objects.create(
+                            voucher_no=v_num,
+                            inward_date=m['inward_date'],
+                            month_year=m['month_year'],
+                            bill_no=m['bill_no'],
+                            supplier=sup_obj,
+                            item=item_obj,
+                            qty=m['qty'],
+                            unit=m['unit'] or item_obj.unit,
+                            bill_rate=m['bill_rate'] or item_obj.base_rate,
+                            total_amount=m['amount'] or (m['qty'] * (m['bill_rate'] or item_obj.base_rate)),
+                            received_by=request.user
+                        )
+                        mat_in_created += 1
+
+                # Step D: Ingest Daily Issue Entry (Outward Issues)
+                for d in staged_daily_issues:
+                    # Resolve Item
+                    item_obj = None
+                    if d['item_name']:
+                        if d['item_name'].upper() in runtime_items:
+                            item_obj = runtime_items[d['item_name'].upper()]
+                        elif self._clean_key(d['item_name']) in runtime_items:
+                            item_obj = runtime_items[self._clean_key(d['item_name'])]
+                        else:
+                            item_obj = StoreItem.objects.filter(Q(item_code=d['item_name']) | Q(item_name__iexact=d['item_name'])).first()
+
+                    if not item_obj:
+                        continue
+
+                    # Resolve Contractor
+                    contractor_obj = runtime_contractors.get(self._clean_key(d['contractor_name']))
+                    if not contractor_obj:
+                        contractor_obj = User.objects.filter(Q(username__iexact=d['contractor_name']) | Q(first_name__iexact=d['contractor_name'])).first()
+
+                    if not contractor_obj:
+                        continue
+
+                    # Resolve Production Unit
+                    punit = None
+                    if d['unit_no']:
+                        punit = runtime_units.get(d['unit_no'])
+                        if not punit:
+                            punit = ProductionUnit.objects.filter(name__iexact=d['unit_no']).first()
+
+                    # Duplicate Check
+                    vch = d['voucher_no']
+                    exists = StoreDailyIssue.objects.filter(
+                        Q(voucher_no=vch) |
+                        Q(issue_date=d['issue_date'], contractor=contractor_obj, item=item_obj, qty=d['qty'], rate=d['rate'])
+                    ).exists()
+
+                    if exists:
+                        daily_issue_skipped += 1
+                    else:
+                        if StoreDailyIssue.objects.filter(voucher_no=vch).exists():
+                            vch = f"{vch}-{random.randint(10, 99)}"
+
+                        eff_rate = d['rate'] or item_obj.current_rate or item_obj.base_rate
+                        tot_amt = d['qty'] * eff_rate
+
+                        StoreDailyIssue.objects.create(
+                            voucher_no=vch,
+                            issue_date=d['issue_date'],
+                            month_year=d['month_year'],
+                            contractor=contractor_obj,
+                            contractor_person_name=d['remark'],
+                            item=item_obj,
+                            qty=d['qty'],
+                            unit=d['unit'] or item_obj.unit,
+                            rate=eff_rate,
+                            status=d['status'],
+                            total_amount=tot_amt,
+                            chargeable_total=tot_amt if d['status'] == 'charge' else Decimal('0.00'),
+                            non_chargeable_total=Decimal('0.00') if d['status'] == 'charge' else tot_amt,
+                            production_unit=punit,
+                            remark=d['remark'],
+                            issued_by=request.user
+                        )
+                        daily_issue_created += 1
+
+        except Exception as e:
+            return Response({'error': f"Failed to commit store data: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        total_processed = items_created + items_skipped + contractors_created + contractors_skipped + suppliers_created + suppliers_skipped + mat_in_created + mat_in_skipped + daily_issue_created + daily_issue_skipped
 
         return Response({
+            'success': True,
+            'message': "Unified Master Excel Imported Successfully!",
+            'summary': {
+                'items_created': items_created,
+                'items_skipped': items_skipped,
+                'contractors_created': contractors_created,
+                'contractors_skipped': contractors_skipped,
+                'suppliers_created': suppliers_created,
+                'suppliers_skipped': suppliers_skipped,
+                'material_in_created': mat_in_created,
+                'material_in_skipped': mat_in_skipped,
+                'daily_issues_created': daily_issue_created,
+                'daily_issues_skipped': daily_issue_skipped,
+                'total_processed': total_processed
+            }
+        })
+
+    @staticmethod
+    def _get_or_create_category(cat_name):
+        if not cat_name:
+            return StoreItemCategory.objects.first()
+        cleaned_name = str(cat_name).strip()
+        if not cleaned_name:
+            return StoreItemCategory.objects.first()
+
+        # 1. Search by name (case-insensitive)
+        cat = StoreItemCategory.objects.filter(name__iexact=cleaned_name).first()
+        if cat:
+            return cat
+
+        # 2. Search by code
+        base_code = re.sub(r'[^A-Z0-9]', '', cleaned_name.upper())[:10] or "GEN"
+        cat = StoreItemCategory.objects.filter(code__iexact=base_code).first()
+        if cat:
+            return cat
+
+        # 3. Create new with unique code
+        unique_code = base_code
+        counter = 1
+        while StoreItemCategory.objects.filter(code__iexact=unique_code).exists():
+            unique_code = f"{base_code[:7]}_{counter}"
+            counter += 1
+
+        try:
+            return StoreItemCategory.objects.create(name=cleaned_name, code=unique_code)
+        except Exception:
+            return StoreItemCategory.objects.filter(Q(name__iexact=cleaned_name) | Q(code__iexact=unique_code)).first() or StoreItemCategory.objects.first()
+
+    def _handle_single_sheet_import(self, request, wb, import_type):
+        """Robust single sheet upload supporting all tabs."""
+        ws = wb.active
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        errors = []
+
+        with transaction.atomic():
+            if import_type in ('items', 'item_master'):
+                header_row, col_map, data_rows = self._find_header_row_and_map(
+                    ws, ['code', 'name', 'item', 'unit', 'rate', 'status', 'category'], max_search_rows=5
+                )
+
+                def get_c(row, *keywords, default=""):
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw in h_name.lower():
+                                if c_idx < len(row) and row[c_idx] is not None:
+                                    return row[c_idx]
+                    return default
+
+                for idx, r in enumerate(data_rows, start=header_row + 1):
+                    if not r or all(c is None for c in r):
+                        continue
+
+                    if col_map:
+                        item_code = self._clean_str(get_c(r, 'item code', 'code', 'item_code'))
+                        item_name = self._clean_str(get_c(r, 'item name', 'item_name', 'name', 'description'))
+                        unit = self._clean_str(get_c(r, 'unit', 'uom', default="pcs")) or "pcs"
+                        rate = self._parse_num(get_c(r, 'bill rate', 'master rate', 'rate', 'price', default=None), Decimal('0.00'))
+                        status_raw = self._clean_str(get_c(r, 'status', 'charge', default="charge")).lower()
+                        cat_name = self._clean_str(get_c(r, 'category', 'cat', default=""))
+                        reorder_level = self._parse_num(get_c(r, 'reorder', 'min', default=None), Decimal('10.00'))
+                        remark = self._clean_str(get_c(r, 'remark', 'desc', 'note', default=""))
+                    else:
+                        item_code = self._clean_str(r[0] if len(r) > 0 else "")
+                        item_name = self._clean_str(r[1] if len(r) > 1 else "")
+                        unit = self._clean_str(r[2] if len(r) > 2 else "pcs") or "pcs"
+                        rate = self._parse_num(r[3] if len(r) > 3 else None, Decimal('0.00'))
+                        status_raw = self._clean_str(r[4] if len(r) > 4 else "charge").lower()
+                        cat_name = ""
+                        reorder_level = Decimal('10.00')
+                        remark = ""
+
+                    if not item_code or not item_name:
+                        continue
+
+                    default_status = 'non-charge' if 'non' in status_raw else 'charge'
+                    cat = self._get_or_create_category(cat_name) if cat_name else StoreItemCategory.objects.first()
+
+                    existing_item = StoreItem.objects.filter(item_code=item_code).first()
+                    if not existing_item:
+                        StoreItem.objects.create(
+                            item_code=item_code,
+                            item_name=item_name,
+                            category=cat,
+                            unit=unit,
+                            base_rate=rate,
+                            current_rate=rate,
+                            default_status=default_status,
+                            reorder_level=reorder_level,
+                            remark=remark,
+                            is_active=True
+                        )
+                        created_count += 1
+                    else:
+                        changed = False
+                        if existing_item.item_name != item_name:
+                            existing_item.item_name = item_name
+                            changed = True
+                        if cat and existing_item.category != cat:
+                            existing_item.category = cat
+                            changed = True
+                        if existing_item.unit != unit:
+                            existing_item.unit = unit
+                            changed = True
+                        if rate > 0 and existing_item.base_rate == Decimal('0.00'):
+                            existing_item.base_rate = rate
+                            existing_item.current_rate = rate
+                            changed = True
+                        elif rate > 0 and existing_item.base_rate != rate:
+                            existing_item.base_rate = rate
+                            existing_item.current_rate = rate
+                            changed = True
+                        if existing_item.default_status != default_status:
+                            existing_item.default_status = default_status
+                            changed = True
+                        if remark and not existing_item.remark:
+                            existing_item.remark = remark
+                            changed = True
+
+                        if changed:
+                            existing_item.save()
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+
+            elif import_type in ('material_in', 'inward'):
+                header_row, col_map, data_rows = self._find_header_row_and_map(
+                    ws, ['voucher', 'bill', 'supplier', 'item', 'qty', 'date', 'rate'], max_search_rows=5
+                )
+
+                def get_c(row, *keywords, default=""):
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw in h_name.lower():
+                                if c_idx < len(row) and row[c_idx] is not None:
+                                    return row[c_idx]
+                    return default
+
+                for idx, r in enumerate(data_rows, start=header_row + 1):
+                    if not r or all(c is None for c in r):
+                        continue
+
+                    if col_map:
+                        v_num = self._clean_str(get_c(r, 'voucher', 'vch', 'inward no', default=""))
+                        bill_no = self._clean_str(get_c(r, 'bill #', 'bill no', 'bill_no', 'bill', default=""))
+                        entry_date = self._parse_date_safe(get_c(r, 'date', 'inward date', default=None))
+                        item_code = self._clean_str(get_c(r, 'item code', 'code', default=""))
+                        item_name = self._clean_str(get_c(r, 'item name', 'item', 'description', default=""))
+                        sup_name = self._clean_str(get_c(r, 'supplier', 'vendor', default="General Supplier")) or "General Supplier"
+                        qty = self._parse_num(get_c(r, 'qty', 'quantity', default=None), Decimal('0.00'))
+                        unit = self._clean_str(get_c(r, 'unit', default="pcs")) or "pcs"
+                        bill_rate = self._parse_num(get_c(r, 'bill rate', 'rate', 'price', default=None), Decimal('0.00'))
+                    else:
+                        v_num = self._clean_str(r[0] if len(r) > 0 else "")
+                        entry_date = self._parse_date_safe(r[1] if len(r) > 1 else None)
+                        bill_no = self._clean_str(r[2] if len(r) > 2 else f"BILL-{v_num}")
+                        sup_name = self._clean_str(r[3] if len(r) > 3 else "General Supplier")
+                        item_code = self._clean_str(r[4] if len(r) > 4 else "")
+                        item_name = self._clean_str(r[5] if len(r) > 5 else "")
+                        qty = self._parse_num(r[6] if len(r) > 6 else None, Decimal('0.00'))
+                        unit = self._clean_str(r[7] if len(r) > 7 else "pcs") or "pcs"
+                        bill_rate = self._parse_num(r[8] if len(r) > 8 else None, Decimal('0.00'))
+
+                    if not v_num and bill_no:
+                        v_num = f"INW-{bill_no}"
+                    elif not v_num:
+                        v_num = f"INW-{idx:04d}"
+
+                    item = None
+                    if item_code:
+                        item = StoreItem.objects.filter(item_code=item_code).first()
+                    if not item and item_name:
+                        item = StoreItem.objects.filter(item_name__iexact=item_name).first()
+
+                    if not item:
+                        errors.append(f"Row {idx}: Item '{item_name or item_code}' not found in Item Master.")
+                        continue
+
+                    sup, _ = Supplier.objects.get_or_create(name=sup_name)
+                    mat_in, created = StoreMaterialIn.objects.update_or_create(
+                        voucher_no=v_num,
+                        defaults={
+                            'inward_date': entry_date,
+                            'item': item,
+                            'supplier': sup,
+                            'qty': qty,
+                            'unit': unit,
+                            'bill_rate': bill_rate,
+                            'bill_no': bill_no or v_num,
+                            'received_by': request.user
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+            elif import_type in ('daily_issue', 'issue'):
+                header_row, col_map, data_rows = self._find_header_row_and_map(
+                    ws, ['voucher', 'contractor', 'item', 'qty', 'date', 'rate', 'unit'], max_search_rows=5
+                )
+
+                def get_c(row, *keywords, default=""):
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw in h_name.lower():
+                                if c_idx < len(row) and row[c_idx] is not None:
+                                    return row[c_idx]
+                    return default
+
+                for idx, r in enumerate(data_rows, start=header_row + 1):
+                    if not r or all(c is None for c in r):
+                        continue
+
+                    if col_map:
+                        v_num = self._clean_str(get_c(r, 'voucher no', 'voucher', 'vch', default=f"VCH-{idx:04d}"))
+                        issue_date = self._parse_date_safe(get_c(r, 'date', default=None))
+                        cont_name = self._clean_str(get_c(r, 'contractor', 'contractor name', default=""))
+                        worker = self._clean_str(get_c(r, 'worker', 'person', 'recipient', default=""))
+                        item_code = self._clean_str(get_c(r, 'item code', 'code', default=""))
+                        item_name = self._clean_str(get_c(r, 'item name', 'item', default=""))
+                        qty = self._parse_num(get_c(r, 'qty', 'quantity', default=None), Decimal('0.00'))
+                        unit = self._clean_str(get_c(r, 'unit', default="pcs")) or "pcs"
+                        rate = self._parse_num(get_c(r, 'rate', default=None), Decimal('0.00'))
+                        status_raw = self._clean_str(get_c(r, 'status', default="charge")).lower()
+                    else:
+                        v_num = self._clean_str(r[0] if len(r) > 0 else f"VCH-{idx:04d}")
+                        issue_date = self._parse_date_safe(r[1] if len(r) > 1 else None)
+                        cont_name = self._clean_str(r[2] if len(r) > 2 else "")
+                        worker = self._clean_str(r[3] if len(r) > 3 else "")
+                        item_name = self._clean_str(r[4] if len(r) > 4 else "")
+                        qty = self._parse_num(r[5] if len(r) > 5 else None, Decimal('0.00'))
+                        unit = self._clean_str(r[6] if len(r) > 6 else "pcs") or "pcs"
+                        rate = self._parse_num(r[7] if len(r) > 7 else None, Decimal('0.00'))
+                        status_raw = self._clean_str(r[8] if len(r) > 8 else "charge").lower()
+
+                    item = None
+                    if item_code:
+                        item = StoreItem.objects.filter(item_code=item_code).first()
+                    if not item and item_name:
+                        item = StoreItem.objects.filter(item_name__iexact=item_name).first()
+
+                    if not item:
+                        errors.append({
+                            'sheet': 'Daily Issue Entry',
+                            'row': idx,
+                            'field': 'Item Code / Name',
+                            'error': f"Item '{item_name or item_code}' not found in Item Master. Please add item first."
+                        })
+                        continue
+
+                    contractor = None
+                    if cont_name:
+                        contractor = User.objects.filter(Q(username__iexact=cont_name) | Q(first_name__iexact=cont_name)).first()
+                        if not contractor:
+                            contractor = User.objects.create_user(username=cont_name, first_name=cont_name, role='contractor')
+
+                    issue_status = 'non-charge' if 'non' in status_raw else 'charge'
+                    if rate == 0 and item.base_rate > 0:
+                        rate = item.base_rate
+
+                    chargeable_tot = (qty * rate) if issue_status == 'charge' else Decimal('0.00')
+                    non_chargeable_tot = Decimal('0.00') if issue_status == 'charge' else (qty * rate)
+
+                    issue, created = StoreDailyIssue.objects.update_or_create(
+                        voucher_no=v_num,
+                        defaults={
+                            'issue_date': issue_date,
+                            'item': item,
+                            'contractor': contractor,
+                            'contractor_person_name': worker or (contractor.first_name if contractor else ""),
+                            'qty': qty,
+                            'unit': unit,
+                            'rate': rate,
+                            'status': issue_status,
+                            'chargeable_total': chargeable_tot,
+                            'non_chargeable_total': non_chargeable_tot,
+                            'issued_by': request.user
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+            elif import_type in ('material_return', 'return'):
+                header_row, col_map, data_rows = self._find_header_row_and_map(
+                    ws, ['voucher', 'contractor', 'item', 'qty', 'date', 'rate', 'unit'], max_search_rows=5
+                )
+
+                def get_c(row, *keywords, default=""):
+                    for kw in keywords:
+                        for h_name, c_idx in col_map.items():
+                            if kw in h_name.lower():
+                                if c_idx < len(row) and row[c_idx] is not None:
+                                    return row[c_idx]
+                    return default
+
+                for idx, r in enumerate(data_rows, start=header_row + 1):
+                    if not r or all(c is None for c in r):
+                        continue
+
+                    v_num = self._clean_str(get_c(r, 'voucher', 'vch', default=f"RET-{idx:04d}"))
+                    ret_date = self._parse_date_safe(get_c(r, 'date', default=None))
+                    item_ident = self._clean_str(get_c(r, 'item name', 'item', 'code', default=""))
+                    cont_ident = self._clean_str(get_c(r, 'contractor', default=""))
+                    qty = self._parse_num(get_c(r, 'qty', 'quantity', default=None), Decimal('0.00'))
+                    unit = self._clean_str(get_c(r, 'unit', default="pcs")) or "pcs"
+                    rate = self._parse_num(get_c(r, 'rate', default=None), Decimal('0.00'))
+                    remark = self._clean_str(get_c(r, 'remark', default=""))
+
+                    item = StoreItem.objects.filter(Q(item_code=item_ident) | Q(item_name__iexact=item_ident)).first()
+                    if not item:
+                        errors.append({
+                            'sheet': 'Material Return',
+                            'row': idx,
+                            'field': 'Item Code / Name',
+                            'error': f"Item '{item_ident}' not found in Item Master."
+                        })
+                        continue
+
+                    contractor = None
+                    if cont_ident:
+                        contractor = User.objects.filter(Q(username__iexact=cont_ident) | Q(first_name__iexact=cont_ident)).first()
+                        if not contractor:
+                            contractor = User.objects.create_user(username=cont_ident, first_name=cont_ident, role='contractor')
+
+                    ret, created = StoreMaterialReturn.objects.update_or_create(
+                        voucher_no=v_num,
+                        defaults={
+                            'return_date': ret_date,
+                            'item': item,
+                            'contractor': contractor,
+                            'qty': qty,
+                            'unit': unit,
+                            'rate': rate,
+                            'remark': remark,
+                            'returned_by': request.user
+                        }
+                    )
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
+
+        if errors and (created_count == 0 and updated_count == 0):
+            return Response({
+                'success': False,
+                'message': f"Validation Stopped: {len(errors)} issue(s) detected. The import was paused to protect your database. Please fix the issues below.",
+                'total_errors': len(errors),
+                'errors': errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'success': True,
             'message': f"Bulk Import Completed for {import_type.replace('_', ' ').title()}!",
             'created_count': created_count,
             'updated_count': updated_count,
-            'total_processed': created_count + updated_count,
+            'skipped_count': skipped_count,
+            'total_processed': created_count + updated_count + skipped_count,
             'errors': errors
         })
 

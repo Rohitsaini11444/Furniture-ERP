@@ -236,25 +236,6 @@ export default function StoreManagement() {
     units: false,
   });
 
-  // Fetch initial baseline data (Only Stock Summary & Categories - 2 requests)
-  const fetchBaselineData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const results = await Promise.allSettled([
-        api.get('/store/stock-summary/'),
-        api.get('/store/categories/'),
-      ]);
-
-      if (results[0].status === 'fulfilled') setStockSummaryData(results[0].value.data);
-      if (results[1].status === 'fulfilled') setCategories(results[1].value.data.results || results[1].value.data || []);
-      setLoadedTabs(prev => ({ ...prev, 'stock-summary': true }));
-    } catch (err) {
-      console.error('Failed to load store management baseline data', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // Lazy-load data for a specific active tab on-demand
   const fetchTabData = useCallback(async (tabKey, force = false) => {
     setLoading(true);
@@ -292,6 +273,29 @@ export default function StoreManagement() {
       setLoading(false);
     }
   }, []);
+
+  // Fetch initial baseline data (Only Stock Summary & Categories - 2 requests)
+  const fetchBaselineData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const results = await Promise.allSettled([
+        api.get('/store/stock-summary/'),
+        api.get('/store/categories/'),
+      ]);
+
+      if (results[0].status === 'fulfilled') setStockSummaryData(results[0].value.data);
+      if (results[1].status === 'fulfilled') setCategories(results[1].value.data.results || results[1].value.data || []);
+      setLoadedTabs({ 'stock-summary': true });
+      // Also refresh active tab if not stock-summary
+      if (activeTab !== 'stock-summary') {
+        fetchTabData(activeTab, true);
+      }
+    } catch (err) {
+      console.error('Failed to load store management baseline data', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab, fetchTabData]);
 
   // Ensure dropdown data for modals is loaded on-demand
   const ensureModalOptions = useCallback(async (optionsList = []) => {
