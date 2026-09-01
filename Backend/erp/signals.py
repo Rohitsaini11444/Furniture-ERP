@@ -10,7 +10,7 @@ from .models import (
     Supplier, StoreItem, StoreItemCategory, StoreMaterialIn, StoreDailyIssue,
     Sample, Finish, ProductionJob, ProductionUnit, User
 )
-from .middleware import get_current_user, get_client_ip, get_user_agent, is_bulk_import_mode
+from .middleware import get_current_user, get_client_ip, get_user_agent, is_bulk_import_mode, is_bulk_mode
 
 MODEL_MODULE_MAP = {
     Buyer: ("Buyers Directory", "Buyer"),
@@ -40,89 +40,98 @@ def serialize_val(val):
 
 @receiver(post_save)
 def auto_audit_log_save(sender, instance, created, **kwargs):
-    if is_bulk_import_mode():
+    if is_bulk_import_mode() or is_bulk_mode():
         return
     if sender not in MODEL_MODULE_MAP:
         return
     if sender == AuditLog:
         return
 
-    module_name, friendly_model_name = MODEL_MODULE_MAP[sender]
-    user = get_current_user()
-    ip_addr = get_client_ip()
-    user_agent = get_user_agent()
-
-    action = AuditAction.CREATE if created else AuditAction.UPDATE
-    object_id = str(instance.pk)
-    object_repr = str(instance)
-
-    changes = {}
-    file_info = {}
-
-    for attr in ['image', 'photo', 'file', 'attachment', 'excel_file']:
-        if hasattr(instance, attr):
-            file_field = getattr(instance, attr)
-            if file_field and hasattr(file_field, 'name') and file_field.name:
-                file_info[attr] = {
-                    'filename': file_field.name.split('/')[-1],
-                    'path': str(file_field),
-                    'size_bytes': getattr(file_field, 'size', None)
-                }
-
     try:
-        if created:
-            changes = {'new_values': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
-        else:
-            changes = {'updated_fields': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
-    except Exception as e:
-        changes = {'info': f'Model snapshot: {str(e)}'}
+        module_name, friendly_model_name = MODEL_MODULE_MAP[sender]
+        user = get_current_user()
+        ip_addr = get_client_ip()
+        user_agent = get_user_agent()
 
-    AuditLog.objects.create(
-        user=user if user and getattr(user, 'is_authenticated', False) else None,
-        username=user.get_full_name() or user.username if user else 'System',
-        user_role=getattr(user, 'role', 'system') if user else 'system',
-        ip_address=ip_addr,
-        user_agent=user_agent[:500] if user_agent else '',
-        action=action,
-        module_name=module_name,
-        model_name=friendly_model_name,
-        object_id=object_id,
-        object_repr=object_repr[:250],
-        changes=changes,
-        file_info=file_info,
-    )
+        action = AuditAction.CREATE if created else AuditAction.UPDATE
+        object_id = str(instance.pk)
+        object_repr = str(instance)
+
+        changes = {}
+        file_info = {}
+
+        for attr in ['image', 'photo', 'file', 'attachment', 'excel_file']:
+            if hasattr(instance, attr):
+                file_field = getattr(instance, attr)
+                if file_field and hasattr(file_field, 'name') and file_field.name:
+                    file_info[attr] = {
+                        'filename': file_field.name.split('/')[-1],
+                        'path': str(file_field),
+                        'size_bytes': getattr(file_field, 'size', None)
+                    }
+
+        try:
+            if created:
+                changes = {'new_values': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
+            else:
+                changes = {'updated_fields': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
+        except Exception as e:
+            changes = {'info': f'Model snapshot: {str(e)}'}
+
+        AuditLog.objects.create(
+            user=user if user and getattr(user, 'is_authenticated', False) else None,
+            username=user.get_full_name() or user.username if user else 'System',
+            user_role=getattr(user, 'role', 'system') if user else 'system',
+            ip_address=ip_addr,
+            user_agent=user_agent[:500] if user_agent else '',
+            action=action,
+            module_name=module_name,
+            model_name=friendly_model_name,
+            object_id=object_id,
+            object_repr=object_repr[:250],
+            changes=changes,
+            file_info=file_info,
+        )
+    except Exception:
+        pass
 
 @receiver(post_delete)
 def auto_audit_log_delete(sender, instance, **kwargs):
+    if is_bulk_import_mode() or is_bulk_mode():
+        return
     if sender not in MODEL_MODULE_MAP:
         return
     if sender == AuditLog:
         return
 
-    module_name, friendly_model_name = MODEL_MODULE_MAP[sender]
-    user = get_current_user()
-    ip_addr = get_client_ip()
-    user_agent = get_user_agent()
-
-    object_id = str(instance.pk)
-    object_repr = str(instance)
-
-    changes = {}
     try:
-        changes = {'deleted_snapshot': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
-    except Exception:
-        changes = {'info': 'Snapshot captured'}
+        module_name, friendly_model_name = MODEL_MODULE_MAP[sender]
+        user = get_current_user()
+        ip_addr = get_client_ip()
+        user_agent = get_user_agent()
 
-    AuditLog.objects.create(
-        user=user if user and getattr(user, 'is_authenticated', False) else None,
-        username=user.get_full_name() or user.username if user else 'System',
-        user_role=getattr(user, 'role', 'system') if user else 'system',
-        ip_address=ip_addr,
-        user_agent=user_agent[:500] if user_agent else '',
-        action=AuditAction.DELETE,
-        module_name=module_name,
-        model_name=friendly_model_name,
-        object_id=object_id,
-        object_repr=object_repr[:250],
-        changes=changes,
-    )
+        object_id = str(instance.pk)
+        object_repr = str(instance)
+
+        changes = {}
+        try:
+            changes = {'deleted_snapshot': {k: serialize_val(v) for k, v in model_to_dict(instance).items() if v is not None}}
+        except Exception:
+            changes = {'info': 'Snapshot captured'}
+
+        AuditLog.objects.create(
+            user=user if user and getattr(user, 'is_authenticated', False) else None,
+            username=user.get_full_name() or user.username if user else 'System',
+            user_role=getattr(user, 'role', 'system') if user else 'system',
+            ip_address=ip_addr,
+            user_agent=user_agent[:500] if user_agent else '',
+            action=AuditAction.DELETE,
+            module_name=module_name,
+            model_name=friendly_model_name,
+            object_id=object_id,
+            object_repr=object_repr[:250],
+            changes=changes,
+        )
+    except Exception:
+        pass
+

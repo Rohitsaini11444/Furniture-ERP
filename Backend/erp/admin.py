@@ -31,6 +31,9 @@ p.file-upload a { color: #8b5a2b; font-weight: 600; text-decoration: underline; 
 </style>
 """)
 
+from .middleware import BulkOperation, get_client_ip, get_user_agent
+from .signals import MODEL_MODULE_MAP
+
 from .models import (
     User, ProductionUnit, Finish, Sample, SampleImage,
     Buyer, BuyerUnitAllocation, UnitWorkReallocation,
@@ -41,11 +44,57 @@ from .models import (
     PerformaInvoice, PerformaInvoiceItem,
     BuyerPI, BuyerPIItem,
     StockItem, ProductionJob, ProductionQCLog,
-    Notification, UserSession, AuditLog,
+    Notification, UserSession, AuditLog, AuditAction,
     StoreItemCategory, StoreItem, StoreItemRateHistory, ContractorPerson,
     StorePurchaseOrder, StorePurchaseOrderItem, StoreMaterialIn, StoreDailyIssue,
     StoreMaterialReturn, StoreRequisition, StoreStockAdjustment,
 )
+
+
+class BaseModelAdmin(admin.ModelAdmin):
+    """
+    Enterprise Base ModelAdmin that optimizes bulk deletion.
+    Prevents Gunicorn worker timeouts and N+1 cascade signal storms by suppressing per-row signals during bulk deletes
+    and creating a single consolidated AuditLog entry.
+    """
+    def delete_queryset(self, request, queryset):
+        count = queryset.count()
+        if count > 1:
+            model_cls = self.model
+            model_verbose_plural = model_cls._meta.verbose_name_plural.title() if hasattr(model_cls._meta, 'verbose_name_plural') else model_cls._meta.verbose_name.title()
+            model_name = model_cls._meta.verbose_name.title()
+
+            if model_cls in MODEL_MODULE_MAP:
+                module_name, friendly_model_name = MODEL_MODULE_MAP[model_cls]
+            else:
+                module_name, friendly_model_name = "Admin Panel", model_name
+
+            sample_items = [str(obj) for obj in queryset[:10]]
+            if count > 10:
+                sample_items.append(f"...and {count - 10} more")
+
+            with BulkOperation():
+                queryset.delete()
+
+            try:
+                AuditLog.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    username=request.user.get_full_name() or request.user.username if request.user.is_authenticated else 'System',
+                    user_role=getattr(request.user, 'role', 'admin'),
+                    ip_address=get_client_ip(request),
+                    user_agent=get_user_agent(request)[:500] if get_user_agent(request) else '',
+                    action=AuditAction.DELETE,
+                    module_name=module_name,
+                    model_name=friendly_model_name,
+                    object_id=f"BULK-{count}",
+                    object_repr=f"Bulk deleted {count} {model_verbose_plural}",
+                    changes={'deleted_count': count, 'sample_records': sample_items},
+                    reason=f"Admin bulk delete action executed by {request.user.username}"
+                )
+            except Exception:
+                pass
+        else:
+            super().delete_queryset(request, queryset)
 
 
 # ── User Admin ─────────────────────────────────────────────────────────────
@@ -62,10 +111,19 @@ class UserAdmin(BaseUserAdmin):
         ('ERP Role & Hierarchy', {'fields': ('role', 'batch_category', 'production_unit', 'supervisor', 'phone')}),
     )
 
+    def delete_queryset(self, request, queryset):
+        count = queryset.count()
+        if count > 1:
+            with BulkOperation():
+                queryset.delete()
+        else:
+            super().delete_queryset(request, queryset)
+
 
 # ── Production Unit ─────────────────────────────────────────────────────────
 @admin.register(ProductionUnit)
-class ProductionUnitAdmin(admin.ModelAdmin):
+class ProductionUnitAdmin(BaseModelAdmin):
+
     list_display = ['unit_code', 'name', 'location', 'capacity_pcs', 'is_active', 'created_at']
     list_filter = ['is_active']
     search_fields = ['name', 'unit_code', 'location']
@@ -73,7 +131,7 @@ class ProductionUnitAdmin(admin.ModelAdmin):
 
 # ── Finish Catalog ──────────────────────────────────────────────────────────
 @admin.register(Finish)
-class FinishAdmin(admin.ModelAdmin):
+class FinishAdmin(BaseModelAdmin):
     list_display = ['finish_image_thumbnail', 'finish_code', 'name', 'color', 'wood_type', 'created_at']
     list_filter = ['wood_type', 'color']
     search_fields = ['name', 'finish_code', 'color', 'wood_type']
@@ -110,7 +168,7 @@ class SampleImageInline(admin.TabularInline):
     image_preview.short_description = "Image Preview"
 
 @admin.register(Sample)
-class SampleAdmin(admin.ModelAdmin):
+class SampleAdmin(BaseModelAdmin):
     list_display = ['sample_image_thumbnail', 'sample_id', 'style_no', 'product_name', 'buyer', 'material', 'finish_color', 'usd', 'cbm', 'vendor_name', 'created_at']
     list_select_related = ['buyer']
     list_filter = ['buyer', 'material']
@@ -160,7 +218,7 @@ class SampleAdmin(admin.ModelAdmin):
     main_image_preview.short_description = "Current Main Image"
 
 @admin.register(SampleImage)
-class SampleImageAdmin(admin.ModelAdmin):
+class SampleImageAdmin(BaseModelAdmin):
     list_display = ['sample_image_thumbnail', 'sample', 'image', 'uploaded_at']
     list_select_related = ['sample']
     search_fields = ['sample__sample_id', 'sample__style_no']
@@ -197,20 +255,20 @@ class BuyerUnitAllocationInline(admin.TabularInline):
     extra = 1
 
 @admin.register(Buyer)
-class BuyerAdmin(admin.ModelAdmin):
+class BuyerAdmin(BaseModelAdmin):
     list_display = ['code', 'name', 'email', 'phone', 'is_deleted', 'created_at']
     list_filter = ['is_deleted']
     search_fields = ['name', 'code', 'email', 'phone', 'address']
     inlines = [BuyerUnitAllocationInline]
 
 @admin.register(BuyerUnitAllocation)
-class BuyerUnitAllocationAdmin(admin.ModelAdmin):
+class BuyerUnitAllocationAdmin(BaseModelAdmin):
     list_display = ['buyer', 'production_unit', 'is_primary', 'created_at']
     list_filter = ['is_primary', 'production_unit']
     search_fields = ['buyer__name', 'buyer__code', 'production_unit__name']
 
 @admin.register(UnitWorkReallocation)
-class UnitWorkReallocationAdmin(admin.ModelAdmin):
+class UnitWorkReallocationAdmin(BaseModelAdmin):
     list_display = ['from_unit', 'to_unit', 'buyer', 'po', 'reallocated_by', 'created_at']
     list_filter = ['from_unit', 'to_unit']
     search_fields = ['buyer__name', 'po__po_number', 'reason']
@@ -222,7 +280,7 @@ class BuyerMasterFinishingImageInline(admin.TabularInline):
     extra = 1
 
 @admin.register(BuyerMaster)
-class BuyerMasterAdmin(admin.ModelAdmin):
+class BuyerMasterAdmin(BaseModelAdmin):
     list_display = ['style_no', 'product_name', 'buyer', 'buyer_code', 'units', 'price_usd', 'total_amount', 'created_at']
     list_select_related = ['buyer', 'sample']
     list_filter = ['buyer', 'wood_type']
@@ -230,7 +288,7 @@ class BuyerMasterAdmin(admin.ModelAdmin):
     inlines = [BuyerMasterFinishingImageInline]
 
 @admin.register(BuyerMasterFinishingImage)
-class BuyerMasterFinishingImageAdmin(admin.ModelAdmin):
+class BuyerMasterFinishingImageAdmin(BaseModelAdmin):
     list_display = ['buyer_master', 'uploaded_at']
     list_select_related = ['buyer_master', 'buyer_master__buyer']
     search_fields = ['buyer_master__style_no', 'buyer_master__product_name']
@@ -242,27 +300,27 @@ class SupplierPOItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(Supplier)
-class SupplierAdmin(admin.ModelAdmin):
+class SupplierAdmin(BaseModelAdmin):
     list_display = ['name', 'phone', 'gstin', 'state_name', 'cartage_gst_rate', 'cartage_ledger_name', 'created_at']
     search_fields = ['name', 'phone', 'gstin', 'state_name', 'address', 'cartage_ledger_name']
 
 
 @admin.register(POExtensionLog)
-class POExtensionLogAdmin(admin.ModelAdmin):
+class POExtensionLogAdmin(BaseModelAdmin):
     list_display = ['supplier_po', 'previous_due_date', 'new_due_date', 'days_added', 'extended_by', 'created_at']
     list_filter = ['created_at', 'extended_by']
     search_fields = ['supplier_po__po_number', 'reason', 'extended_by__username']
 
 
 @admin.register(POSupplierHistory)
-class POSupplierHistoryAdmin(admin.ModelAdmin):
+class POSupplierHistoryAdmin(BaseModelAdmin):
     list_display = ['supplier_po', 'previous_supplier', 'new_supplier', 'changed_by', 'changed_at']
     list_filter = ['changed_at', 'previous_supplier', 'new_supplier']
     search_fields = ['supplier_po__po_number', 'previous_supplier__name', 'new_supplier__name', 'reason', 'changed_by__username']
 
 
 @admin.register(SupplierPO)
-class SupplierPOAdmin(admin.ModelAdmin):
+class SupplierPOAdmin(BaseModelAdmin):
     list_display = ['po_number', 'po_date', 'supplier', 'production_unit', 'status', 'due_date', 'total_amount', 'created_at']
     list_select_related = ['supplier', 'production_unit']
     list_filter = ['status', 'production_unit', 'supplier']
@@ -270,23 +328,23 @@ class SupplierPOAdmin(admin.ModelAdmin):
     inlines = [SupplierPOItemInline]
 
 @admin.register(SupplierPOItem)
-class SupplierPOItemAdmin(admin.ModelAdmin):
+class SupplierPOItemAdmin(BaseModelAdmin):
     list_display = ['supplier_po', 'description', 'quantity', 'passed_quantity', 'unit', 'rate', 'amount', 'buyer']
     list_select_related = ['supplier_po', 'supplier_po__supplier', 'buyer']
     list_filter = ['unit', 'supplier_po__status']
     search_fields = ['supplier_po__po_number', 'description', 'buyer__name']
 
 @admin.register(SupplierPOItemDefect)
-class SupplierPOItemDefectAdmin(admin.ModelAdmin):
+class SupplierPOItemDefectAdmin(BaseModelAdmin):
     list_display = ['po_item', 'quantity', 'reported_by', 'created_at']
     search_fields = ['po_item__description', 'remark', 'admin_reply']
 
 @admin.register(SupplierPOItemDefectImage)
-class SupplierPOItemDefectImageAdmin(admin.ModelAdmin):
+class SupplierPOItemDefectImageAdmin(BaseModelAdmin):
     list_display = ['defect', 'created_at']
 
 @admin.register(GateInwardReceipt)
-class GateInwardReceiptAdmin(admin.ModelAdmin):
+class GateInwardReceiptAdmin(BaseModelAdmin):
     list_display = ['grn_number', 'round_number', 'supplier_invoice_no', 'supplier_po', 'po_item', 'receipt_date', 'passed_qty', 'rejected_qty', 'vehicle_no', 'driver_contact', 'inspected_by', 'created_at']
     list_select_related = ['supplier_po', 'supplier_po__supplier', 'po_item', 'inspected_by']
     list_filter = ['round_number', 'receipt_date', 'inspected_by', 'supplier_po__supplier']
@@ -298,7 +356,7 @@ class SupplierTaxInvoiceItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(SupplierTaxInvoice)
-class SupplierTaxInvoiceAdmin(admin.ModelAdmin):
+class SupplierTaxInvoiceAdmin(BaseModelAdmin):
     list_display = ['invoice_no', 'invoice_date', 'supplier', 'delivery_note', 'despatched_through', 'total_amount', 'created_at']
     list_select_related = ['supplier']
     list_filter = ['invoice_date', 'supplier']
@@ -306,7 +364,7 @@ class SupplierTaxInvoiceAdmin(admin.ModelAdmin):
     inlines = [SupplierTaxInvoiceItemInline]
 
 @admin.register(SupplierTaxInvoiceItem)
-class SupplierTaxInvoiceItemAdmin(admin.ModelAdmin):
+class SupplierTaxInvoiceItemAdmin(BaseModelAdmin):
     list_display = ['tax_invoice', 'supplier_po', 'description', 'quantity', 'passed_quantity', 'rejected_quantity', 'unit', 'rate', 'amount']
     list_filter = ['unit', 'tax_invoice__supplier']
     search_fields = ['tax_invoice__invoice_no', 'supplier_po__po_number', 'description', 'hsn_sac']
@@ -317,7 +375,7 @@ class SupplierDebitNoteItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(SupplierDebitNote)
-class SupplierDebitNoteAdmin(admin.ModelAdmin):
+class SupplierDebitNoteAdmin(BaseModelAdmin):
     list_display = ['vch_no', 'vch_date', 'supplier', 'status', 'holding_until', 'item_description', 'rejected_qty', 'total_amount', 'tally_synced', 'created_at']
     list_select_related = ['supplier']
     list_filter = ['status', 'tally_synced', 'vch_date']
@@ -325,7 +383,7 @@ class SupplierDebitNoteAdmin(admin.ModelAdmin):
     inlines = [SupplierDebitNoteItemInline]
 
 @admin.register(SupplierDebitNoteItem)
-class SupplierDebitNoteItemAdmin(admin.ModelAdmin):
+class SupplierDebitNoteItemAdmin(BaseModelAdmin):
     list_display = ['debit_note', 'description', 'hsn_sac', 'rejected_qty', 'unit', 'rate', 'amount', 'reason']
     list_filter = ['unit', 'debit_note__status']
     search_fields = ['debit_note__vch_no', 'description', 'reason']
@@ -337,14 +395,14 @@ class PerformaInvoiceItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(PerformaInvoice)
-class PerformaInvoiceAdmin(admin.ModelAdmin):
+class PerformaInvoiceAdmin(BaseModelAdmin):
     list_display = ['pi_no', 'pi_date', 'buyer', 'buyer_order_no', 'created_at']
     list_filter = ['pi_date', 'buyer']
     search_fields = ['pi_no', 'buyer__name', 'buyer_order_no']
     inlines = [PerformaInvoiceItemInline]
 
 @admin.register(PerformaInvoiceItem)
-class PerformaInvoiceItemAdmin(admin.ModelAdmin):
+class PerformaInvoiceItemAdmin(BaseModelAdmin):
     list_display = ['pi', 'style_no', 'description', 'qty', 'rate_usd', 'amount_usd']
     search_fields = ['pi__pi_no', 'style_no', 'description']
 
@@ -355,21 +413,21 @@ class BuyerPIItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(BuyerPI)
-class BuyerPIAdmin(admin.ModelAdmin):
+class BuyerPIAdmin(BaseModelAdmin):
     list_display = ['pi_no', 'pi_date', 'buyer', 'ex_factory_date', 'payment_terms', 'created_at']
     list_filter = ['buyer', 'pi_date']
     search_fields = ['pi_no', 'buyer__name', 'delivered_to_name', 'delivered_to_company']
     inlines = [BuyerPIItemInline]
 
 @admin.register(BuyerPIItem)
-class BuyerPIItemAdmin(admin.ModelAdmin):
+class BuyerPIItemAdmin(BaseModelAdmin):
     list_display = ['buyer_pi', 'style_no', 'product_name', 'units', 'price_usd', 'total_amount']
     search_fields = ['buyer_pi__pi_no', 'style_no', 'product_name', 'barcode', 'buyer_no']
 
 
 # ── Stock Items ─────────────────────────────────────────────────────────────
 @admin.register(StockItem)
-class StockItemAdmin(admin.ModelAdmin):
+class StockItemAdmin(BaseModelAdmin):
     list_display = ['stock_type', 'style_no', 'item_name', 'quantity', 'unit', 'location', 'production_unit', 'status', 'created_at']
     list_filter = ['stock_type', 'status', 'location', 'production_unit']
     search_fields = ['style_no', 'item_name', 'location']
@@ -377,14 +435,14 @@ class StockItemAdmin(admin.ModelAdmin):
 
 # ── Production Jobs & QC Logs ───────────────────────────────────────────────
 @admin.register(ProductionJob)
-class ProductionJobAdmin(admin.ModelAdmin):
+class ProductionJobAdmin(BaseModelAdmin):
     list_display = ['stage', 'status', 'style_no', 'item_name', 'contractor', 'assigned_by', 'production_unit', 'assigned_qty', 'passed_qty', 'rejected_qty', 'created_at']
     list_select_related = ['contractor', 'assigned_by', 'production_unit']
     list_filter = ['stage', 'status', 'contractor', 'assigned_by', 'production_unit']
     search_fields = ['style_no', 'item_name', 'contractor__username', 'assigned_by__username']
 
 @admin.register(ProductionQCLog)
-class ProductionQCLogAdmin(admin.ModelAdmin):
+class ProductionQCLogAdmin(BaseModelAdmin):
     list_display = ['job', 'inspected_by', 'passed_qty', 'rejected_qty', 'created_at']
     list_filter = ['inspected_by']
     search_fields = ['job__style_no', 'inspected_by__username', 'notes']
@@ -392,14 +450,14 @@ class ProductionQCLogAdmin(admin.ModelAdmin):
 
 # ── System Notifications & User Sessions ────────────────────────────────────
 @admin.register(Notification)
-class NotificationAdmin(admin.ModelAdmin):
+class NotificationAdmin(BaseModelAdmin):
     list_display = ['user', 'message', 'is_read', 'created_at']
     list_select_related = ['user']
     list_filter = ['is_read']
     search_fields = ['user__username', 'message']
 
 @admin.register(UserSession)
-class UserSessionAdmin(admin.ModelAdmin):
+class UserSessionAdmin(BaseModelAdmin):
     list_display = ['user', 'ip_address', 'is_active', 'last_activity', 'created_at']
     list_select_related = ['user']
     list_filter = ['is_active']
@@ -408,36 +466,36 @@ class UserSessionAdmin(admin.ModelAdmin):
 
 # ── Store Management Admin Registration ─────────────────────────────────────
 @admin.register(StoreItemCategory)
-class StoreItemCategoryAdmin(admin.ModelAdmin):
+class StoreItemCategoryAdmin(BaseModelAdmin):
     list_display = ['name', 'code', 'created_at']
     search_fields = ['name', 'code']
 
 @admin.register(StoreItem)
-class StoreItemAdmin(admin.ModelAdmin):
+class StoreItemAdmin(BaseModelAdmin):
     list_display = ['item_code', 'item_name', 'category', 'unit', 'base_rate', 'current_rate', 'default_status', 'reorder_level']
     list_filter = ['category', 'default_status', 'is_active']
     search_fields = ['item_code', 'item_name']
 
 @admin.register(StoreItemRateHistory)
-class StoreItemRateHistoryAdmin(admin.ModelAdmin):
+class StoreItemRateHistoryAdmin(BaseModelAdmin):
     list_display = ['item', 'old_rate', 'new_rate', 'rate_difference', 'percentage_change', 'supplier_name', 'effective_date']
     search_fields = ['item__item_name', 'supplier_name', 'po_reference']
 
 @admin.register(ContractorPerson)
-class ContractorPersonAdmin(admin.ModelAdmin):
+class ContractorPersonAdmin(BaseModelAdmin):
     list_display = ['person_name', 'contractor', 'phone', 'is_active', 'created_at']
     list_select_related = ['contractor']
     list_filter = ['contractor', 'is_active']
     search_fields = ['person_name', 'contractor__username']
 
 @admin.register(StoreMaterialIn)
-class StoreMaterialInAdmin(admin.ModelAdmin):
+class StoreMaterialInAdmin(BaseModelAdmin):
     list_display = ['voucher_no', 'inward_date', 'bill_no', 'supplier', 'item', 'qty', 'unit', 'bill_rate', 'total_amount']
     list_filter = ['supplier', 'inward_date']
     search_fields = ['voucher_no', 'bill_no', 'item__item_name']
 
 @admin.register(StoreDailyIssue)
-class StoreDailyIssueAdmin(admin.ModelAdmin):
+class StoreDailyIssueAdmin(BaseModelAdmin):
     list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'qty', 'rate', 'status', 'total_amount']
     list_filter = ['contractor', 'status', 'production_unit']
     search_fields = ['voucher_no', 'contractor_person_name', 'item__item_name']
@@ -448,7 +506,7 @@ class StorePurchaseOrderItemInline(admin.TabularInline):
     extra = 1
 
 @admin.register(StorePurchaseOrder)
-class StorePurchaseOrderAdmin(admin.ModelAdmin):
+class StorePurchaseOrderAdmin(BaseModelAdmin):
     list_display = ['po_number', 'supplier', 'order_date', 'expected_delivery_date', 'status', 'total_amount', 'created_by', 'created_at']
     list_select_related = ['supplier', 'created_by']
     list_filter = ['status', 'order_date', 'supplier']
@@ -456,27 +514,27 @@ class StorePurchaseOrderAdmin(admin.ModelAdmin):
     inlines = [StorePurchaseOrderItemInline]
 
 @admin.register(StorePurchaseOrderItem)
-class StorePurchaseOrderItemAdmin(admin.ModelAdmin):
+class StorePurchaseOrderItemAdmin(BaseModelAdmin):
     list_display = ['po', 'item', 'ordered_qty', 'unit', 'unit_rate', 'amount']
     list_select_related = ['po', 'item']
     search_fields = ['po__po_number', 'item__item_name']
 
 @admin.register(StoreMaterialReturn)
-class StoreMaterialReturnAdmin(admin.ModelAdmin):
+class StoreMaterialReturnAdmin(BaseModelAdmin):
     list_display = ['voucher_no', 'return_date', 'contractor', 'item', 'qty', 'unit', 'rate', 'status', 'total_amount', 'production_unit']
     list_select_related = ['contractor', 'item', 'production_unit']
     list_filter = ['status', 'production_unit', 'return_date']
     search_fields = ['voucher_no', 'contractor__username', 'item__item_name', 'remark']
 
 @admin.register(StoreRequisition)
-class StoreRequisitionAdmin(admin.ModelAdmin):
+class StoreRequisitionAdmin(BaseModelAdmin):
     list_display = ['requisition_no', 'requested_by', 'production_unit', 'item', 'requested_qty', 'unit', 'status', 'approved_by', 'created_at']
     list_select_related = ['requested_by', 'production_unit', 'item', 'approved_by']
     list_filter = ['status', 'production_unit', 'created_at']
     search_fields = ['requisition_no', 'requested_by__username', 'item__item_name', 'purpose']
 
 @admin.register(StoreStockAdjustment)
-class StoreStockAdjustmentAdmin(admin.ModelAdmin):
+class StoreStockAdjustmentAdmin(BaseModelAdmin):
     list_display = ['adjustment_no', 'item', 'adjustment_type', 'quantity_delta', 'status', 'logged_by', 'approved_by', 'created_at']
     list_select_related = ['item', 'logged_by', 'approved_by']
     list_filter = ['adjustment_type', 'status', 'created_at']
@@ -486,7 +544,7 @@ class StoreStockAdjustmentAdmin(admin.ModelAdmin):
 # ── Global Audit Log Admin Registration ─────────────────────────────────────
 
 @admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
+class AuditLogAdmin(BaseModelAdmin):
     list_display = ['timestamp', 'username', 'user_role', 'action', 'module_name', 'model_name', 'object_repr', 'ip_address']
     list_filter = ['action', 'module_name', 'user_role', 'timestamp']
     search_fields = ['username', 'object_repr', 'module_name', 'model_name', 'reason', 'ip_address']

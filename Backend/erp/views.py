@@ -45,7 +45,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .middleware import set_bulk_import_mode, is_bulk_import_mode
+from .middleware import set_bulk_import_mode, is_bulk_import_mode, BulkOperation, is_bulk_mode, set_bulk_mode
 from .db_diagram_pdf import generate_db_relationships_pdf
 from .models import (
     Buyer, BuyerMaster, BuyerMasterFinishingImage, BuyerPI, BuyerPIItem,
@@ -7770,19 +7770,42 @@ class StoreBulkDeleteView(APIView):
             return Response({'error': 'No records selected for deletion.'}, status=status.HTTP_400_BAD_REQUEST)
 
         deleted_count = 0
-        if module == 'items':
-            deleted_count, _ = StoreItem.objects.filter(id__in=selected_ids).delete()
-        elif module == 'material_in':
-            deleted_count, _ = StoreMaterialIn.objects.filter(id__in=selected_ids).delete()
-        elif module == 'daily_issue':
-            deleted_count, _ = StoreDailyIssue.objects.filter(id__in=selected_ids).delete()
-        elif module == 'material_return':
-            deleted_count, _ = StoreMaterialReturn.objects.filter(id__in=selected_ids).delete()
+        with BulkOperation():
+            if module == 'items':
+                deleted_count, _ = StoreItem.objects.filter(id__in=selected_ids).delete()
+                model_name = 'Store Item'
+            elif module == 'material_in':
+                deleted_count, _ = StoreMaterialIn.objects.filter(id__in=selected_ids).delete()
+                model_name = 'Store Material Inward'
+            elif module == 'daily_issue':
+                deleted_count, _ = StoreDailyIssue.objects.filter(id__in=selected_ids).delete()
+                model_name = 'Store Daily Issue'
+            elif module == 'material_return':
+                deleted_count, _ = StoreMaterialReturn.objects.filter(id__in=selected_ids).delete()
+                model_name = 'Store Material Return'
+            else:
+                model_name = module
+
+            try:
+                log_audit_event(
+                    user=request.user,
+                    action=AuditAction.DELETE,
+                    module_name="Store Management",
+                    model_name=model_name,
+                    object_id=f"BULK-{deleted_count}",
+                    object_repr=f"Bulk deleted {deleted_count} {model_name} records",
+                    changes={'deleted_count': deleted_count, 'sample_ids': selected_ids[:20]},
+                    reason=f"Bulk delete executed from Store Management UI",
+                    request=request
+                )
+            except Exception:
+                pass
 
         return Response({
             'message': f'Successfully deleted {deleted_count} {module.replace("_", " ")} record(s).',
             'deleted_count': deleted_count
         })
+
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):

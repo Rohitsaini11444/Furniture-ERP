@@ -34,13 +34,31 @@ def get_user_agent(request=None):
         return ''
     return request.META.get('HTTP_USER_AGENT', '')
 
+def set_bulk_mode(active=True):
+    """Flags current thread as running high-throughput bulk operations (import/delete) to bypass per-row signal overhead."""
+    _thread_locals.bulk_mode = active
+    _thread_locals.bulk_import = active
+
+def is_bulk_mode():
+    """Checks if current thread is executing in bulk mode."""
+    return getattr(_thread_locals, 'bulk_mode', False) or getattr(_thread_locals, 'bulk_import', False)
+
 def set_bulk_import_mode(active=True):
     """Flags current thread as running high-throughput bulk import to bypass per-row signal overhead."""
-    _thread_locals.bulk_import = active
+    set_bulk_mode(active)
 
 def is_bulk_import_mode():
     """Checks if current thread is executing in bulk import mode."""
-    return getattr(_thread_locals, 'bulk_import', False)
+    return is_bulk_mode()
+
+class BulkOperation:
+    """Context manager to temporarily enable bulk mode and suppress per-row signal overhead."""
+    def __enter__(self):
+        set_bulk_mode(True)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        set_bulk_mode(False)
 
 
 class AuditLogMiddleware:
