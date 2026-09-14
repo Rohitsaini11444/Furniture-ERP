@@ -4,7 +4,7 @@ import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
-  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3
+  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -334,7 +334,7 @@ export default function StoreManagement() {
         const p = targetPage !== undefined ? targetPage : (tabKey === 'contractors' ? pageContractors : pageBilling);
         const [cRes, cpRes] = await Promise.all([
           api.get('/users/', { params: { role: 'contractor', page: p, page_size: ITEMS_PER_PAGE, search: searchVal || undefined } }),
-          api.get('/store/contractor-persons/'),
+          api.get('/store/contractor-persons/', { params: { nopage: true } }),
         ]);
         setContractors(cRes.data.results || cRes.data || []);
         setContractorsTotalCount(cRes.data.count ?? (cRes.data.results || cRes.data || []).length);
@@ -518,7 +518,7 @@ export default function StoreManagement() {
         else if (activeTab === 'contractors') currentPage = pageContractors;
         else if (activeTab === 'billing') currentPage = pageBilling;
 
-        fetchTabData(activeTab, true, currentPage);
+        fetchTabData(activeTab, true, currentPage, searchQuery);
       }, 200);
       return () => clearTimeout(timer);
     }
@@ -2503,7 +2503,7 @@ export default function StoreManagement() {
                           </div>
                         ) : mrn.status === 'approved' ? (
                           <button
-                            onClick={() => navigate(`/store-management/daily-issue?item=${mrn.item}&qty=${mrn.requested_qty}`)}
+                            onClick={() => navigate(`/store-management/daily-issue?item=${mrn.item}&qty=${mrn.requested_qty}${mrn.production_unit ? `&unit=${mrn.production_unit}` : ''}`)}
                             style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >
                             <ArrowUpRight size={14} /> Issue Material Stock
@@ -2762,7 +2762,7 @@ export default function StoreManagement() {
               Contractors & Worker Delegate Directory (Excel Sheet 3)
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '300px', flex: 1 }}>
                 <Search size={16} color="#94a3b8" />
                 <input
                   type="text"
@@ -2771,6 +2771,15 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2787,64 +2796,102 @@ export default function StoreManagement() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedContractors.map((c, idx) => {
-                  const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
-                  return (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
-                        {c.full_name || c.username}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>Contractor</td>
-                      <td style={{ padding: '0.85rem 1rem' }}>{c.phone || '-'}</td>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#8b5a2b' }}>
-                        {workerPerson ? workerPerson.person_name : 'Self'}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        <button
-                          onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                          style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <FileText size={14} /> Generate Bill
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {loading ? (
+                  <TableSkeleton rows={8} cols={5} />
+                ) : paginatedContractors.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <Users size={32} color="#cbd5e1" />
+                        <span style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</span>
+                        {searchQuery && (
+                          <button
+                            onClick={() => setSearchQuery('')}
+                            style={{ border: 'none', background: 'none', color: '#ea580c', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'underline' }}
+                          >
+                            Clear Search
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedContractors.map((c, idx) => {
+                    const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
+                    return (
+                      <tr key={c.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>Contractor</td>
+                        <td style={{ padding: '0.85rem 1rem' }}>{c.phone || '-'}</td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#8b5a2b' }}>
+                          {workerPerson ? workerPerson.person_name : 'Self'}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <button
+                            onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                            style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <FileText size={14} /> Generate Bill
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Contractors Directory List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
-            {paginatedContractors.map((c, idx) => {
-              const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
-              return (
-                <div key={idx} className="store-mobile-card">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
-                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Users size={20} />
-                    </div>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                        {c.full_name || c.username}
-                      </h4>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.65rem' }}>
-                    Worker Delegate: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong>
-                  </div>
-
+            {loading ? (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>Loading contractors...</div>
+            ) : paginatedContractors.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', backgroundColor: '#ffffff', borderRadius: '12px' }}>
+                <Users size={30} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</div>
+                {searchQuery && (
                   <button
-                    onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    onClick={() => setSearchQuery('')}
+                    style={{ border: 'none', background: 'none', color: '#ea580c', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, marginTop: '0.5rem', textDecoration: 'underline' }}
                   >
-                    <FileText size={15} /> Generate Monthly Bill
+                    Clear Search
                   </button>
-                </div>
-              );
-            })}
+                )}
+              </div>
+            ) : (
+              paginatedContractors.map((c, idx) => {
+                const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
+                return (
+                  <div key={c.id || idx} className="store-mobile-card">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
+                      <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                        </h4>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.65rem' }}>
+                      Worker Delegate: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong>
+                    </div>
+
+                    <button
+                      onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                      style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
+                      <FileText size={15} /> Generate Monthly Bill
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
@@ -2865,7 +2912,7 @@ export default function StoreManagement() {
               Monthly Contractor Settlement & Store Material Deduction Bills
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '300px', flex: 1 }}>
                 <Search size={16} color="#94a3b8" />
                 <input
                   type="text"
@@ -2874,38 +2921,64 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-            {paginatedBillingContractors.map((c, idx) => (
-              <div key={idx} style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Users size={18} />
-                    </div>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
-                        {c.full_name || c.username}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</p>
+            {loading ? (
+              <CardSkeleton count={6} />
+            ) : paginatedBillingContractors.length === 0 ? (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                <Users size={32} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</div>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{ border: 'none', background: 'none', color: '#ea580c', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, marginTop: '0.5rem', textDecoration: 'underline' }}
+                  >
+                    Clear Search
+                  </button>
+                )}
+              </div>
+            ) : (
+              paginatedBillingContractors.map((c, idx) => (
+                <div key={c.id || idx} style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Users size={18} />
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                        </h4>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Jul-26 Settlement</span>
-                  <button
-                    onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                    style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <FileText size={15} /> View Bill Statement
-                  </button>
+                  <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Monthly Settlement</span>
+                    <button
+                      onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                      style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <FileText size={15} /> View Bill Statement
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>

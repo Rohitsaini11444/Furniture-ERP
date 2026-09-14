@@ -1069,6 +1069,35 @@ class StoreItem(models.Model):
     def total_stock_value(self):
         return self.balance_stock_qty * (self.current_rate or self.base_rate)
 
+    def has_material_in_for_unit(self, unit_id):
+        """Checks if this item was ever received (Material In) in the specified production unit."""
+        if not unit_id:
+            return False
+        return self.inward_entries.filter(production_unit_id=unit_id).exists()
+
+    def get_stock_balance_for_unit(self, unit_id):
+        """Calculates available balance strictly for a specific production unit."""
+        if not unit_id:
+            return self.balance_stock_qty
+        inward = self.inward_entries.filter(production_unit_id=unit_id).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        returned = self.return_entries.filter(production_unit_id=unit_id).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        issued = self.daily_issues.filter(production_unit_id=unit_id).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+        return (inward + returned) - issued
+
+    def get_units_with_stock(self):
+        """Returns distinct production units where this item was received and has positive stock."""
+        from erp.models import ProductionUnit
+        unit_ids = self.inward_entries.values_list('production_unit_id', flat=True).distinct()
+        units = []
+        for uid in unit_ids:
+            if uid:
+                bal = self.get_stock_balance_for_unit(uid)
+                if bal > 0:
+                    punit = ProductionUnit.objects.filter(id=uid).first()
+                    if punit:
+                        units.append({'id': str(punit.id), 'name': punit.name, 'balance': float(bal)})
+        return units
+
 
 class StoreItemRateHistory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

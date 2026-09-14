@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert, FileText } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert, FileText, Building2, Info } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
@@ -11,11 +11,18 @@ export default function StoreDailyIssuePage() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const queryParams = new URLSearchParams(location.search);
+  const urlUnit = queryParams.get('unit') || '';
+  const urlItem = queryParams.get('item') || '';
+  const urlQty = queryParams.get('qty') || '';
+
   const [items, setItems] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [persons, setPersons] = useState([]);
   const [units, setUnits] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [unitNotice, setUnitNotice] = useState(null);
 
   const [selectedItemObj, setSelectedItemObj] = useState(null);
   const [contractorPersonsList, setContractorPersonsList] = useState([]);
@@ -44,11 +51,11 @@ export default function StoreDailyIssuePage() {
     contractor_person: '',
     contractor_person_name: '',
     item: '',
-    qty: '',
+    qty: urlQty || '',
     unit: 'pcs',
     rate: '',
     status: 'charge',
-    production_unit: '',
+    production_unit: urlUnit || '',
     remark: ''
   });
 
@@ -92,47 +99,87 @@ export default function StoreDailyIssuePage() {
     }
   }, [location.state]);
 
+  // Fetch items strictly for the selected unit where material in occurred and balance > 0
+  const fetchItemsForUnit = useCallback(async (unitId, targetItemId = null) => {
+    if (!unitId) {
+      setItems([]);
+      setSelectedItemObj(null);
+      return;
+    }
+    setLoadingItems(true);
+    try {
+      const res = await api.get('/store/items/', {
+        params: {
+          production_unit: unitId,
+          available_for_unit: true,
+          nopage: true
+        }
+      });
+      const unitItems = res.data.results || res.data || [];
+      setItems(unitItems);
+
+      const findId = targetItemId || formData.item;
+      const matched = unitItems.find(i => String(i.id) === String(findId));
+      if (matched) {
+        setSelectedItemObj(matched);
+        setFormData(prev => ({
+          ...prev,
+          item: matched.id,
+          unit: matched.unit,
+          rate: matched.current_rate || matched.base_rate || '',
+          status: matched.default_status || 'charge'
+        }));
+      } else {
+        if (formData.item && selectedItemObj) {
+          const uObj = units.find(u => String(u.id) === String(unitId));
+          setUnitNotice(`Note: "${selectedItemObj.item_name}" was not received in ${uObj?.name || 'this unit'}. Please select from items received in this unit.`);
+        }
+        setSelectedItemObj(null);
+        setFormData(prev => ({
+          ...prev,
+          item: '',
+          qty: '',
+          rate: '',
+          unit: 'pcs'
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load items for unit:', err);
+      setItems([]);
+    } finally {
+      setLoadingItems(false);
+    }
+  }, [formData.item, selectedItemObj, units]);
+
+  // Initial mount: load contractors, workers, units
   useEffect(() => {
     Promise.allSettled([
-      api.get('/store/items/'),
       api.get('/users/', { params: { role: 'contractor' } }),
       api.get('/store/contractor-persons/'),
       api.get('/production-units/')
     ])
-      .then(([itemsRes, contrRes, persRes, unitRes]) => {
-        const itemData = itemsRes.status === 'fulfilled' ? (itemsRes.value.data.results || itemsRes.value.data || []) : [];
+      .then(([contrRes, persRes, unitRes]) => {
         const contrData = contrRes.status === 'fulfilled' ? (contrRes.value.data.results || contrRes.value.data || []) : [];
         const persData = persRes.status === 'fulfilled' ? (persRes.value.data.results || persRes.value.data || []) : [];
         const unitData = unitRes.status === 'fulfilled' ? (unitRes.value.data.results || unitRes.value.data || []) : [];
 
-        setItems(itemData);
         setContractors(contrData);
         setPersons(persData);
         setUnits(unitData);
 
-        if (contrData.length > 0) {
-          const firstC = contrData[0];
-          setFormData(prev => ({
-            ...prev,
-            contractor: firstC.id,
-            contractor_person_name: firstC.full_name || firstC.username
-          }));
-        }
+        const activeUnit = urlUnit || (unitData.length > 0 ? unitData[0].id : '');
+        const defaultContractor = contrData.length > 0 ? contrData[0] : null;
 
-        if (itemData.length > 0) {
-          const firstI = itemData[0];
-          setSelectedItemObj(firstI);
-          setFormData(prev => ({
-            ...prev,
-            item: firstI.id,
-            unit: firstI.unit,
-            rate: firstI.current_rate || firstI.base_rate || '',
-            status: firstI.default_status || 'charge'
-          }));
-        }
+        setFormData(prev => ({
+          ...prev,
+          production_unit: activeUnit,
+          contractor: defaultContractor ? defaultContractor.id : prev.contractor,
+          contractor_person_name: defaultContractor ? (defaultContractor.full_name || defaultContractor.username) : prev.contractor_person_name,
+          qty: urlQty || prev.qty
+        }));
 
-        if (unitData.length > 0) {
-          setFormData(prev => ({ ...prev, production_unit: unitData[0].id }));
+        if (activeUnit) {
+          fetchItemsForUnit(activeUnit, urlItem);
         }
       })
       .catch(err => console.error('Failed to load daily issue initial data:', err))
@@ -156,6 +203,14 @@ export default function StoreDailyIssuePage() {
       issue_date: val,
       month_year: getMonthYearFromDate(val)
     }));
+  };
+
+  const handleUnitChange = (e) => {
+    setIsDirty(true);
+    setUnitNotice(null);
+    const newUnitId = e.target.value;
+    setFormData(prev => ({ ...prev, production_unit: newUnitId }));
+    fetchItemsForUnit(newUnitId);
   };
 
   const handleContractorChange = (val) => {
@@ -196,6 +251,7 @@ export default function StoreDailyIssuePage() {
 
   const handleItemChange = (val, selectedObj) => {
     setIsDirty(true);
+    setUnitNotice(null);
     const itemId = typeof val === 'object' ? val.id : val;
     const found = selectedObj || items.find(i => String(i.id) === String(itemId));
     setSelectedItemObj(found || null);
@@ -218,9 +274,31 @@ export default function StoreDailyIssuePage() {
     setSubmitting(true);
     setError(null);
 
-    // Live Stock Check
-    if (selectedItemObj && parseFloat(formData.qty || 0) > parseFloat(selectedItemObj.balance_stock_qty || 0)) {
-      setError(`Warning: Insufficient store balance for ${selectedItemObj.item_name}. Available: ${selectedItemObj.balance_stock_qty} ${selectedItemObj.unit}, Required: ${formData.qty} ${formData.unit}.`);
+    if (!formData.production_unit) {
+      setError('Please select a Factory Unit to issue material from.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (!formData.item) {
+      setError('Please select a Store Item to issue.');
+      setSubmitting(false);
+      return;
+    }
+
+    const selectedUnitObj = units.find(u => String(u.id) === String(formData.production_unit));
+    const unitBal = parseFloat(selectedItemObj?.unit_balance_stock_qty !== undefined ? selectedItemObj.unit_balance_stock_qty : (selectedItemObj?.balance_stock_qty || 0));
+    const enteredQty = parseFloat(formData.qty || 0);
+
+    if (enteredQty <= 0) {
+      setError('Issued quantity must be greater than zero.');
+      setSubmitting(false);
+      return;
+    }
+
+    // Live Unit Stock Check
+    if (selectedItemObj && enteredQty > unitBal) {
+      setError(`Warning: Insufficient store balance for ${selectedItemObj.item_name} in ${selectedUnitObj?.name || 'selected unit'}. Available in this unit: ${unitBal} ${selectedItemObj.unit}, Required: ${formData.qty} ${formData.unit}.`);
       setSubmitting(false);
       return;
     }
@@ -229,12 +307,14 @@ export default function StoreDailyIssuePage() {
       .then(() => {
         if (currentDraftId) clearDraft(currentDraftId);
         setIsDirty(false);
-        setSuccessMsg('Daily Outward Issue saved successfully! Stock balance updated.');
+        setSuccessMsg(`Daily Outward Issue saved successfully! Stock balance for ${selectedUnitObj?.name || 'unit'} updated.`);
         setTimeout(() => navigate('/store-management'), 1200);
       })
       .catch(err => {
         console.error('Daily issue save failed:', err);
-        setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to record store issue.');
+        const resErr = err.response?.data;
+        const detailMsg = resErr?.detail || resErr?.error || (resErr?.qty ? resErr.qty[0] : null) || (resErr?.item ? resErr.item[0] : null) || (resErr?.production_unit ? resErr.production_unit[0] : null) || 'Failed to record store issue.';
+        setError(detailMsg);
       })
       .finally(() => setSubmitting(false));
   };
@@ -350,8 +430,8 @@ export default function StoreDailyIssuePage() {
       }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-          {/* Row 1: Voucher & Dates */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+          {/* Row 1: Voucher, Dates & Factory Unit Source */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Voucher No *
@@ -376,6 +456,35 @@ export default function StoreDailyIssuePage() {
                 required
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
               />
+            </div>
+
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, color: '#ea580c', marginBottom: '6px' }}>
+                <span>Factory Unit / Workshop *</span>
+                <span style={{ fontSize: '0.72rem', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', padding: '1px 6px', borderRadius: '4px' }}>
+                  Stock Source
+                </span>
+              </label>
+              <select
+                value={formData.production_unit}
+                onChange={handleUnitChange}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '2px solid #fdba74',
+                  backgroundColor: '#fffaf5',
+                  color: '#9a3412',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="">Select Factory Unit</option>
+                {units.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -438,52 +547,118 @@ export default function StoreDailyIssuePage() {
             </div>
           </div>
 
-          {/* Row 3: Store Item & Live Stock Badge */}
+          {/* Unit Switching Notice */}
+          {unitNotice && (
+            <div style={{
+              backgroundColor: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '10px',
+              padding: '0.75rem 1rem',
+              color: '#1e40af',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <Info size={18} style={{ flexShrink: 0 }} />
+              <span>{unitNotice}</span>
+            </div>
+          )}
+
+          {/* Row 3: Store Item & Live Unit Stock Badge */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
               <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
-                Store Item *
+                Store Item * {formData.production_unit && (
+                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
+                    (Showing items with stock received in {units.find(u => String(u.id) === String(formData.production_unit))?.name || 'selected unit'})
+                  </span>
+                )}
               </label>
               {selectedItemObj && (
-                <span style={{
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  color: selectedItemObj.balance_stock_qty > selectedItemObj.reorder_level ? '#166534' : '#991b1b',
-                  backgroundColor: selectedItemObj.balance_stock_qty > selectedItemObj.reorder_level ? '#f0fdf4' : '#fef2f2',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  border: `1px solid ${selectedItemObj.balance_stock_qty > selectedItemObj.reorder_level ? '#bbf7d0' : '#fecaca'}`
-                }}>
-                  Available Stock: {selectedItemObj.balance_stock_qty || 0} {selectedItemObj.unit}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: (selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty) > selectedItemObj.reorder_level ? '#166534' : '#991b1b',
+                    backgroundColor: (selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty) > selectedItemObj.reorder_level ? '#f0fdf4' : '#fef2f2',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${(selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty) > selectedItemObj.reorder_level ? '#bbf7d0' : '#fecaca'}`
+                  }}>
+                    Available in {units.find(u => String(u.id) === String(formData.production_unit))?.name || 'Unit'}: {selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty ?? 0} {selectedItemObj.unit}
+                  </span>
+                  {selectedItemObj.balance_stock_qty !== undefined && (
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                      [All Units: {selectedItemObj.balance_stock_qty} {selectedItemObj.unit}]
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
-            <SearchableSelect
-              options={items}
-              value={formData.item}
-              onChange={handleItemChange}
-              placeholder="Select Store Item..."
-              searchPlaceholder="Search item code, name, category..."
-              idKey="id"
-              codeKey="item_code"
-              titleKey="item_name"
-              pageSize={15}
-            />
+            {!formData.production_unit ? (
+              <div style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: '#fffbeb',
+                border: '1px dashed #f59e0b',
+                borderRadius: '8px',
+                color: '#b45309',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <AlertCircle size={16} />
+                <span>Please select a Factory Unit above to view and select available store items.</span>
+              </div>
+            ) : items.length === 0 && !loadingItems ? (
+              <div style={{
+                padding: '0.75rem 1rem',
+                backgroundColor: '#f8fafc',
+                border: '1px dashed #cbd5e1',
+                borderRadius: '8px',
+                color: '#64748b',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <Info size={16} />
+                <span>No store items with available stock have been received (Material In) in <strong>{units.find(u => String(u.id) === String(formData.production_unit))?.name}</strong>. Please record a Material In for this unit first.</span>
+              </div>
+            ) : (
+              <SearchableSelect
+                options={items}
+                value={formData.item}
+                onChange={handleItemChange}
+                placeholder={loadingItems ? "Loading items for this unit..." : "Select Store Item in Unit..."}
+                searchPlaceholder="Search item code, name, category in this unit..."
+                idKey="id"
+                codeKey="item_code"
+                titleKey="item_name"
+                pageSize={15}
+                disabled={loadingItems}
+              />
+            )}
           </div>
 
           {/* Row 4: Quantity, Rate & Debit Status */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Quantity Issued ({formData.unit}) * {selectedItemObj && <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.8rem' }}>(Total Stock: {selectedItemObj.balance_stock_qty || 0} {selectedItemObj.unit})</span>}
+                Quantity Issued ({formData.unit}) * {selectedItemObj && (
+                  <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.8rem' }}>
+                    (Unit Stock: {selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty ?? 0} {selectedItemObj.unit})
+                  </span>
+                )}
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.qty}
                 onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
-                placeholder={selectedItemObj ? `Max available: ${selectedItemObj.balance_stock_qty || 0}` : "0.00"}
+                placeholder={selectedItemObj ? `Max available: ${selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty ?? 0}` : "0.00"}
                 required
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
               />
@@ -541,36 +716,18 @@ export default function StoreDailyIssuePage() {
             </div>
           </div>
 
-          {/* Row 5: Factory Unit & Remarks */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Factory Unit / Department
-              </label>
-              <select
-                value={formData.production_unit}
-                onChange={(e) => setFormData({ ...formData, production_unit: e.target.value })}
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
-              >
-                <option value="">Select Factory Unit</option>
-                {units.map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Issue Purpose / Note
-              </label>
-              <input
-                type="text"
-                value={formData.remark}
-                onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
-                placeholder="e.g. Issued for sanding batch #102"
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
-              />
-            </div>
+          {/* Row 5: Issue Purpose / Note */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              Issue Purpose / Production Note
+            </label>
+            <input
+              type="text"
+              value={formData.remark}
+              onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+              placeholder="e.g. Issued for production batch #102 / project requirement"
+              style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+            />
           </div>
 
           {/* Buttons */}

@@ -249,8 +249,36 @@
     border-bottom: 2px solid var(--border-warm) !important;
   }
 
+  table.table tbody tr, #result_list tbody tr {
+    transition: background-color 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.15s ease !important;
+  }
+
+  #result_list tbody tr[data-clickable-row="true"],
+  #result_list tbody tr:has(a) {
+    cursor: pointer !important;
+  }
+
   table.table tbody tr:hover, #result_list tbody tr:hover {
-    background-color: #fef8ee !important;
+    background-color: #fef3c7 !important; /* Warm amber golden highlight */
+    box-shadow: inset 4px 0 0 #d97706, 0 3px 12px rgba(217, 119, 6, 0.12) !important;
+  }
+
+  #result_list tbody tr:hover th a,
+  #result_list tbody tr:hover td a {
+    color: #b45309 !important;
+    text-decoration: underline !important;
+  }
+
+  #result_list tbody tr:active {
+    background-color: #fde68a !important;
+  }
+
+  #result_list tbody tr td.action-checkbox,
+  #result_list tbody tr th.action-checkbox,
+  .action-checkbox input[type="checkbox"] {
+    cursor: default !important;
   }
 
   /* ── 6. Form Control Inputs ── */
@@ -294,6 +322,96 @@
     background-color: #fee2e2 !important;
     color: #991b1b !important;
     border: 1px solid #fca5a5 !important;
+  }
+
+  /* ── 8. Breadcrumbs Navigation (Brown Theme, '>' Separator & Interactive Hover) ── */
+  .app-content-header {
+    padding: 14px 0 10px 0 !important;
+  }
+
+  .admin-breadcrumbs-wrapper {
+    margin-bottom: 6px !important;
+  }
+
+  .app-content-header .breadcrumb,
+  .admin-breadcrumbs-wrapper .breadcrumb,
+  .breadcrumb {
+    float: none !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    list-style: none !important;
+    font-size: 0.88rem !important;
+  }
+
+  .breadcrumb-item {
+    display: inline-flex !important;
+    align-items: center !important;
+    color: #78350f !important;
+    font-weight: 600 !important;
+  }
+
+  /* Use '>' separator with warm timber brown tone */
+  .breadcrumb-item + .breadcrumb-item::before {
+    content: ">" !important;
+    float: none !important;
+    padding: 0 8px !important;
+    color: #92400e !important; /* Timber brown separator */
+    font-weight: 700 !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Breadcrumb Links: Brown text with soft interactive pill */
+  .breadcrumb-item a {
+    color: #78350f !important; /* Warm rich timber brown */
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    padding: 2px 7px !important;
+    border-radius: 5px !important;
+    background-color: rgba(120, 53, 15, 0.06) !important;
+    border: 1px solid rgba(120, 53, 15, 0.12) !important;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Breadcrumb Hover Effect */
+  .breadcrumb-item a:hover {
+    color: #451a03 !important; /* Deep dark espresso */
+    background-color: #fef3c7 !important; /* Glowing warm amber */
+    border-color: #fde68a !important;
+    box-shadow: 0 2px 8px rgba(120, 53, 15, 0.18) !important;
+    transform: translateY(-1px) !important;
+    text-decoration: none !important;
+  }
+
+  .breadcrumb-item a:active {
+    transform: translateY(0) !important;
+    background-color: #fde68a !important;
+  }
+
+  /* Current Active Page item */
+  .breadcrumb-item.active {
+    color: #451a03 !important; /* Deep espresso brown */
+    font-weight: 700 !important;
+    padding: 2px 7px !important;
+    background-color: transparent !important;
+  }
+
+  /* Page title directly below breadcrumbs */
+  .app-content-header h3,
+  .content-header-title {
+    color: #1c100a !important;
+    font-weight: 800 !important;
+    font-size: 1.65rem !important;
+    letter-spacing: -0.015em !important;
+    margin-top: 4px !important;
+    margin-bottom: 0 !important;
   }
 </style>
 {% endblock %}

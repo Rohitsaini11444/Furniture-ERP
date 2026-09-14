@@ -354,7 +354,7 @@ export function SearchableSelect({
                 const title = typeof opt === 'object' ? (opt[titleKey] || opt.item_name || opt.product_name || opt.name || opt.label || opt.full_name || opt.username || '') : String(opt);
                 const unit = typeof opt === 'object' ? (opt.unit || '') : '';
                 const stockQty = typeof opt === 'object' 
-                  ? (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : (opt.balance_qty !== undefined ? opt.balance_qty : null)) 
+                  ? (opt.unit_balance_stock_qty !== undefined ? opt.unit_balance_stock_qty : (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : (opt.balance_qty !== undefined ? opt.balance_qty : null))) 
                   : null;
 
                 return (

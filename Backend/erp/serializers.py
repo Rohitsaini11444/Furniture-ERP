@@ -112,16 +112,20 @@ class UserSerializer(serializers.ModelSerializer):
     supervisor_name = serializers.SerializerMethodField()
     contractor_count = serializers.SerializerMethodField()
     production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'first_name', 'last_name', 'email',
+            'id', 'username', 'first_name', 'last_name', 'full_name', 'email',
             'role', 'batch_category', 'production_unit', 'production_unit_name',
             'supervisor', 'supervisor_name',
             'phone', 'is_active', 'password', 'contractor_count', 'profile_image',
         ]
         read_only_fields = ['id']
+
+    def get_full_name(self, obj):
+        return obj.get_full_name() or obj.username
 
     def get_supervisor_name(self, obj):
         if obj.supervisor:
@@ -1290,12 +1294,20 @@ class StoreItemSerializer(serializers.ModelSerializer):
     total_stock_qty = serializers.ReadOnlyField()
     total_issued_qty = serializers.ReadOnlyField()
     balance_stock_qty = serializers.ReadOnlyField()
+    unit_balance_stock_qty = serializers.SerializerMethodField()
     total_stock_value = serializers.ReadOnlyField()
     rate_history = StoreItemRateHistorySerializer(many=True, read_only=True)
 
     class Meta:
         model = StoreItem
         fields = '__all__'
+
+    def get_unit_balance_stock_qty(self, obj):
+        req = self.context.get('request')
+        unit_id = req.query_params.get('production_unit') if req else None
+        if unit_id:
+            return float(obj.get_stock_balance_for_unit(unit_id))
+        return float(obj.balance_stock_qty)
 
 
 class ContractorPersonSerializer(serializers.ModelSerializer):
@@ -1397,21 +1409,33 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
         qty = attrs.get('qty')
         rate = attrs.get('rate')
         item = attrs.get('item') or (self.instance.item if self.instance else None)
+        production_unit = attrs.get('production_unit') or (self.instance.production_unit if self.instance else None)
+
+        if not production_unit:
+            raise serializers.ValidationError({"production_unit": ["Factory Unit / Production Unit is required to issue store items."]})
 
         if qty is not None and qty <= Decimal('0.00'):
             raise serializers.ValidationError({"qty": ["Issued quantity must be greater than 0."]})
         if rate is not None and rate < Decimal('0.00'):
             raise serializers.ValidationError({"rate": ["Issue rate cannot be negative."]})
 
-        if item and qty is not None:
-            avail_stock = item.balance_stock_qty
-            if self.instance and self.instance.item == item:
+        if item and production_unit:
+            # Check 1: Was this item ever received (Material In) in this production unit?
+            if not item.has_material_in_for_unit(production_unit.id):
+                raise serializers.ValidationError({
+                    "item": [f"Item '{item.item_name}' ({item.item_code}) was never received (Material In) in {production_unit.name}. Cannot issue outward stock from this unit."]
+                })
+
+            # Check 2: Check available stock balance in this unit
+            avail_stock = item.get_stock_balance_for_unit(production_unit.id)
+            if self.instance and self.instance.item == item and self.instance.production_unit == production_unit:
                 avail_stock += self.instance.qty
 
-            if qty > avail_stock:
+            if qty is not None and qty > avail_stock:
                 raise serializers.ValidationError({
-                    "qty": [f"Insufficient store balance for {item.item_name}. Available: {avail_stock} {item.unit}, Requested: {qty} {item.unit}."]
+                    "qty": [f"Insufficient store balance for '{item.item_name}' in {production_unit.name}. Available in {production_unit.name}: {avail_stock} {item.unit}, Requested: {qty} {item.unit}."]
                 })
+
         return super().validate(attrs)
 
     def get_contractor_name(self, obj):

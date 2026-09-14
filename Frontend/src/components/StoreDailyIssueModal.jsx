@@ -19,36 +19,84 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
     remark: ''
   });
 
+  const [unitItems, setUnitItems] = useState([]);
+  const [loadingUnitItems, setLoadingUnitItems] = useState(false);
   const [selectedItemObj, setSelectedItemObj] = useState(null);
   const [contractorPersonsList, setContractorPersonsList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const fetchUnitItems = async (unitId) => {
+    if (!unitId) {
+      setUnitItems([]);
+      setSelectedItemObj(null);
+      return;
+    }
+    setLoadingUnitItems(true);
+    try {
+      const res = await api.get('/store/items/', {
+        params: {
+          production_unit: unitId,
+          available_for_unit: true,
+          nopage: true
+        }
+      });
+      const list = res.data.results || res.data || [];
+      setUnitItems(list);
+      if (list.length > 0) {
+        setSelectedItemObj(list[0]);
+        setFormData(prev => ({
+          ...prev,
+          item: list[0].id,
+          unit: list[0].unit,
+          rate: list[0].current_rate || list[0].base_rate || '',
+          status: list[0].default_status || 'charge'
+        }));
+      } else {
+        setSelectedItemObj(null);
+        setFormData(prev => ({
+          ...prev,
+          item: '',
+          qty: '',
+          rate: ''
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to load unit items:', err);
+      setUnitItems([]);
+    } finally {
+      setLoadingUnitItems(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       const vno = `VCH-${Math.floor(100 + Math.random() * 900)}`;
+      const defaultUnit = units && units.length > 0 ? units[0].id : '';
+      const defaultContractor = contractors && contractors.length > 0 ? contractors[0] : null;
+
       setFormData({
         voucher_no: vno,
         issue_date: new Date().toISOString().split('T')[0],
         month_year: 'Jul-26',
-        contractor: contractors && contractors.length > 0 ? contractors[0].id : '',
+        contractor: defaultContractor ? defaultContractor.id : '',
         contractor_person: '',
-        contractor_person_name: '',
-        item: items && items.length > 0 ? items[0].id : '',
+        contractor_person_name: defaultContractor ? (defaultContractor.full_name || defaultContractor.username) : '',
+        item: '',
         qty: '',
-        unit: items && items.length > 0 ? items[0].unit : 'pcs',
-        rate: items && items.length > 0 ? (items[0].current_rate || items[0].base_rate) : '',
-        status: items && items.length > 0 ? items[0].default_status : 'charge',
-        production_unit: units && units.length > 0 ? units[0].id : '',
+        unit: 'pcs',
+        rate: '',
+        status: 'charge',
+        production_unit: defaultUnit,
         remark: ''
       });
 
-      if (items && items.length > 0) {
-        setSelectedItemObj(items[0]);
+      if (defaultUnit) {
+        fetchUnitItems(defaultUnit);
       }
       setError(null);
     }
-  }, [isOpen, items, contractors, units]);
+  }, [isOpen, units, contractors]);
 
   useEffect(() => {
     if (formData.contractor) {
@@ -60,6 +108,12 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
   }, [formData.contractor, persons]);
 
   if (!isOpen) return null;
+
+  const handleUnitChange = (e) => {
+    const newUnit = e.target.value;
+    setFormData(prev => ({ ...prev, production_unit: newUnit }));
+    fetchUnitItems(newUnit);
+  };
 
   const handleContractorChange = (e) => {
     const cId = e.target.value;
@@ -97,7 +151,7 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
 
   const handleItemChange = (val, selectedObj) => {
     const itemId = typeof val === 'object' && val?.target ? val.target.value : (typeof val === 'object' ? val?.id : val);
-    const found = selectedObj || items.find(i => String(i.id) === String(itemId));
+    const found = selectedObj || unitItems.find(i => String(i.id) === String(itemId));
     setSelectedItemObj(found || null);
 
     if (found) {
@@ -118,9 +172,25 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
     setLoading(true);
     setError(null);
 
-    // Live Stock Check
-    if (selectedItemObj && parseFloat(formData.qty || 0) > parseFloat(selectedItemObj.balance_stock_qty || 0)) {
-      setError(`Warning: Available stock balance for ${selectedItemObj.item_name} is ${selectedItemObj.balance_stock_qty} ${selectedItemObj.unit}. Required ${formData.qty} ${formData.unit}.`);
+    if (!formData.production_unit) {
+      setError('Please select a Factory Unit.');
+      setLoading(false);
+      return;
+    }
+
+    const selectedUnitObj = units.find(u => String(u.id) === String(formData.production_unit));
+    const unitBal = parseFloat(selectedItemObj?.unit_balance_stock_qty !== undefined ? selectedItemObj.unit_balance_stock_qty : (selectedItemObj?.balance_stock_qty || 0));
+    const enteredQty = parseFloat(formData.qty || 0);
+
+    if (enteredQty <= 0) {
+      setError('Issued quantity must be greater than zero.');
+      setLoading(false);
+      return;
+    }
+
+    // Live Unit Stock Check
+    if (selectedItemObj && enteredQty > unitBal) {
+      setError(`Warning: Available stock balance for ${selectedItemObj.item_name} in ${selectedUnitObj?.name || 'this unit'} is ${unitBal} ${selectedItemObj.unit}. Required ${formData.qty} ${formData.unit}.`);
       setLoading(false);
       return;
     }
@@ -131,7 +201,9 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
       onClose();
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to record store issue.');
+      const resErr = err.response?.data;
+      const detailMsg = resErr?.detail || resErr?.error || (resErr?.qty ? resErr.qty[0] : null) || (resErr?.item ? resErr.item[0] : null) || 'Failed to record store issue.';
+      setError(detailMsg);
     } finally {
       setLoading(false);
     }
@@ -246,14 +318,14 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Target Factory / Unit # *
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#ea580c', marginBottom: '6px' }}>
+                Target Factory / Unit # * (Stock Source)
               </label>
               <select
                 value={formData.production_unit}
-                onChange={(e) => setFormData({ ...formData, production_unit: e.target.value })}
+                onChange={handleUnitChange}
                 required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
+                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1.5px solid #fdba74', backgroundColor: '#fffaf5', color: '#9a3412', fontWeight: 700 }}
               >
                 <option value="">Select Unit #</option>
                 {units.map(u => (
@@ -321,13 +393,21 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
 
           {/* Item & Available Stock Info */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
-                Select Store Item *
+                Select Store Item * {formData.production_unit && (
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    (Filtered for {units.find(u => String(u.id) === String(formData.production_unit))?.name})
+                  </span>
+                )}
               </label>
               {selectedItemObj && (
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: selectedItemObj.balance_stock_qty > 0 ? '#16a34a' : '#dc2626' }}>
-                  Available Store Stock: <strong>{selectedItemObj.balance_stock_qty} {selectedItemObj.unit}</strong>
+                <span style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: (selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty) > 0 ? '#16a34a' : '#dc2626'
+                }}>
+                  Available in Unit: <strong>{(selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty) || 0} {selectedItemObj.unit}</strong>
                 </span>
               )}
             </div>
@@ -335,14 +415,23 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
               value={formData.item}
               onChange={handleItemChange}
               required
+              disabled={loadingUnitItems}
               style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
             >
-              <option value="">Select Store Item</option>
-              {items.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.item_code} - {i.item_name} (Avail: {i.balance_stock_qty} {i.unit} @ ₹{i.current_rate || i.base_rate})
-                </option>
-              ))}
+              {loadingUnitItems ? (
+                <option value="">Loading items for this unit...</option>
+              ) : unitItems.length === 0 ? (
+                <option value="">No items with available stock in this unit</option>
+              ) : (
+                <>
+                  <option value="">Select Store Item in Unit</option>
+                  {unitItems.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.item_code} - {i.item_name} (Unit Stock: {i.unit_balance_stock_qty ?? i.balance_stock_qty} {i.unit} @ ₹{i.current_rate || i.base_rate})
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
 

@@ -34,7 +34,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Case, Count, DecimalField, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Concat
 from django.http import HttpResponse
 from django.utils import timezone
 
@@ -296,13 +296,18 @@ class UserViewSet(viewsets.ModelViewSet):
         if user.role == 'supervisor' and role == 'contractor':
             qs = qs.filter(Q(supervisor=user) | Q(supervisor__isnull=True))
         if search:
-            qs = qs.filter(
+            qs = qs.annotate(
+                full_name_annotated=Concat('first_name', Value(' '), 'last_name')
+            ).filter(
                 Q(username__icontains=search) |
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
-                Q(phone_number__icontains=search) |
-                Q(email__icontains=search)
-            )
+                Q(full_name_annotated__icontains=search) |
+                Q(phone__icontains=search) |
+                Q(email__icontains=search) |
+                Q(persons__person_name__icontains=search) |
+                Q(persons__phone__icontains=search)
+            ).distinct()
         return qs
 
     def perform_update(self, serializer):
@@ -5180,6 +5185,21 @@ class StoreItemViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         status_param = self.request.query_params.get('default_status')
         low_stock = self.request.query_params.get('low_stock')
+        unit_id = self.request.query_params.get('production_unit')
+        available_for_unit = (
+            self.request.query_params.get('available_for_unit', '').lower() in ('true', '1') or
+            self.request.query_params.get('in_stock_only', '').lower() in ('true', '1')
+        )
+
+        if unit_id:
+            # If available_for_unit is requested, the item MUST have been received (Material In) in this unit
+            if available_for_unit:
+                qs = qs.filter(inward_entries__production_unit_id=unit_id).distinct()
+                in_stock_ids = [
+                    item.id for item in qs
+                    if item.get_stock_balance_for_unit(unit_id) > Decimal('0.00')
+                ]
+                qs = qs.filter(id__in=in_stock_ids)
 
         if category:
             qs = qs.filter(category_id=category)
@@ -5198,6 +5218,38 @@ class StoreItemViewSet(viewsets.ModelViewSet):
             qs = qs.filter(id__in=low_ids)
 
         return qs.order_by('item_code')
+
+    @action(detail=True, methods=['get'], url_path='unit-stock')
+    def unit_stock(self, request, pk=None):
+        """
+        Returns stock breakdown by production unit for this item.
+        """
+        item = self.get_object()
+        from erp.models import ProductionUnit
+        units = ProductionUnit.objects.all()
+        breakdown = []
+        for u in units:
+            inward = item.inward_entries.filter(production_unit=u).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+            returned = item.return_entries.filter(production_unit=u).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+            issued = item.daily_issues.filter(production_unit=u).aggregate(total=Sum('qty'))['total'] or Decimal('0.00')
+            balance = (inward + returned) - issued
+            breakdown.append({
+                'unit_id': str(u.id),
+                'unit_name': u.name,
+                'inward_qty': float(inward),
+                'returned_qty': float(returned),
+                'issued_qty': float(issued),
+                'balance_qty': float(balance),
+                'has_material_in': inward > Decimal('0.00'),
+                'is_available': balance > Decimal('0.00')
+            })
+        return Response({
+            'item_id': str(item.id),
+            'item_code': item.item_code,
+            'item_name': item.item_name,
+            'total_balance_qty': float(item.balance_stock_qty),
+            'units': breakdown
+        })
 
     @action(detail=True, methods=['post'], url_path='revise-rate')
     def revise_rate(self, request, pk=None):

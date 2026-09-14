@@ -97,7 +97,7 @@ class BaseModelAdmin(admin.ModelAdmin):
             super().delete_queryset(request, queryset)
 
 
-# ── User Admin ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────── User Admin ─────────────────────────────────────────────────────────────
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'email', 'first_name', 'last_name', 'role', 'batch_category', 'production_unit', 'supervisor', 'is_staff', 'is_active']
@@ -120,7 +120,7 @@ class UserAdmin(BaseUserAdmin):
             super().delete_queryset(request, queryset)
 
 
-# ── Production Unit ─────────────────────────────────────────────────────────
+# ──────────────────────────────────── Production Unit ─────────────────────────────────────────
 @admin.register(ProductionUnit)
 class ProductionUnitAdmin(BaseModelAdmin):
 
@@ -129,7 +129,7 @@ class ProductionUnitAdmin(BaseModelAdmin):
     search_fields = ['name', 'unit_code', 'location']
 
 
-# ── Finish Catalog ──────────────────────────────────────────────────────────
+# ──────────────────────────────────── Finish Catalog ──────────────────────────────────────────
 @admin.register(Finish)
 class FinishAdmin(BaseModelAdmin):
     list_display = ['finish_image_thumbnail', 'finish_code', 'name', 'color', 'wood_type', 'created_at']
@@ -144,7 +144,7 @@ class FinishAdmin(BaseModelAdmin):
     finish_image_thumbnail.short_description = "Finish Image"
 
 
-# ── Sample Catalog & Images ──────────────────────────────────────────────────
+# ──────────────────────────────────── Sample Catalog & Images ───────────────────────────────────────────────
 class SampleImageInline(admin.TabularInline):
     model = SampleImage
     extra = 1
@@ -249,7 +249,7 @@ class SampleImageAdmin(BaseModelAdmin):
     image_preview.short_description = "Current Image Preview"
 
 
-# ── Buyer & Allocations ──────────────────────────────────────────────────────
+# ──────────────────────────────────── Buyer & Allocations ──────────────────────────────────────────────────────
 class BuyerUnitAllocationInline(admin.TabularInline):
     model = BuyerUnitAllocation
     extra = 1
@@ -274,7 +274,7 @@ class UnitWorkReallocationAdmin(BaseModelAdmin):
     search_fields = ['buyer__name', 'po__po_number', 'reason']
 
 
-# ── Buyer Master & Finishing Images ──────────────────────────────────────────
+# ──────────────────────────────── Buyer Master & Finishing Images ──────────────────────────────────────────
 class BuyerMasterFinishingImageInline(admin.TabularInline):
     model = BuyerMasterFinishingImage
     extra = 1
@@ -294,7 +294,7 @@ class BuyerMasterFinishingImageAdmin(BaseModelAdmin):
     search_fields = ['buyer_master__style_no', 'buyer_master__product_name']
 
 
-# ── Supplier & Supplier PO ───────────────────────────────────────────────────
+# ──────────────────────────────────── Supplier & Supplier PO ───────────────────────────────────────────────────
 class SupplierPOItemInline(admin.TabularInline):
     model = SupplierPOItem
     extra = 1
@@ -389,7 +389,7 @@ class SupplierDebitNoteItemAdmin(BaseModelAdmin):
     search_fields = ['debit_note__vch_no', 'description', 'reason']
 
 
-# ── Performa Invoices ───────────────────────────────────────────────────────
+# ──────────────────────────────────── Performa Invoices ───────────────────────────────────────────────────────
 class PerformaInvoiceItemInline(admin.TabularInline):
     model = PerformaInvoiceItem
     extra = 1
@@ -407,7 +407,7 @@ class PerformaInvoiceItemAdmin(BaseModelAdmin):
     search_fields = ['pi__pi_no', 'style_no', 'description']
 
 
-# ── Buyer PI (Pre-PO PI) ────────────────────────────────────────────────────
+# ─────────────────────────────────── Buyer PI (Pre-PO PI) ────────────────────────────────────────────────────
 class BuyerPIItemInline(admin.TabularInline):
     model = BuyerPIItem
     extra = 1
@@ -425,7 +425,7 @@ class BuyerPIItemAdmin(BaseModelAdmin):
     search_fields = ['buyer_pi__pi_no', 'style_no', 'product_name', 'barcode', 'buyer_no']
 
 
-# ── Stock Items ─────────────────────────────────────────────────────────────
+# ──────────────────────────────────── Stock Items ─────────────────────────────────────────────────────────────
 @admin.register(StockItem)
 class StockItemAdmin(BaseModelAdmin):
     list_display = ['stock_type', 'style_no', 'item_name', 'quantity', 'unit', 'location', 'production_unit', 'status', 'created_at']
@@ -433,7 +433,7 @@ class StockItemAdmin(BaseModelAdmin):
     search_fields = ['style_no', 'item_name', 'location']
 
 
-# ── Production Jobs & QC Logs ───────────────────────────────────────────────
+# ──────────────────────────────────── Production Jobs & QC Logs ───────────────────────────────────────────────
 @admin.register(ProductionJob)
 class ProductionJobAdmin(BaseModelAdmin):
     list_display = ['stage', 'status', 'style_no', 'item_name', 'contractor', 'assigned_by', 'production_unit', 'assigned_qty', 'passed_qty', 'rejected_qty', 'created_at']
@@ -448,7 +448,7 @@ class ProductionQCLogAdmin(BaseModelAdmin):
     search_fields = ['job__style_no', 'inspected_by__username', 'notes']
 
 
-# ── System Notifications & User Sessions ────────────────────────────────────
+# ──────────────────────────────────── System Notifications & User Sessions ────────────────────────────────────
 @admin.register(Notification)
 class NotificationAdmin(BaseModelAdmin):
     list_display = ['user', 'message', 'is_read', 'created_at']
@@ -464,7 +464,7 @@ class UserSessionAdmin(BaseModelAdmin):
     search_fields = ['user__username', 'ip_address', 'user_agent']
 
 
-# ── Store Management Admin Registration ─────────────────────────────────────
+# ──────────────────────────────────── Store Management Admin Registration ────────────────────────────────────
 @admin.register(StoreItemCategory)
 class StoreItemCategoryAdmin(BaseModelAdmin):
     list_display = ['name', 'code', 'created_at']
@@ -496,7 +496,8 @@ class StoreMaterialInAdmin(BaseModelAdmin):
 
 @admin.register(StoreDailyIssue)
 class StoreDailyIssueAdmin(BaseModelAdmin):
-    list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'qty', 'rate', 'status', 'total_amount']
+    list_display = ['voucher_no', 'issue_date', 'contractor', 'contractor_person_name', 'item', 'production_unit', 'qty', 'rate', 'status', 'total_amount']
+    list_select_related = ['contractor', 'item', 'production_unit']
     list_filter = ['contractor', 'status', 'production_unit']
     search_fields = ['voucher_no', 'contractor_person_name', 'item__item_name']
 
@@ -541,7 +542,7 @@ class StoreStockAdjustmentAdmin(BaseModelAdmin):
     search_fields = ['adjustment_no', 'item__item_name', 'reason']
 
 
-# ── Global Audit Log Admin Registration ─────────────────────────────────────
+# ──────────────────────────────────── Global Audit Log Admin Registration ────────────────────────────────────
 
 @admin.register(AuditLog)
 class AuditLogAdmin(BaseModelAdmin):
