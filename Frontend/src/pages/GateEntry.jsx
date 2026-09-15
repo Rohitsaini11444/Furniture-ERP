@@ -3,19 +3,29 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import {
   ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight, Box, Clock, Hourglass, Check, Truck, Download,
-  ShieldCheck, List, Building2, Calendar, Play, Scan
+  ShieldCheck, List, Building2, Calendar, Play, Scan, X, CheckSquare, Eye, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PONO } from '../components/OrderBySelect';
+import { StatusSelect, PO_STATUS_OPTIONS } from '../components/StatusSelect';
 import QRScannerModal from '../components/QRScannerModal';
 import DebitNotePrintout from '../components/DebitNotePrintout';
 import GRNPrintoutModal from '../components/GRNPrintoutModal';
 import RecordInstallmentModal from '../components/RecordInstallmentModal';
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 
-
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -1190,7 +1200,12 @@ export default function GateEntry() {
     return <QCForm poId={id} onBack={() => { navigate('/pos?tab=gate-entry'); fetchPOs(); }} />;
   }
 
-  const filteredPOs = pos;
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  const filteredPOs = pos.filter(p => {
+    if (statusFilter && statusFilter !== 'ALL' && p.status !== statusFilter) return false;
+    return true;
+  });
 
   return (
     <div>
@@ -1322,7 +1337,7 @@ export default function GateEntry() {
       {/* Page Header Banner */}
       <div className="banner-animated" style={{
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '14px',
         padding: '1.25rem 1.5rem',
         border: '1px solid #f1f5f9',
         boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
@@ -1331,27 +1346,27 @@ export default function GateEntry() {
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '1rem',
-        marginBottom: '1.5rem'
+        marginBottom: '1.25rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '14px',
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
             backgroundColor: '#e6f7f3',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <ClipboardCheck size={26} color="#0d9488" />
+            <ClipboardCheck size={24} color="#0d9488" />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
-              Gate Entry / QC
+            <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
+              Gate Entry & Material Receiving
             </h1>
-            <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.86rem', fontWeight: 450 }}>
-              Record material receipts and perform quality checks on POs
+            <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.84rem', fontWeight: 450 }}>
+              Verify inbound shipments, record material inspections, and register GRNs
             </p>
           </div>
         </div>
@@ -1366,17 +1381,17 @@ export default function GateEntry() {
               color: '#ffffff',
               border: 'none',
               borderRadius: '10px',
-              padding: '0.65rem 1.35rem',
-              fontSize: '0.9rem',
+              padding: '0.6rem 1.25rem',
+              fontSize: '0.88rem',
               fontWeight: 700,
               cursor: 'pointer',
               boxShadow: '0 2px 6px rgba(13, 148, 136, 0.25)',
-              transition: 'background-color 0.15s ease'
+              transition: 'all 0.15s ease'
             }}
             onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0f766e'}
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0d9488'}
           >
-            <Scan size={18} /> Scan Invoice QR Code
+            <Scan size={17} /> Scan Invoice QR Code
           </button>
         </div>
       </div>
@@ -1384,62 +1399,71 @@ export default function GateEntry() {
       {/* ── Stat Cards Grid (4 KPI Cards) ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '1.25rem',
-        marginBottom: '1.5rem'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+        gap: '1rem',
+        marginBottom: '1.25rem'
       }}>
         {/* Card 1: TOTAL ENTRIES */}
-        <div className="stat-card-animated" style={{
-          backgroundColor: '#e6f7f3',
+        <div style={{
+          backgroundColor: '#ffffff',
           borderRadius: '14px',
-          padding: '1.1rem 1.25rem',
-          border: '1px solid #bbf7d0',
+          padding: '1.2rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           display: 'flex',
-          alignItems: 'flex-start',
-          gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-          animationDelay: '100ms'
+          justifyContent: 'space-between',
+          alignItems: 'flex-start'
         }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              TOTAL GATE ENTRIES
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e293b', marginTop: '4px', lineHeight: 1.1 }}>
+              {pos.length}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#0d9488', marginTop: '6px', fontWeight: 600 }}>
+              All Inbound Deliveries
+            </div>
+          </div>
           <div style={{
-            width: '44px',
-            height: '44px',
+            width: '42px',
+            height: '42px',
             borderRadius: '10px',
-            backgroundColor: '#dcfce7',
+            backgroundColor: '#e6f7f3',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <FileText size={20} color="#0d9488" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              TOTAL ENTRIES
-            </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
-              {pos.length}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#047857', marginTop: '4px', fontWeight: 500 }}>
-              All Gate Entries
-            </div>
+            <ClipboardCheck size={20} color="#0d9488" />
           </div>
         </div>
 
-        {/* Card 2: PENDING */}
-        <div className="stat-card-animated" style={{
-          backgroundColor: '#fff8ed',
+        {/* Card 2: PENDING / AWAITING QC */}
+        <div style={{
+          backgroundColor: '#ffffff',
           borderRadius: '14px',
-          padding: '1.1rem 1.25rem',
-          border: '1px solid #fde68a',
+          padding: '1.2rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           display: 'flex',
-          alignItems: 'flex-start',
-          gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-          animationDelay: '150ms'
+          justifyContent: 'space-between',
+          alignItems: 'flex-start'
         }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              AWAITING QC
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#d97706', marginTop: '4px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.status === 'Pending').length}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#b45309', marginTop: '6px', fontWeight: 600 }}>
+              Pending Inspection
+            </div>
+          </div>
           <div style={{
-            width: '44px',
-            height: '44px',
+            width: '42px',
+            height: '42px',
             borderRadius: '10px',
             backgroundColor: '#fef3c7',
             display: 'flex',
@@ -1449,124 +1473,157 @@ export default function GateEntry() {
           }}>
             <Hourglass size={20} color="#d97706" />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              PENDING
-            </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
-              {pos.filter(p => p.status === 'Pending').length}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
-              Awaiting QC
-            </div>
-          </div>
         </div>
 
-        {/* Card 3: COMPLETED */}
-        <div className="stat-card-animated" style={{
-          backgroundColor: '#f0f6fe',
+        {/* Card 3: COMPLETED QC */}
+        <div style={{
+          backgroundColor: '#ffffff',
           borderRadius: '14px',
-          padding: '1.1rem 1.25rem',
-          border: '1px solid #bfdbfe',
+          padding: '1.2rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           display: 'flex',
-          alignItems: 'flex-start',
-          gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-          animationDelay: '200ms'
+          justifyContent: 'space-between',
+          alignItems: 'flex-start'
         }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              QUALITY CHECKED
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', marginTop: '4px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.status === 'Received').length}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#15803d', marginTop: '6px', fontWeight: 600 }}>
+              Fully Inwarded
+            </div>
+          </div>
           <div style={{
-            width: '44px',
-            height: '44px',
+            width: '42px',
+            height: '42px',
             borderRadius: '10px',
-            backgroundColor: '#dbeafe',
+            backgroundColor: '#dcfce7',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <ShieldCheck size={20} color="#1d4ed8" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              COMPLETED
-            </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
-              {pos.filter(p => p.status === 'Received').length}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
-              Quality Checked
-            </div>
+            <ShieldCheck size={20} color="#16a34a" />
           </div>
         </div>
 
         {/* Card 4: TODAY'S ENTRIES */}
-        <div className="stat-card-animated" style={{
-          backgroundColor: '#faf5ff',
+        <div style={{
+          backgroundColor: '#ffffff',
           borderRadius: '14px',
-          padding: '1.1rem 1.25rem',
-          border: '1px solid #e9d5ff',
+          padding: '1.2rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           display: 'flex',
-          alignItems: 'flex-start',
-          gap: '1rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-          animationDelay: '250ms'
+          justifyContent: 'space-between',
+          alignItems: 'flex-start'
         }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              TODAY'S RECEIPTS
+            </div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#2563eb', marginTop: '4px', lineHeight: 1.1 }}>
+              {pos.filter(p => p.po_date && new Date(p.po_date).toDateString() === new Date().toDateString()).length}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#1d4ed8', marginTop: '6px', fontWeight: 600 }}>
+              Received Today
+            </div>
+          </div>
           <div style={{
-            width: '44px',
-            height: '44px',
+            width: '42px',
+            height: '42px',
             borderRadius: '10px',
-            backgroundColor: '#f3e8ff',
+            backgroundColor: '#eff6ff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <List size={20} color="#7e22ce" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7e22ce', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              TODAY'S ENTRIES
-            </div>
-            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#7e22ce', marginTop: '2px', lineHeight: 1.1 }}>
-              {pos.filter(p => p.po_date && new Date(p.po_date).toDateString() === new Date().toDateString()).length}
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#6b21a8', marginTop: '4px', fontWeight: 500 }}>
-              Today
-            </div>
+            <Calendar size={20} color="#2563eb" />
           </div>
         </div>
       </div>
 
-      {/* ── Filter Bar ── */}
-      <div className="filter-bar-animated" style={{
+      {/* ── Search & Filter Controls ── */}
+      <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '14px',
         padding: '0.85rem 1.25rem',
         border: '1px solid #f1f5f9',
         boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-        marginBottom: '1.5rem'
+        marginBottom: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem'
       }}>
-        <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-          <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
-            <Search size={16} color="#94a3b8" />
-            <input
-              type="text"
-              placeholder="Search by PO number or supplier..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+        {/* Search Input */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.6rem',
+          flex: '1 1 300px',
+          maxWidth: '420px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '10px',
+          padding: '0 0.85rem',
+          height: '40px'
+        }}>
+          <Search size={16} color="#64748b" />
+          <input
+            type="text"
+            placeholder="Search by PO number, supplier..."
+            value={searchTerm}
+            onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            style={{
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              width: '100%',
+              fontSize: '0.86rem',
+              color: '#1e293b'
+            }}
+          />
+          {searchTerm && (
+            <button
+              onClick={() => { setSearchTerm(''); setCurrentPage(1); }}
               style={{
                 border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                width: '100%',
-                fontSize: '0.88rem',
-                color: '#1e293b'
+                background: 'none',
+                cursor: 'pointer',
+                padding: '2px',
+                color: '#94a3b8',
+                display: 'flex',
+                alignItems: 'center'
               }}
-            />
+              title="Clear search"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        {/* Filters & Order */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>STATUS:</span>
+            <div style={{ width: '150px' }}>
+              <StatusSelect
+                options={PO_STATUS_OPTIONS}
+                value={statusFilter}
+                onChange={v => { setStatusFilter(v); setCurrentPage(1); }}
+              />
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8b5a2b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>ORDER BY:</span>
             <div style={{ width: '165px' }}>
               <OrderBySelect
                 options={ORDER_OPTIONS_DATE_PONO}
@@ -1575,6 +1632,29 @@ export default function GateEntry() {
               />
             </div>
           </div>
+
+          {(searchTerm || statusFilter !== 'ALL') && (
+            <button
+              onClick={() => { setSearchTerm(''); setStatusFilter('ALL'); setCurrentPage(1); }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#ffffff',
+                color: '#64748b',
+                padding: '0.45rem 0.85rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+              title="Reset all filters"
+            >
+              <RotateCcw size={13} /> Reset
+            </button>
+          )}
         </div>
       </div>
 
@@ -1582,38 +1662,38 @@ export default function GateEntry() {
       <div className="po-desktop-table table-fade-slide-in">
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '16px',
+          borderRadius: '14px',
           border: '1px solid #e2e8f0',
           boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           overflow: 'hidden'
         }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e2e8f0' }}>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <FileText size={14} color="#8b5a2b" /> PO NUMBER
                   </div>
                 </th>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Building2 size={14} color="#8b5a2b" /> SUPPLIER
                   </div>
                 </th>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <Calendar size={14} color="#8b5a2b" /> PO DATE
                   </div>
                 </th>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Package size={14} color="#8b5a2b" /> ITEMS COUNT
+                    <Package size={14} color="#8b5a2b" /> ITEMS & UNITS
                   </div>
                 </th>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   STATUS
                 </th>
-                <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#524b42', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   ACTION
                 </th>
               </tr>
@@ -1623,13 +1703,17 @@ export default function GateEntry() {
                 <TableSkeleton rows={6} cols={6} hasImage={false} />
               ) : filteredPOs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                    <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#94a3b8' }}/>
-                    <div style={{ fontWeight: 600 }}>No active POs ready for Gate Entry</div>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#94a3b8' }}>
+                    <AlertTriangle size={32} style={{ marginBottom: '0.5rem', color: '#cbd5e1' }}/>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#475569' }}>No Gate Entry records found</div>
+                    <div style={{ fontSize: '0.82rem', color: '#94a3b8', marginTop: '3px' }}>Try adjusting your search or filters</div>
                   </td>
                 </tr>
               ) : filteredPOs.map((p, idx) => {
                 const isRecentlyVisited = String(p.id) === String(lastVisitedId);
+                const itemsCount = (p.items || []).length;
+                const totalUnits = (p.items || []).reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+                const isReceived = p.status === 'Received';
                 return (
                   <tr
                     key={p.id}
@@ -1643,46 +1727,78 @@ export default function GateEntry() {
                     }}
                     className={`table-row-stagger smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                   >
-                    <td style={{ padding: '0.95rem 1rem' }}>
+                    <td style={{ padding: '0.85rem 1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '10px', background: '#f5eee6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <FileText size={16} color="#8b5a2b"/>
+                        <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#f5eee6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <FileText size={15} color="#8b5a2b"/>
                         </div>
-                        <strong style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
+                        <strong style={{ fontSize: '0.88rem', color: '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
                       </div>
                     </td>
-                    <td style={{ padding: '0.95rem 1rem', fontWeight: 700, color: '#1e293b' }}>
+                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#1e293b', fontSize: '0.88rem' }}>
                       {p.supplier_detail?.name || '—'}
                     </td>
-                    <td style={{ padding: '0.95rem 1rem', color: '#475569', fontWeight: 500 }}>
-                      {p.po_date ? new Date(p.po_date).toLocaleDateString('en-GB') : '—'}
+                    <td style={{ padding: '0.85rem 1rem', color: '#475569', fontWeight: 500, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>
+                      {formatDisplayDate(p.po_date)}
                     </td>
-                    <td style={{ padding: '0.95rem 1rem', fontWeight: 700, color: '#1e293b' }}>
-                      {(p.items || []).length}
+                    <td style={{ padding: '0.85rem 1rem' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
+                        {totalUnits > 0 && (
+                          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>({totalUnits} pcs)</span>
+                        )}
+                      </div>
                     </td>
-                    <td style={{ padding: '0.95rem 1rem' }}>
+                    <td style={{ padding: '0.85rem 1rem' }}>
                       <StatusBadge status={p.status}/>
                     </td>
-                    <td style={{ padding: '0.95rem 1rem' }} onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
-                        style={{
-                          backgroundColor: '#e6f7f3',
-                          border: '1px solid #a7f3d0',
-                          color: '#0d9488',
-                          borderRadius: '8px',
-                          padding: '0.35rem 0.85rem',
-                          fontSize: '0.78rem',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <Play size={12} fill="#0d9488" color="#0d9488" /> Start QC
-                      </button>
+                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                      {isReceived ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                          style={{
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            color: '#475569',
+                            borderRadius: '8px',
+                            padding: '0.35rem 0.85rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseOver={e => { e.currentTarget.style.backgroundColor = '#e2e8f0'; }}
+                          onMouseOut={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                        >
+                          <Eye size={13} color="#475569" /> View QC
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                          style={{
+                            backgroundColor: '#0d9488',
+                            border: '1px solid #0d9488',
+                            color: '#ffffff',
+                            borderRadius: '8px',
+                            padding: '0.35rem 0.85rem',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 3px rgba(13, 148, 136, 0.25)',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseOver={e => { e.currentTarget.style.backgroundColor = '#0f766e'; }}
+                          onMouseOut={e => { e.currentTarget.style.backgroundColor = '#0d9488'; }}
+                        >
+                          <Play size={11} fill="#ffffff" color="#ffffff" /> Start QC
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1691,73 +1807,10 @@ export default function GateEntry() {
           </table>
         </div>
 
-        {/* Footer Entry Count & Teal Pagination */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', padding: '0 0.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
-            Showing 1 to {filteredPOs.length} of {pos.length || filteredPOs.length} entries
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage <= 1}
-              style={{
-                border: '1px solid #e2e8f0',
-                backgroundColor: '#ffffff',
-                color: '#64748b',
-                borderRadius: '8px',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
-                opacity: currentPage <= 1 ? 0.5 : 1
-              }}
-            >
-              &lt;
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
-              <button
-                key={pageNum}
-                onClick={() => setCurrentPage(pageNum)}
-                style={{
-                  border: 'none',
-                  backgroundColor: currentPage === pageNum ? '#0d9488' : '#ffffff',
-                  color: currentPage === pageNum ? '#ffffff' : '#64748b',
-                  borderRadius: '8px',
-                  width: '32px',
-                  height: '32px',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxShadow: currentPage === pageNum ? '0 2px 4px rgba(13, 148, 136, 0.2)' : 'none'
-                }}
-              >
-                {pageNum}
-              </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage >= totalPages}
-              style={{
-                border: '1px solid #e2e8f0',
-                backgroundColor: '#ffffff',
-                color: '#64748b',
-                borderRadius: '8px',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
-                opacity: currentPage >= totalPages ? 0.5 : 1
-              }}
-            >
-              &gt;
-            </button>
+        {/* Footer Entry Count */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', padding: '0 0.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ fontSize: '0.84rem', color: '#64748b', fontWeight: 500 }}>
+            Showing <strong>{filteredPOs.length}</strong> of <strong>{pos.length || filteredPOs.length}</strong> entries
           </div>
         </div>
       </div>

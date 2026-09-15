@@ -23,6 +23,7 @@ export function SearchableSelect({
   footerText = null,
   clearable = true,
   disabled = false,
+  hasError = false,
   className = '',
   style = {}
 }) {
@@ -187,10 +188,10 @@ export function SearchableSelect({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0.65rem 0.85rem',
-          backgroundColor: '#ffffff',
-          border: isOpen ? '1.5px solid #ea580c' : '1px solid #cbd5e1',
+          backgroundColor: hasError ? '#fff5f5' : '#ffffff',
+          border: hasError ? '1.5px solid #dc2626' : (isOpen ? '1.5px solid #ea580c' : '1px solid #cbd5e1'),
           borderRadius: '8px',
-          boxShadow: isOpen ? '0 0 0 3px rgba(234, 88, 12, 0.12)' : 'none',
+          boxShadow: hasError ? '0 0 0 2px rgba(220, 38, 38, 0.15)' : (isOpen ? '0 0 0 3px rgba(234, 88, 12, 0.12)' : 'none'),
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.15s ease',
           opacity: disabled ? 0.6 : 1,

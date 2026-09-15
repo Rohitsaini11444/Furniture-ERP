@@ -20,6 +20,7 @@ export function CustomDatePicker({
   required = false,
   placeholder = 'Select Date',
   disabled = false,
+  hasError = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -215,10 +216,10 @@ export function CustomDatePicker({
           alignItems: 'center',
           gap: '0.65rem',
           padding: '0.65rem 1.1rem',
-          backgroundColor: '#ffffff',
-          border: isOpen ? '1.5px solid #8b5a2b' : '1.5px solid #d6c7b2',
+          backgroundColor: hasError ? '#fff5f5' : '#ffffff',
+          border: hasError ? '1.5px solid #dc2626' : (isOpen ? '1.5px solid #8b5a2b' : '1.5px solid #d6c7b2'),
           borderRadius: '12px',
-          boxShadow: isOpen ? '0 0 0 3px rgba(139, 90, 43, 0.15)' : '0 1px 3px rgba(0,0,0,0.04)',
+          boxShadow: hasError ? '0 0 0 2px rgba(220, 38, 38, 0.15)' : (isOpen ? '0 0 0 3px rgba(139, 90, 43, 0.15)' : '0 1px 3px rgba(0,0,0,0.04)'),
           cursor: disabled ? 'not-allowed' : 'pointer',
           transition: 'all 0.2s ease',
           opacity: disabled ? 0.6 : 1,

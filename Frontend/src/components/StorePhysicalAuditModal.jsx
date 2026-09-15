@@ -57,12 +57,11 @@ export default function StorePhysicalAuditModal({ isOpen, onClose, items = [], o
     setSubmitting(true);
     try {
       const promises = changedRows.map(r => {
-        const type = r.delta > 0 ? 'addition' : 'deduction';
         return api.post('/store/stock-adjustments/', {
           adjustment_no: `ADJ-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
           item: r.id,
-          adjustment_type: type,
-          quantity_delta: Math.abs(r.delta),
+          adjustment_type: 'physical_audit',
+          quantity_delta: r.delta,
           reason: `${reason} (System: ${r.system_qty} ${r.unit}, Physical: ${r.physical_qty} ${r.unit}, Variance: ${r.delta > 0 ? '+' : ''}${r.delta} ${r.unit})`,
         });
       });

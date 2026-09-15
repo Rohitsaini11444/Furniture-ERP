@@ -47,6 +47,9 @@ function Stock() {
   // Modal State for Add/Edit Stock
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [toastNotification, setToastNotification] = useState(null);
 
   // Stock Origin Drill-Down Modal state
   const [showOriginModal, setShowOriginModal] = useState(false);
@@ -331,12 +334,26 @@ function Stock() {
 
   // Stock Add/Edit Form Handlers
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name] || errors.general) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        const remaining = Object.keys(next).filter(k => k !== 'general');
+        if (remaining.length === 0) {
+          delete next.general;
+        }
+        return next;
+      });
+    }
   };
 
   const openCreateModal = () => {
     setFormData(emptyForm);
     setEditingId(null);
+    setErrors({});
+    setSubmitting(false);
     setShowModal(true);
   };
 
@@ -344,9 +361,9 @@ function Stock() {
     setFormData({
       style_no: item.style_no || '',
       item_name: item.item_name || '',
-      quantity: item.quantity || '',
+      quantity: item.quantity !== undefined && item.quantity !== null ? item.quantity : '',
       unit: item.unit || 'pcs',
-      unit_price: item.unit_price || '',
+      unit_price: item.unit_price !== undefined && item.unit_price !== null ? item.unit_price : '',
       location: item.location || 'Main Store',
       status: item.status || 'In Stock',
       buyer: item.buyer || '',
@@ -354,6 +371,8 @@ function Stock() {
       remarks: item.remarks || '',
     });
     setEditingId(item.id);
+    setErrors({});
+    setSubmitting(false);
     setShowModal(true);
   };
 
@@ -361,13 +380,123 @@ function Stock() {
     setShowModal(false);
     setEditingId(null);
     setFormData(emptyForm);
+    setErrors({});
+    setSubmitting(false);
+  };
+
+  const validateForm = () => {
+    const errs = {};
+
+    // Style No
+    if (!formData.style_no || !formData.style_no.trim()) {
+      errs.style_no = 'Style No. is required.';
+    } else if (formData.style_no.trim().length > 100) {
+      errs.style_no = 'Style No. cannot exceed 100 characters.';
+    }
+
+    // Item Name
+    if (!formData.item_name || !formData.item_name.trim()) {
+      errs.item_name = 'Item / Product Name is required.';
+    } else if (formData.item_name.trim().length > 255) {
+      errs.item_name = 'Item / Product Name cannot exceed 255 characters.';
+    }
+
+    // Stock Quantity
+    const qtyStr = formData.quantity !== null && formData.quantity !== undefined ? String(formData.quantity).trim() : '';
+    if (!qtyStr) {
+      errs.quantity = 'Stock quantity is required.';
+    } else {
+      const qtyNum = Number(qtyStr);
+      if (isNaN(qtyNum)) {
+        errs.quantity = 'Stock quantity must be a valid number.';
+      } else if (qtyNum < 0) {
+        errs.quantity = 'Stock quantity cannot be negative.';
+      } else {
+        const parts = qtyStr.split('.');
+        const wholeDigits = parts[0].replace('-', '');
+        const decimalDigits = parts[1] || '';
+        if (wholeDigits.length > 10) {
+          errs.quantity = 'Quantity cannot exceed 10 digits before decimal (max 9,999,999,999.99).';
+        } else if (decimalDigits.length > 2) {
+          errs.quantity = 'Quantity cannot have more than 2 decimal places.';
+        } else if (wholeDigits.length + decimalDigits.length > 12) {
+          errs.quantity = 'Quantity cannot exceed 12 digits in total.';
+        }
+      }
+    }
+
+    // Unit
+    if (!formData.unit || !formData.unit.trim()) {
+      errs.unit = 'Unit is required (e.g. pcs, set, kg).';
+    } else if (formData.unit.trim().length > 30) {
+      errs.unit = 'Unit cannot exceed 30 characters.';
+    }
+
+    // Unit Price (optional)
+    const priceStr = formData.unit_price !== null && formData.unit_price !== undefined ? String(formData.unit_price).trim() : '';
+    if (priceStr) {
+      const priceNum = Number(priceStr);
+      if (isNaN(priceNum)) {
+        errs.unit_price = 'Unit price must be a valid number.';
+      } else if (priceNum < 0) {
+        errs.unit_price = 'Unit price cannot be negative.';
+      } else {
+        const parts = priceStr.split('.');
+        const wholeDigits = parts[0].replace('-', '');
+        const decimalDigits = parts[1] || '';
+        if (wholeDigits.length > 10) {
+          errs.unit_price = 'Unit price cannot exceed 10 digits before decimal (max 9,999,999,999.99).';
+        } else if (decimalDigits.length > 2) {
+          errs.unit_price = 'Unit price cannot have more than 2 decimal places.';
+        } else if (wholeDigits.length + decimalDigits.length > 12) {
+          errs.unit_price = 'Unit price cannot exceed 12 digits in total.';
+        }
+      }
+    }
+
+    // Storage Location
+    if (formData.location && formData.location.trim().length > 150) {
+      errs.location = 'Storage location cannot exceed 150 characters.';
+    }
+
+    // Status
+    const validStatuses = ['In Stock', 'Low Stock', 'Reserved', 'Out of Stock'];
+    if (!formData.status || !validStatuses.includes(formData.status)) {
+      errs.status = 'Please select a valid stock status.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      errs.general = 'Please correct the highlighted errors below before saving.';
+      setErrors(errs);
+      return false;
+    }
+
+    setErrors({});
+    return true;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const payload = { ...formData };
+    if (!validateForm()) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrors({});
+
+    const payload = {
+      ...formData,
+      style_no: formData.style_no.trim(),
+      item_name: formData.item_name.trim(),
+      unit: formData.unit.trim(),
+      location: formData.location ? formData.location.trim() : 'Main Store',
+      quantity: formData.quantity,
+      unit_price: (formData.unit_price !== '' && formData.unit_price !== null && formData.unit_price !== undefined) ? formData.unit_price : null,
+      remarks: formData.remarks ? formData.remarks.trim() : '',
+    };
     if (!payload.buyer) delete payload.buyer;
     if (!payload.sample) delete payload.sample;
+    if (payload.unit_price === null) delete payload.unit_price;
 
     const request = editingId
       ? api.put(`/stock/${editingId}/`, payload)
@@ -377,10 +506,42 @@ function Stock() {
       .then(() => {
         closeModal();
         fetchData();
+        setToastNotification({
+          type: 'success',
+          text: editingId ? `Stock item "${payload.style_no}" updated successfully!` : `Stock item "${payload.style_no}" added to stock successfully!`
+        });
+        setTimeout(() => setToastNotification(null), 4000);
       })
       .catch(err => {
         console.error('Failed to save stock item', err);
-        alert('Failed to save stock item. Please check inputs.');
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const newErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            if (Array.isArray(val)) {
+              newErrors[key] = val.join(' ');
+            } else if (typeof val === 'object' && val !== null) {
+              newErrors[key] = Object.values(val).flat().join(' ');
+            } else {
+              newErrors[key] = String(val);
+            }
+          });
+          if (data.detail) {
+            newErrors.general = data.detail;
+          } else if (data.non_field_errors) {
+            newErrors.general = Array.isArray(data.non_field_errors)
+              ? data.non_field_errors.join(' ')
+              : data.non_field_errors;
+          } else {
+            newErrors.general = 'Please correct the highlighted errors below.';
+          }
+          setErrors(newErrors);
+        } else {
+          setErrors({ general: 'Failed to save stock item. Please check your connection and try again.' });
+        }
+      })
+      .finally(() => {
+        setSubmitting(false);
       });
   };
 
@@ -499,104 +660,364 @@ function Stock() {
   return (
     <div style={{ padding: '0 0.5rem 2rem' }}>
       {showModal ? (
-        <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <button 
-            onClick={closeModal} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              background: 'none', 
-              border: 'none', 
-              color: '#5c3a21', 
-              fontWeight: 700, 
-              cursor: 'pointer',
-              marginBottom: '1.5rem',
-              padding: 0,
-              fontSize: '0.95rem'
-            }}
-          >
-            <ArrowLeft size={18} /> Back to Stock Registry
-          </button>
+        <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
+          <style>{`
+            @media (max-width: 1024px) {
+              .stock-form-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+              }
+            }
+            @media (max-width: 640px) {
+              .stock-form-grid {
+                grid-template-columns: 1fr !important;
+              }
+              .stock-action-btns {
+                flex-direction: column-reverse !important;
+                width: 100% !important;
+              }
+              .stock-action-btns button {
+                width: 100% !important;
+                justify-content: center !important;
+              }
+            }
+          `}</style>
 
-          <div className="form-card-container">
-            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 750, color: '#1c1917' }}>
-                {editingId ? '✏️ Edit Stock Item' : '📦 Add New Stock Item'}
-              </h2>
+          {/* Header bar matching Daily Issue / Samples / BuyerPIs / POs */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '1.5rem',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <button
+                type="button"
+                onClick={closeModal}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#334155',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Back to Stock Registry"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Production & Stock Pipeline
+                  </span>
+                </div>
+                <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                  {editingId ? 'Edit Stock Item' : 'Add New Stock Item'}
+                  {editingId && formData.style_no && (
+                    <span style={{ backgroundColor: '#fff3e0', color: '#b45309', padding: '0.2rem 0.65rem', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, border: '1px solid #fed7aa' }}>
+                      {formData.style_no}
+                    </span>
+                  )}
+                </h1>
+              </div>
             </div>
-            <div className="modal-body" style={{ padding: 0 }}>
-              <form onSubmit={handleSubmit}>
-                <div className="form-section">
-                  <h3 className="form-section-title">📋 Item Details</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Style No *</label>
-                      <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-2026-X" />
-                    </div>
+          </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Item / Product Name *</label>
-                      <input required type="text" name="item_name" className="form-input" value={formData.item_name} onChange={handleChange} placeholder="e.g. Sheesham Wood Chair" />
-                    </div>
+          {/* Full-Width Form Card Container */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            padding: '1.75rem',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            {errors.general && (
+              <div style={{
+                backgroundColor: '#fef2f2',
+                border: '1.5px solid #fca5a5',
+                color: '#991b1b',
+                padding: '0.85rem 1.25rem',
+                borderRadius: '12px',
+                fontSize: '0.9rem',
+                marginBottom: '1.5rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem'
+              }}>
+                <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
+                <span>{errors.general}</span>
+              </div>
+            )}
 
-                    <div className="form-group">
-                      <label className="form-label">Stock Quantity *</label>
-                      <input required type="number" step="0.01" name="quantity" className="form-input" value={formData.quantity} onChange={handleChange} placeholder="e.g. 50" />
-                    </div>
+            <form onSubmit={handleSubmit} noValidate>
+              <div style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '1.25rem',
+                backgroundColor: '#fafaf9',
+                marginBottom: '1.5rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.15rem' }}>
+                  <Package size={18} color="#8b5a2b" />
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                    Item & Specification Details
+                  </h3>
+                </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Unit *</label>
-                      <input required type="text" name="unit" className="form-input" value={formData.unit} onChange={handleChange} placeholder="e.g. pcs / set" />
-                    </div>
+                {/* Row 1: Core Attributes (4 Columns) */}
+                <div className="stock-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Style No *</label>
+                    <input
+                      required
+                      type="text"
+                      name="style_no"
+                      maxLength={100}
+                      className="form-input"
+                      style={{
+                        borderColor: errors.style_no ? '#dc2626' : undefined,
+                        backgroundColor: errors.style_no ? '#fff5f5' : undefined
+                      }}
+                      value={formData.style_no}
+                      onChange={handleChange}
+                      placeholder="e.g. STY-2026-X"
+                    />
+                    {errors.style_no && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.style_no}</span>
+                      </div>
+                    )}
+                  </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Unit Price (INR/USD)</label>
-                      <input type="number" step="0.01" name="unit_price" className="form-input" value={formData.unit_price} onChange={handleChange} placeholder="e.g. 120.00" />
-                    </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Item / Product Name *</label>
+                    <input
+                      required
+                      type="text"
+                      name="item_name"
+                      maxLength={255}
+                      className="form-input"
+                      style={{
+                        borderColor: errors.item_name ? '#dc2626' : undefined,
+                        backgroundColor: errors.item_name ? '#fff5f5' : undefined
+                      }}
+                      value={formData.item_name}
+                      onChange={handleChange}
+                      placeholder="e.g. Sheesham Wood Chair"
+                    />
+                    {errors.item_name && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.item_name}</span>
+                      </div>
+                    )}
+                  </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Storage Location</label>
-                      <input type="text" name="location" className="form-input" value={formData.location} onChange={handleChange} placeholder="e.g. Main Store Raw Zone" />
-                    </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Stock Quantity *</label>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="9999999999.99"
+                      name="quantity"
+                      className="form-input"
+                      style={{
+                        borderColor: errors.quantity ? '#dc2626' : undefined,
+                        backgroundColor: errors.quantity ? '#fff5f5' : undefined
+                      }}
+                      value={formData.quantity}
+                      onChange={handleChange}
+                      placeholder="e.g. 50"
+                    />
+                    {errors.quantity ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.quantity}</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '3px' }}>
+                        Max 10 whole digits + 2 decimals
+                      </div>
+                    )}
+                  </div>
 
-                    <div className="form-group">
-                      <StatusSelect
-                        label="Status"
-                        required
-                        options={STOCK_STATUS_FORM_OPTIONS}
-                        value={formData.status}
-                        onChange={val => handleChange({ target: { name: 'status', value: val } })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Associated Buyer (Optional)</label>
-                      <CustomSelect
-                        name="buyer"
-                        value={formData.buyer}
-                        onChange={handleChange}
-                        options={[
-                          { value: '', label: 'Select Buyer...' },
-                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
-                        ]}
-                        placeholder="Select Buyer..."
-                      />
-                    </div>
-
-                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                      <label className="form-label">Remarks / Storage Notes</label>
-                      <textarea name="remarks" className="form-input" rows="2" value={formData.remarks} onChange={handleChange} placeholder="Any specific storage instructions or notes..."></textarea>
-                    </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Unit *</label>
+                    <input
+                      required
+                      type="text"
+                      name="unit"
+                      maxLength={30}
+                      className="form-input"
+                      style={{
+                        borderColor: errors.unit ? '#dc2626' : undefined,
+                        backgroundColor: errors.unit ? '#fff5f5' : undefined
+                      }}
+                      value={formData.unit}
+                      onChange={handleChange}
+                      placeholder="e.g. pcs / set"
+                    />
+                    {errors.unit && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.unit}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                  <button type="submit" className="btn-primary" style={{ backgroundColor: '#5c3a21', color: '#ffffff' }}>{editingId ? 'Save Changes' : 'Add to Stock'}</button>
+                {/* Row 2: Commercials & Storage (4 Columns) */}
+                <div className="stock-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Unit Price (INR/USD)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="9999999999.99"
+                      name="unit_price"
+                      className="form-input"
+                      style={{
+                        borderColor: errors.unit_price ? '#dc2626' : undefined,
+                        backgroundColor: errors.unit_price ? '#fff5f5' : undefined
+                      }}
+                      value={formData.unit_price}
+                      onChange={handleChange}
+                      placeholder="e.g. 120.00"
+                    />
+                    {errors.unit_price ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.unit_price}</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '3px' }}>
+                        Optional (Max 10 digits + 2 dec)
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Storage Location</label>
+                    <input
+                      type="text"
+                      name="location"
+                      maxLength={150}
+                      className="form-input"
+                      style={{
+                        borderColor: errors.location ? '#dc2626' : undefined,
+                        backgroundColor: errors.location ? '#fff5f5' : undefined
+                      }}
+                      value={formData.location}
+                      onChange={handleChange}
+                      placeholder="e.g. Main Store Raw Zone"
+                    />
+                    {errors.location && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.location}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <StatusSelect
+                      label="Status"
+                      required
+                      options={STOCK_STATUS_FORM_OPTIONS}
+                      value={formData.status}
+                      onChange={val => handleChange({ target: { name: 'status', value: val } })}
+                    />
+                    {errors.status && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{errors.status}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Associated Buyer (Optional)</label>
+                    <CustomSelect
+                      name="buyer"
+                      value={formData.buyer}
+                      onChange={handleChange}
+                      options={[
+                        { value: '', label: 'Select Buyer...' },
+                        ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                      ]}
+                      placeholder="Select Buyer..."
+                    />
+                  </div>
                 </div>
-              </form>
-            </div>
+
+                {/* Row 3: Remarks (Full Width) */}
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Remarks / Storage Notes</label>
+                  <textarea
+                    name="remarks"
+                    className="form-input"
+                    rows="2"
+                    style={{
+                      borderColor: errors.remarks ? '#dc2626' : undefined,
+                      backgroundColor: errors.remarks ? '#fff5f5' : undefined
+                    }}
+                    value={formData.remarks}
+                    onChange={handleChange}
+                    placeholder="Any specific storage instructions or notes..."
+                  ></textarea>
+                  {errors.remarks && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{errors.remarks}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="stock-action-btns" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={closeModal}
+                  disabled={submitting}
+                  style={{ padding: '0.65rem 1.6rem', borderRadius: '10px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={submitting}
+                  style={{
+                    padding: '0.65rem 2.2rem',
+                    borderRadius: '10px',
+                    fontWeight: 800,
+                    backgroundColor: '#5c3a21',
+                    borderColor: '#5c3a21',
+                    color: '#ffffff',
+                    opacity: submitting ? 0.7 : 1,
+                    cursor: submitting ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {submitting ? 'Saving...' : (editingId ? 'Save Changes' : 'Add to Stock')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : (
@@ -1941,6 +2362,46 @@ function Stock() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {/* Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999,
+          backgroundColor: toastNotification.type === 'success' ? '#f0fdf4' : '#fef2f2',
+          border: `1.5px solid ${toastNotification.type === 'success' ? '#86efac' : '#fca5a5'}`,
+          color: toastNotification.type === 'success' ? '#166534' : '#991b1b',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontWeight: 600,
+          fontSize: '0.9rem'
+        }}>
+          {toastNotification.type === 'success' ? <CheckCircle2 size={20} color="#16a34a" /> : <AlertCircle size={20} color="#dc2626" />}
+          <span>{toastNotification.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              padding: 0,
+              marginLeft: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.7
+            }}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

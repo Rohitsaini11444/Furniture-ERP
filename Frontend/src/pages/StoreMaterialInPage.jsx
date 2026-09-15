@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse, FileText } from 'lucide-react';
+import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse, FileText, X } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
@@ -31,9 +31,11 @@ export default function StoreMaterialInPage() {
     remark: ''
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
 
   const {
     setIsDirty,
@@ -106,6 +108,15 @@ export default function StoreMaterialInPage() {
       .finally(() => setLoadingData(false));
   }, []);
 
+  const handleFieldChange = (field, value) => {
+    setIsDirty(true);
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field]) {
+      setFormErrors(prev => ({ ...prev, [field]: null }));
+    }
+    if (error) setError(null);
+  };
+
   const handleItemChange = (val, selectedObj) => {
     setIsDirty(true);
     const itemId = typeof val === 'object' && val?.target ? val.target.value : (typeof val === 'object' ? val?.id : val);
@@ -125,6 +136,10 @@ export default function StoreMaterialInPage() {
     } else {
       setFormData(prev => ({ ...prev, item: itemId }));
     }
+    if (formErrors.item) {
+      setFormErrors(prev => ({ ...prev, item: null }));
+    }
+    if (error) setError(null);
   };
 
   const handleQtyRateChange = (name, val) => {
@@ -136,23 +151,111 @@ export default function StoreMaterialInPage() {
       updated.total_amount = (q * r).toFixed(2);
       return updated;
     });
+    if (formErrors[name]) {
+      setFormErrors(prev => ({ ...prev, [name]: null }));
+    }
+    if (error) setError(null);
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.voucher_no || !formData.voucher_no.trim()) {
+      errors.voucher_no = 'Voucher number is required.';
+    } else if (formData.voucher_no.trim().length > 100) {
+      errors.voucher_no = 'Voucher number cannot exceed 100 characters.';
+    }
+
+    if (!formData.inward_date) {
+      errors.inward_date = 'Inward date is required.';
+    }
+
+    if (!formData.bill_no || !formData.bill_no.trim()) {
+      errors.bill_no = 'Supplier Bill / Invoice # is required.';
+    } else if (formData.bill_no.trim().length > 100) {
+      errors.bill_no = 'Bill number cannot exceed 100 characters.';
+    }
+
+    if (!formData.supplier) {
+      errors.supplier = 'Supplier is required.';
+    }
+
+    if (!formData.item) {
+      errors.item = 'Store Item is required.';
+    }
+
+    const q = parseFloat(formData.qty);
+    if (formData.qty === '' || formData.qty === null || formData.qty === undefined || isNaN(q)) {
+      errors.qty = 'Quantity inward is required.';
+    } else if (q <= 0) {
+      errors.qty = 'Quantity must be greater than 0.';
+    } else if (q > 10000000) {
+      errors.qty = 'Quantity exceeds maximum limit (10,000,000).';
+    }
+
+    const r = parseFloat(formData.bill_rate);
+    if (formData.bill_rate === '' || formData.bill_rate === null || formData.bill_rate === undefined || isNaN(r)) {
+      errors.bill_rate = 'Bill rate is required.';
+    } else if (r < 0) {
+      errors.bill_rate = 'Bill rate cannot be negative.';
+    }
+
+    if (!formData.production_unit) {
+      errors.production_unit = 'Destination Factory Unit is required.';
+    }
+
+    return errors;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      setError('Please resolve the highlighted field errors below.');
+      setToastNotification({
+        type: 'error',
+        message: 'Please resolve highlighted errors before confirming.'
+      });
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
+    setFormErrors({});
 
     api.post('/store/material-in/', formData)
       .then(() => {
         if (currentDraftId) clearDraft(currentDraftId);
         setIsDirty(false);
         setSuccessMsg('Material Inward record saved successfully! Stock balance credited.');
+        setToastNotification({
+          type: 'success',
+          message: 'Material Inward recorded and stock credited!'
+        });
         setTimeout(() => navigate('/store-management'), 1200);
       })
       .catch(err => {
         console.error('Material inward save failed:', err);
-        setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to record store material inward.');
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const backendErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            backendErrors[key] = Array.isArray(val) ? val.join(' ') : String(val);
+          });
+          setFormErrors(backendErrors);
+          const firstErr = Object.values(backendErrors)[0];
+          setError(firstErr || 'Failed to record store material inward.');
+          setToastNotification({
+            type: 'error',
+            message: firstErr || 'Validation failed. Check highlighted fields.'
+          });
+        } else {
+          setError(err.message || 'Server error while recording inward.');
+          setToastNotification({
+            type: 'error',
+            message: err.message || 'Server error occurred.'
+          });
+        }
       })
       .finally(() => setSubmitting(false));
   };
@@ -266,7 +369,7 @@ export default function StoreMaterialInPage() {
         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         padding: '1.75rem'
       }}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form id="store-material-in-form" onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
           {/* Row 1: Voucher & Dates */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
@@ -277,10 +380,22 @@ export default function StoreMaterialInPage() {
               <input
                 type="text"
                 value={formData.voucher_no}
-                onChange={(e) => setFormData({ ...formData, voucher_no: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                onChange={(e) => handleFieldChange('voucher_no', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.voucher_no ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.voucher_no ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.voucher_no && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.voucher_no}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -290,10 +405,21 @@ export default function StoreMaterialInPage() {
               <input
                 type="date"
                 value={formData.inward_date}
-                onChange={(e) => setFormData({ ...formData, inward_date: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                onChange={(e) => handleFieldChange('inward_date', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.inward_date ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.inward_date ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.inward_date && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.inward_date}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -303,11 +429,22 @@ export default function StoreMaterialInPage() {
               <input
                 type="text"
                 value={formData.bill_no}
-                onChange={(e) => setFormData({ ...formData, bill_no: e.target.value })}
+                onChange={(e) => handleFieldChange('bill_no', e.target.value)}
                 placeholder="e.g. Bill # 2667"
-                required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.bill_no ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.bill_no ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.bill_no && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.bill_no}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -317,33 +454,47 @@ export default function StoreMaterialInPage() {
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Supplier Name *
               </label>
-              <SearchableSelect
-                options={suppliers}
-                value={formData.supplier}
-                onChange={(val) => setFormData(prev => ({ ...prev, supplier: val }))}
-                placeholder="Select Supplier..."
-                searchPlaceholder="Search supplier name..."
-                idKey="id"
-                titleKey="name"
-                pageSize={15}
-              />
+              <div style={{ borderRadius: '8px', border: formErrors.supplier ? '1.5px solid #dc2626' : 'none' }}>
+                <SearchableSelect
+                  options={suppliers}
+                  value={formData.supplier}
+                  onChange={(val) => handleFieldChange('supplier', val)}
+                  placeholder="Select Supplier..."
+                  searchPlaceholder="Search supplier name..."
+                  idKey="id"
+                  titleKey="name"
+                  pageSize={15}
+                />
+              </div>
+              {formErrors.supplier && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.supplier}</span>
+                </div>
+              )}
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Store Item *
               </label>
-              <SearchableSelect
-                options={items}
-                value={formData.item}
-                onChange={handleItemChange}
-                placeholder="Select Store Item..."
-                searchPlaceholder="Search item code, name, category..."
-                idKey="id"
-                codeKey="item_code"
-                titleKey="item_name"
-                pageSize={15}
-              />
+              <div style={{ borderRadius: '8px', border: formErrors.item ? '1.5px solid #dc2626' : 'none' }}>
+                <SearchableSelect
+                  options={items}
+                  value={formData.item}
+                  onChange={handleItemChange}
+                  placeholder="Select Store Item..."
+                  searchPlaceholder="Search item code, name, category..."
+                  idKey="id"
+                  codeKey="item_code"
+                  titleKey="item_name"
+                  pageSize={15}
+                />
+              </div>
+              {formErrors.item && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.item}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -359,9 +510,21 @@ export default function StoreMaterialInPage() {
                 value={formData.qty}
                 onChange={(e) => handleQtyRateChange('qty', e.target.value)}
                 placeholder="0.00"
-                required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.qty ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.qty ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.qty && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.qty}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -386,9 +549,21 @@ export default function StoreMaterialInPage() {
                 value={formData.bill_rate}
                 onChange={(e) => handleQtyRateChange('bill_rate', e.target.value)}
                 placeholder="0.00"
-                required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.bill_rate ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.bill_rate ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.bill_rate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.bill_rate}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -409,18 +584,30 @@ export default function StoreMaterialInPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Destination Factory / Unit #
+                Destination Factory / Unit # *
               </label>
               <select
                 value={formData.production_unit}
-                onChange={(e) => setFormData({ ...formData, production_unit: e.target.value })}
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                onChange={(e) => handleFieldChange('production_unit', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: `1px solid ${formErrors.production_unit ? '#dc2626' : '#cbd5e1'}`,
+                  backgroundColor: formErrors.production_unit ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               >
                 <option value="">Select Factory Unit</option>
                 {units.map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
+              {formErrors.production_unit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} /> <span>{formErrors.production_unit}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -430,7 +617,7 @@ export default function StoreMaterialInPage() {
               <input
                 type="text"
                 value={formData.remark}
-                onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+                onChange={(e) => handleFieldChange('remark', e.target.value)}
                 placeholder="e.g. Received in main store bin A2"
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
               />
@@ -495,6 +682,7 @@ export default function StoreMaterialInPage() {
                 color: '#ffffff',
                 fontWeight: 700,
                 fontSize: '0.9rem',
+                opacity: submitting ? 0.7 : 1,
                 cursor: submitting ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -518,6 +706,46 @@ export default function StoreMaterialInPage() {
         onDiscard={handleDiscardAndExit}
         onCancel={handleCancelExit}
       />
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9999,
+            backgroundColor: toastNotification.type === 'error' ? '#ef4444' : '#10b981',
+            color: '#ffffff',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '14px',
+            fontWeight: 500,
+            animation: 'fadeIn 0.3s ease',
+          }}
+        >
+          {toastNotification.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle size={18} />}
+          <span>{toastNotification.message}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              marginLeft: '8px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

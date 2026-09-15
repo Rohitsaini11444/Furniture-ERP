@@ -4,7 +4,7 @@ import api from '../api/axios';
 import {
   Truck, Search, Phone, Calendar, Clock, AlertTriangle, CheckCircle2,
   Hourglass, Plus, ChevronDown, ChevronUp, ChevronRight, FileText, UserCheck, MessageSquare,
-  RefreshCw, ShieldAlert, ArrowRight, PhoneCall, History, Info, Building2, SlidersHorizontal, Package
+  RefreshCw, ShieldAlert, ArrowRight, PhoneCall, History, Info, Building2, SlidersHorizontal, Package, X, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -13,6 +13,17 @@ import TaxInvoiceEntryModal from '../components/TaxInvoiceEntryModal';
 import SupplierManagerModal from '../components/SupplierManagerModal';
 import GRNPrintoutModal from '../components/GRNPrintoutModal';
 import { fmtQty } from '../utils/formatters';
+
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 function fmtINR(val) {
   if (!val && val !== 0) return '—';
@@ -300,50 +311,109 @@ export default function VendorManagement() {
       {/* 🖥️ DESKTOP WEB UI (SHOWS FOR SCREEN WIDTH > 768px)                       */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       <div className="vm-desktop-only">
-        {/* Header */}
-        <div style={{
+        {/* Modern Header Banner */}
+        <div className="banner-animated" style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem 1.5rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '1.5rem',
-          borderBottom: '1px solid #e2e8f0',
-          paddingBottom: '1rem'
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '1.25rem'
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <Truck size={28} color="#8b5a2b" />
-              <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              backgroundColor: '#f5ede3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Truck size={24} color="#8b5a2b" />
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
                 Vendor & Supplier Management
               </h1>
+              <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.84rem', fontWeight: 450 }}>
+                Track PO shipments, 15-day warning alerts, phone updates & +5 days extension management
+              </p>
             </div>
-            <p style={{ color: '#64748b', fontSize: '0.88rem', margin: '0.2rem 0 0 0' }}>
-              Track PO shipments, 15-day warning alerts, phone updates & +5 days extension management
-            </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              className="btn-primary"
               onClick={() => navigate('/suppliers')}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#ffffff', color: '#8b5a2b', border: '1.5px solid #8b5a2b' }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                backgroundColor: '#ffffff',
+                color: '#8b5a2b',
+                border: '1.5px solid #8b5a2b',
+                borderRadius: '9px',
+                padding: '0.55rem 1rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseOver={e => { e.currentTarget.style.backgroundColor = '#faf5ef'; }}
+              onMouseOut={e => { e.currentTarget.style.backgroundColor = '#ffffff'; }}
             >
               <Building2 size={16} /> Manage Suppliers
             </button>
             {!isStoreManager && (
               <button
-                className="btn-primary"
                 onClick={() => navigate('/record-tax-invoice')}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', backgroundColor: '#8b5a2b', color: '#fff' }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  backgroundColor: '#8b5a2b',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '9px',
+                  padding: '0.55rem 1.1rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseOver={e => { e.currentTarget.style.backgroundColor = '#724a23'; }}
+                onMouseOut={e => { e.currentTarget.style.backgroundColor = '#8b5a2b'; }}
               >
-                <FileText size={16} />Record Tax Invoice Inward (Multi-PO)
+                <FileText size={16} /> Record Tax Invoice Inward
               </button>
             )}
             <button
-              className="btn-secondary"
               onClick={fetchData}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                backgroundColor: '#f8fafc',
+                color: '#475569',
+                border: '1px solid #cbd5e1',
+                borderRadius: '9px',
+                padding: '0.55rem 0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseOver={e => { e.currentTarget.style.backgroundColor = '#e2e8f0'; }}
+              onMouseOut={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; }}
             >
-              <RefreshCw size={15} /> Refresh Status
+              <RefreshCw size={14} /> Refresh Status
             </button>
           </div>
         </div>
@@ -396,177 +466,322 @@ export default function VendorManagement() {
         {/* Desktop KPI Summary Cards */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
           gap: '1rem',
-          marginBottom: '1.5rem'
+          marginBottom: '1.25rem'
         }}>
-          {/* Card 1 */}
+          {/* Card 1: TOTAL POS */}
           <div
             className="stat-card-animated"
             onClick={() => setFilterTab('all')}
             style={{
               backgroundColor: '#ffffff',
-              border: filterTab === 'all' ? '2px solid #8b5a2b' : '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '1.1rem',
+              border: filterTab === 'all' ? '2px solid #8b5a2b' : '1px solid #f1f5f9',
+              borderRadius: '14px',
+              padding: '1.2rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
-              transition: 'transform 0.2s',
+              boxShadow: filterTab === 'all' ? '0 4px 12px rgba(139, 90, 43, 0.12)' : '0 2px 8px rgba(0,0,0,0.02)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              transition: 'all 0.2s ease',
               animationDelay: '100ms'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>TOTAL POS</span>
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                TOTAL POS
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e293b', marginTop: '4px', lineHeight: 1.1 }}>
+                {totalCount}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: '#8b5a2b', marginTop: '6px', fontWeight: 600 }}>
+                All Supplier Orders
+              </div>
+            </div>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#f5ede3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
               <Building2 size={20} color="#8b5a2b" />
             </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1e293b', marginTop: '0.4rem' }}>
-              {totalCount}
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>All Supplier Orders</span>
           </div>
 
-          {/* Card 2 */}
+          {/* Card 2: RED ALERTS */}
           <div
             className="stat-card-animated"
             onClick={() => setFilterTab('red')}
             style={{
-              backgroundColor: '#fef2f2',
-              border: filterTab === 'red' ? '2.5px solid #dc2626' : '1.5px solid #fecaca',
-              borderRadius: '12px',
-              padding: '1.1rem',
+              backgroundColor: '#ffffff',
+              border: filterTab === 'red' ? '2px solid #dc2626' : '1px solid #f1f5f9',
+              borderRadius: '14px',
+              padding: '1.2rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(220, 38, 38, 0.1)',
-              transition: 'transform 0.2s',
+              boxShadow: filterTab === 'red' ? '0 4px 12px rgba(220, 38, 38, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              transition: 'all 0.2s ease',
               animationDelay: '150ms'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#991b1b' }}>RED ALERTS (&le;15 Days)</span>
-              <AlertTriangle size={22} color="#dc2626" />
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                RED ALERTS (≤15 DAYS)
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', marginTop: '4px', lineHeight: 1.1 }}>
+                {redCount}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: '#b91c1c', marginTop: '6px', fontWeight: 600 }}>
+                Requires Urgent Follow-up
+              </div>
             </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#dc2626', marginTop: '0.4rem' }}>
-              {redCount}
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#fef2f2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <AlertTriangle size={20} color="#dc2626" />
             </div>
-            <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#b91c1c' }}>Requires Urgent Follow-up</span>
           </div>
 
-          {/* Card 3 */}
+          {/* Card 3: IN PROCESS */}
           <div
             className="stat-card-animated"
             onClick={() => setFilterTab('yellow')}
             style={{
-              backgroundColor: '#fefce8',
-              border: filterTab === 'yellow' ? '2.5px solid #d97706' : '1.5px solid #fef08a',
-              borderRadius: '12px',
-              padding: '1.1rem',
+              backgroundColor: '#ffffff',
+              border: filterTab === 'yellow' ? '2px solid #d97706' : '1px solid #f1f5f9',
+              borderRadius: '14px',
+              padding: '1.2rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(217, 119, 6, 0.1)',
-              transition: 'transform 0.2s',
+              boxShadow: filterTab === 'yellow' ? '0 4px 12px rgba(217, 119, 6, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              transition: 'all 0.2s ease',
               animationDelay: '200ms'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#854d0e' }}>IN PROCESS (&gt;15 Days)</span>
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                IN PROCESS (&gt;15 DAYS)
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#d97706', marginTop: '4px', lineHeight: 1.1 }}>
+                {yellowCount}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: '#b45309', marginTop: '6px', fontWeight: 600 }}>
+                On Schedule
+              </div>
+            </div>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#fef3c7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
               <Hourglass size={20} color="#d97706" />
             </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#d97706', marginTop: '0.4rem' }}>
-              {yellowCount}
-            </div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a16207' }}>On Schedule</span>
           </div>
 
-          {/* Card 4 */}
+          {/* Card 4: COMPLETED */}
           <div
             className="stat-card-animated"
             onClick={() => setFilterTab('green')}
             style={{
-              backgroundColor: '#f0fdf4',
-              border: filterTab === 'green' ? '2.5px solid #16a34a' : '1.5px solid #bbf7d0',
-              borderRadius: '12px',
-              padding: '1.1rem',
+              backgroundColor: '#ffffff',
+              border: filterTab === 'green' ? '2px solid #16a34a' : '1px solid #f1f5f9',
+              borderRadius: '14px',
+              padding: '1.2rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(22, 163, 74, 0.1)',
-              transition: 'transform 0.2s',
+              boxShadow: filterTab === 'green' ? '0 4px 12px rgba(22, 163, 74, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              transition: 'all 0.2s ease',
               animationDelay: '250ms'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#166534' }}>COMPLETED POs</span>
-              <CheckCircle2 size={22} color="#16a34a" />
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                COMPLETED POS
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a', marginTop: '4px', lineHeight: 1.1 }}>
+                {greenCount}
+              </div>
+              <div style={{ fontSize: '0.76rem', color: '#15803d', marginTop: '6px', fontWeight: 600 }}>
+                Gate Entry Received
+              </div>
             </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#16a34a', marginTop: '0.4rem' }}>
-              {greenCount}
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              backgroundColor: '#dcfce7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <CheckCircle2 size={20} color="#16a34a" />
             </div>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#15803d' }}>Gate Entry Received</span>
           </div>
         </div>
 
         {/* Desktop Search & Filters Bar */}
-        <div className="filter-bar-animated" style={{
+        <div style={{
           backgroundColor: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '12px',
-          padding: '1rem',
-          marginBottom: '1.5rem',
+          borderRadius: '14px',
+          padding: '0.85rem 1.25rem',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          marginBottom: '1.25rem',
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '1rem',
+          gap: '0.85rem',
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
           {/* Search Input */}
-          <div style={{ position: 'relative', minWidth: '260px', flex: 1 }}>
-            <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            flex: '1 1 260px',
+            maxWidth: '380px',
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '0 0.85rem',
+            height: '40px'
+          }}>
+            <Search size={16} color="#64748b" />
             <input
               type="text"
-              className="form-input"
-              placeholder="Search PO No., Supplier Name, Phone..."
+              placeholder="Search PO #, supplier, phone..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: '36px' }}
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                width: '100%',
+                fontSize: '0.86rem',
+                color: '#1e293b'
+              }}
             />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
           </div>
 
           {/* Supplier Dropdown */}
-          <div style={{ minWidth: '200px' }}>
+          <div style={{ minWidth: '220px' }}>
             <select
-              className="form-input"
               value={selectedSupplier}
               onChange={e => setSelectedSupplier(e.target.value)}
+              style={{
+                width: '100%',
+                height: '40px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc',
+                padding: '0 0.85rem',
+                fontSize: '0.84rem',
+                color: '#1e293b',
+                outline: 'none',
+                fontWeight: 500
+              }}
             >
-              <option value="">All Vendors / Suppliers ({suppliers.length})</option>
+              <option value="">All Suppliers ({suppliers.length})</option>
               {suppliers.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Status Filter Buttons */}
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          {/* Status Filter Buttons & Reset */}
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
             {[
-              { id: 'all', label: 'All', count: totalCount },
-              { id: 'red', label: '🔴 Red Warning', count: redCount },
+              { id: 'all', label: 'All Orders', count: totalCount },
+              { id: 'red', label: '🔴 Red Alert', count: redCount },
               { id: 'yellow', label: '🟡 In Process', count: yellowCount },
               { id: 'green', label: '🟢 Completed', count: greenCount },
-            ].map(t => (
+            ].map(t => {
+              const isActive = filterTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setFilterTab(t.id)}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    border: isActive ? '1px solid #8b5a2b' : '1px solid #e2e8f0',
+                    backgroundColor: isActive ? '#8b5a2b' : '#ffffff',
+                    color: isActive ? '#ffffff' : '#64748b',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: isActive ? '0 2px 5px rgba(139, 90, 43, 0.2)' : 'none'
+                  }}
+                >
+                  {t.label} ({t.count})
+                </button>
+              );
+            })}
+
+            {(search || selectedSupplier || filterTab !== 'all') && (
               <button
-                key={t.id}
-                onClick={() => setFilterTab(t.id)}
+                onClick={() => { setSearch(''); setSelectedSupplier(''); setFilterTab('all'); }}
                 style={{
-                  padding: '6px 12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#ffffff',
+                  color: '#64748b',
+                  padding: '0.4rem 0.75rem',
                   borderRadius: '8px',
                   fontSize: '0.8rem',
-                  fontWeight: 700,
-                  border: filterTab === t.id ? '2px solid #8b5a2b' : '1px solid #cbd5e1',
-                  backgroundColor: filterTab === t.id ? '#8b5a2b' : '#ffffff',
-                  color: filterTab === t.id ? '#ffffff' : '#475569',
+                  fontWeight: 600,
                   cursor: 'pointer',
                   transition: 'all 0.15s'
                 }}
+                title="Reset all filters"
               >
-                {t.label} ({t.count})
+                <RotateCcw size={13} /> Reset
               </button>
-            ))}
+            )}
           </div>
         </div>
 
@@ -641,7 +856,7 @@ export default function VendorManagement() {
                     backgroundColor: '#ffffff',
                     border: '1px solid #e2e8f0',
                     borderRadius: '12px',
-                    padding: '0.95rem 1.25rem',
+                    padding: '0.85rem 1.25rem',
                     boxShadow: '0 2px 6px rgba(0,0,0,0.015)',
                     transition: 'all 0.15s ease-in-out',
                     animationDelay: `${Math.min(idx * 30, 300)}ms`
@@ -655,7 +870,7 @@ export default function VendorManagement() {
                     flexWrap: 'wrap'
                   }}>
                     {/* Col 1: Status Circle Dot & PO Number */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '120px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '125px' }}>
                       <div style={{
                         width: '12px',
                         height: '12px',
@@ -664,14 +879,14 @@ export default function VendorManagement() {
                         boxShadow: `0 0 0 3px ${dotBg}`,
                         flexShrink: 0
                       }} title={badgeText} />
-                      <strong style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1e293b' }}>
+                      <strong style={{ fontSize: '0.94rem', fontWeight: 800, color: '#1e293b' }}>
                         {po.po_number}
                       </strong>
                     </div>
 
                     {/* Col 2: Vendor / Supplier & Phone */}
                     <div style={{ minWidth: '180px', flex: '1 1 180px' }}>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e293b' }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>
                         {po.supplier_detail?.name || '—'}
                       </div>
                       <div style={{ fontSize: '0.78rem', color: '#e11d48', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 500 }}>
@@ -687,36 +902,36 @@ export default function VendorManagement() {
                     </div>
 
                     {/* Col 3: Issued & Due Dates */}
-                    <div style={{ minWidth: '220px', display: 'flex', alignItems: 'center', gap: '1.5rem', fontSize: '0.84rem' }}>
+                    <div style={{ minWidth: '220px', display: 'flex', alignItems: 'center', gap: '1.25rem', fontSize: '0.84rem' }}>
                       <div>
                         <span style={{ color: '#64748b', fontWeight: 500 }}>Issued: </span>
-                        <span style={{ color: '#334155', fontWeight: 600 }}>{po.po_date || '—'}</span>
+                        <span style={{ color: '#334155', fontWeight: 600, whiteSpace: 'nowrap' }}>{formatDisplayDate(po.po_date)}</span>
                       </div>
                       <div>
                         <span style={{ color: '#64748b', fontWeight: 500 }}>Due: </span>
-                        <strong style={{ color: isRed ? '#dc2626' : '#1e293b', fontWeight: 800 }}>{po.due_date || 'Not set'}</strong>
+                        <strong style={{ color: isRed ? '#dc2626' : '#1e293b', fontWeight: 800, whiteSpace: 'nowrap' }}>{formatDisplayDate(po.due_date)}</strong>
                       </div>
                     </div>
 
                     {/* Col 4: Progress Bar & Total Amount */}
-                    <div style={{ minWidth: '260px', flex: '1 1 260px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
+                    <div style={{ minWidth: '240px', flex: '1 1 240px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>
                         <span>Received</span>
                         <span style={{ fontWeight: 700, color: '#1e293b' }}>{totalReceived} / {totalOrdered} pcs ({progressPct}%)</span>
                       </div>
-                      <div style={{ width: '100%', height: '7px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
                         <div
                           style={{
                             width: `${progressPct}%`,
                             height: '100%',
-                            backgroundColor: dotColor,
+                            backgroundColor: progressPct === 100 ? '#10b981' : isRed ? '#ef4444' : '#8b5a2b',
                             borderRadius: '999px',
                             transition: 'width 0.4s ease'
                           }}
                         />
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
-                        Total Amount: <strong style={{ color: '#1e293b', fontWeight: 800 }}>{fmtINR(po.total_amount)}</strong>
+                      <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '4px' }}>
+                        Total Amount: <strong style={{ color: '#1e293b', fontWeight: 700 }}>{fmtINR(po.total_amount)}</strong>
                       </div>
                     </div>
 
@@ -741,11 +956,12 @@ export default function VendorManagement() {
                           backgroundColor: isRed ? '#fef2f2' : '#fff7ed',
                           color: isRed ? '#dc2626' : '#c2410c',
                           border: isRed ? '1px solid #fecaca' : '1px solid #ffedd5',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
                         }}
                         title="Extend due date by +5 days"
                       >
-                        +5 Days
+                        <Clock size={12} /> +5 Days
                       </button>
 
                       <button
@@ -755,18 +971,18 @@ export default function VendorManagement() {
                           backgroundColor: '#ffffff',
                           border: '1px solid #cbd5e1',
                           borderRadius: '8px',
-                          padding: '0.4rem 0.85rem',
-                          fontSize: '0.8rem',
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.78rem',
                           fontWeight: 600,
                           color: '#334155',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '0.4rem',
+                          gap: '0.35rem',
                           cursor: 'pointer',
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         {isExpanded ? 'Hide Details' : 'View Items & Logs'}
                       </button>
                     </div>
@@ -842,7 +1058,7 @@ export default function VendorManagement() {
                                 <tr key={rcpt.id}>
                                   <td style={{ fontWeight: 800, color: '#059669' }}>{rcpt.grn_number || 'GRN-PARTIAL'}</td>
                                   <td style={{ fontWeight: 700 }}>Round #{rcpt.round_number || 1}</td>
-                                  <td>{rcpt.receipt_date}</td>
+                                  <td style={{ whiteSpace: 'nowrap' }}>{formatDisplayDate(rcpt.receipt_date)}</td>
                                   <td style={{ fontWeight: 600 }}>{rcpt.supplier_invoice_no || rcpt.challan_no || '—'}</td>
                                   <td>{rcpt.vehicle_no || '—'}</td>
                                   <td style={{ textAlign: 'right', fontWeight: 800, color: '#16a34a' }}>{rcpt.passed_qty} {rcpt.po_item_unit || 'pcs'}</td>
@@ -886,7 +1102,7 @@ export default function VendorManagement() {
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#334155' }}>
-                                <span>➕ Extended +{log.days_added} Days (New Due Date: {log.new_due_date})</span>
+                                <span>➕ Extended +{log.days_added} Days (New Due Date: {formatDisplayDate(log.new_due_date)})</span>
                                 <span style={{ fontSize: '0.74rem', color: '#64748b' }}>{new Date(log.created_at).toLocaleString()}</span>
                               </div>
                               <div style={{ color: '#475569', marginTop: '4px' }}>

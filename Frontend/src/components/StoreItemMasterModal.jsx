@@ -18,6 +18,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
     remark: '',
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +63,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
       setImagePreview(null);
     }
     setError(null);
+    setFormErrors({});
   }, [item, isOpen, categoryList]);
 
   if (!isOpen) return null;
@@ -72,20 +74,95 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
       ...prev,
       [name]: value
     }));
+    if (formErrors[name]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[name];
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleCategorySuccess = (newCategory) => {
     setCategoryList(prev => [...prev, newCategory]);
     setFormData(prev => ({ ...prev, category: newCategory.id }));
+    if (formErrors.category) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.category;
+        return copy;
+      });
+    }
     if (onCategoryAdded) {
       onCategoryAdded(newCategory);
     }
   };
 
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.item_code || !formData.item_code.trim()) {
+      errors.item_code = 'Item code is required.';
+    } else if (formData.item_code.trim().length > 50) {
+      errors.item_code = 'Item code cannot exceed 50 characters.';
+    } else if (/([^\d])\1{4,}/i.test(formData.item_code.trim())) {
+      errors.item_code = 'Item code contains invalid repetitive characters.';
+    }
+
+    if (!formData.item_name || !formData.item_name.trim()) {
+      errors.item_name = 'Item name is required.';
+    } else if (formData.item_name.trim().length > 200) {
+      errors.item_name = 'Item name cannot exceed 200 characters.';
+    }
+
+    if (!formData.unit) {
+      errors.unit = 'Unit of measurement is required.';
+    }
+
+    const baseRate = parseFloat(formData.base_rate);
+    if (formData.base_rate === '' || formData.base_rate === null || formData.base_rate === undefined || isNaN(baseRate)) {
+      errors.base_rate = 'Master base rate is required.';
+    } else if (baseRate < 0) {
+      errors.base_rate = 'Base rate cannot be negative.';
+    }
+
+    if (formData.current_rate !== '' && formData.current_rate !== null && formData.current_rate !== undefined) {
+      const curRate = parseFloat(formData.current_rate);
+      if (isNaN(curRate) || curRate < 0) {
+        errors.current_rate = 'Current rate cannot be negative.';
+      }
+    }
+
+    if (formData.reorder_level !== '' && formData.reorder_level !== null && formData.reorder_level !== undefined) {
+      const rl = parseFloat(formData.reorder_level);
+      if (isNaN(rl) || rl < 0) {
+        errors.reorder_level = 'Reorder level cannot be negative.';
+      }
+    }
+
+    if (formData.weight !== '' && formData.weight !== null && formData.weight !== undefined) {
+      const w = parseFloat(formData.weight);
+      if (isNaN(w) || w < 0) {
+        errors.weight = 'Weight cannot be negative.';
+      }
+    }
+
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg || 'Please resolve the highlighted errors below.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setFormErrors({});
 
     try {
       const data = new FormData();
@@ -113,12 +190,18 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
       onClose();
     } catch (err) {
       console.error('Failed to save store item master:', err);
-      setError(
-        err.response?.data?.error ||
-        err.response?.data?.detail ||
-        err.response?.data?.item_code?.[0] ||
-        'Failed to save store item master.'
-      );
+      const resData = err.response?.data;
+      if (resData && typeof resData === 'object') {
+        const backendErrors = {};
+        Object.entries(resData).forEach(([k, v]) => {
+          backendErrors[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+        setFormErrors(backendErrors);
+        const firstErr = Object.values(backendErrors)[0];
+        setError(firstErr || 'Failed to save store item master.');
+      } else {
+        setError(err.message || 'Failed to save store item master.');
+      }
     } finally {
       setLoading(false);
     }
@@ -248,7 +331,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
           </div>
 
           {/* Modal Body Form */}
-          <form className="simm-body" onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form className="simm-body" noValidate onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {error && (
               <div style={{
                 padding: '0.75rem 1rem',
@@ -268,7 +351,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
 
             <div className="simm-grid-2">
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.item_code ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Item Code *
                 </label>
                 <input
@@ -281,7 +364,8 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.item_code ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.item_code ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     outline: 'none',
                     fontWeight: 600,
@@ -289,9 +373,15 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.item_code && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.item_code}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.item_name ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Item Name *
                 </label>
                 <input
@@ -305,19 +395,26 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.item_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.item_name ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     outline: 'none',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.item_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.item_name}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="simm-grid-3">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', margin: 0 }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: formErrors.category ? '#dc2626' : '#334155', margin: 0 }}>
                     Category
                   </label>
                   <button
@@ -347,9 +444,9 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.category ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
                     fontSize: '0.9rem',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: formErrors.category ? '#fff5f5' : '#ffffff',
                     boxSizing: 'border-box'
                   }}
                 >
@@ -358,9 +455,15 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+                {formErrors.category && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.category}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.unit ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Unit of Measure *
                 </label>
                 <select
@@ -372,9 +475,9 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.unit ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
                     fontSize: '0.9rem',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: formErrors.unit ? '#fff5f5' : '#ffffff',
                     boxSizing: 'border-box'
                   }}
                 >
@@ -387,9 +490,15 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                   <option value="meter">meter (Meters)</option>
                   <option value="nos">nos (Numbers)</option>
                 </select>
+                {formErrors.unit && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.unit}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.base_rate ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Master Base Rate (₹) *
                 </label>
                 <input
@@ -403,12 +512,19 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     fontWeight: 600,
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.base_rate && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.base_rate}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -436,7 +552,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.weight ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Weight / Unit (kg)
                 </label>
                 <input
@@ -450,14 +566,21 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.weight ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.weight ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.weight && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.weight}</span>
+                  </div>
+                )}
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.reorder_level ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Reorder Level Threshold
                 </label>
                 <input
@@ -470,11 +593,18 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.reorder_level ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.reorder_level ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.reorder_level && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.reorder_level}</span>
+                  </div>
+                )}
               </div>
             </div>
 

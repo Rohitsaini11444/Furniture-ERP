@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText, Building2 } from 'lucide-react';
+import { X, Search, ArrowLeft, ShoppingBag, Package, CheckCircle, Clock, Edit, ChevronRight, Layers, Receipt, ClipboardList, FileText, Building2, AlertCircle, Loader2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_STYLE, ORDER_OPTIONS_DATE_PINO, ORDER_OPTIONS_DATE_PONO, ORDER_OPTIONS_DATE_NAME } from '../components/OrderBySelect';
@@ -70,6 +70,9 @@ function Buyers() {
     address: ''
   };
   const [formData, setFormData] = useState(emptyForm);
+  const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toastNotification, setToastNotification] = useState(null);
 
   const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
   useEffect(() => {
@@ -111,40 +114,175 @@ function Buyers() {
   }, [debouncedSearch, ordering]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name] || formErrors.general) {
+      setFormErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        delete next.general;
+        return next;
+      });
+    }
   };
 
   const openCreateModal = () => {
     setFormData(emptyForm);
+    setFormErrors({});
     setEditingId(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (buyer) => {
     setFormData({
-      name: buyer.name,
-      code: buyer.code,
+      name: buyer.name || '',
+      code: buyer.code || '',
       email: buyer.email || '',
       phone: buyer.phone || '',
       address: buyer.address || ''
     });
+    setFormErrors({});
     setEditingId(buyer.id);
     setIsModalOpen(true);
   };
 
+  // Client-side validation before hitting API
+  const validateForm = () => {
+    const errors = {};
+    const name = (formData.name || '').trim();
+    const code = (formData.code || '').trim();
+    const email = (formData.email || '').trim();
+    const phone = (formData.phone || '').trim();
+
+    // 1. Buyer Name
+    if (!name) {
+      errors.name = 'Buyer name is required.';
+    } else if (name.length < 2) {
+      errors.name = 'Buyer name must be at least 2 characters.';
+    } else if (name.length > 100) {
+      errors.name = 'Buyer name cannot exceed 100 characters.';
+    } else {
+      const alphaCount = (name.match(/[a-zA-Z]/g) || []).length;
+      if (alphaCount < 2) {
+        errors.name = 'Buyer name must contain at least 2 letters.';
+      } else if (!/^[A-Za-z0-9\s&.,'\-/( )]+$/.test(name)) {
+        errors.name = 'Buyer name contains invalid characters. Only letters, numbers, spaces, and standard business symbols (&, ., ,, -, \', /, (, )) are allowed.';
+      } else if (/(.)\1{3,}/.test(name)) {
+        errors.name = 'Buyer name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).';
+      } else if (name.split(/\s+/).some(w => w.length > 30)) {
+        errors.name = 'Buyer name contains an excessively long continuous word.';
+      } else if (/([A-Za-z0-9]{2,3})\1{3,}/.test(name)) {
+        errors.name = 'Buyer name appears to be repetitive gibberish.';
+      }
+    }
+
+    // 2. Buyer Code
+    if (!code) {
+      errors.code = 'Buyer code is required.';
+    } else if (code.length < 2) {
+      errors.code = 'Buyer code must be at least 2 characters.';
+    } else if (code.length > 30) {
+      errors.code = 'Buyer code cannot exceed 30 characters.';
+    } else if (!/^[A-Za-z0-9\-_/]+$/.test(code)) {
+      errors.code = 'Buyer code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).';
+    }
+
+    // 3. Email (optional)
+    if (email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.email = 'Enter a valid email address.';
+      }
+    }
+
+    // 4. Phone (optional)
+    if (phone) {
+      if (!/^\+?[0-9\s\-()]+$/.test(phone)) {
+        errors.phone = "Phone can only contain digits, spaces, hyphens, parentheses, and an optional '+'.";
+      } else {
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 7 || digits.length > 15) {
+          errors.phone = 'Please enter a valid phone number (7 to 15 digits, e.g. +91 98765 43210).';
+        } else if (/^(.)\1+$/.test(digits)) {
+          errors.phone = 'Phone number cannot consist of identical repeating digits.';
+        }
+      }
+    }
+
+    return errors;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+    setFormErrors({});
+
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    const payload = {
+      ...formData,
+      name: formData.name.trim(),
+      code: formData.code.trim().toUpperCase(),
+      email: formData.email ? formData.email.trim().toLowerCase() : null,
+      phone: formData.phone ? formData.phone.trim() : null,
+      address: formData.address ? formData.address.trim() : ''
+    };
+
     const request = editingId
-      ? api.put(`/buyers/${editingId}/`, formData)
-      : api.post('/buyers/', formData);
+      ? api.put(`/buyers/${editingId}/`, payload)
+      : api.post('/buyers/', payload);
 
     request
       .then(() => {
         setIsModalOpen(false);
         setEditingId(null);
+        setFormErrors({});
+        setToastNotification({
+          type: 'success',
+          text: editingId ? 'Buyer details updated successfully!' : 'New buyer created successfully!'
+        });
+        setTimeout(() => setToastNotification(null), 4000);
         fetchBuyers();
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error("Buyer submit error:", err);
+        const serverData = err.response?.data;
+        const newErrors = {};
+
+        if (serverData && typeof serverData === 'object') {
+          // Map backend field errors to respective form inputs
+          ['name', 'code', 'email', 'phone', 'address'].forEach(field => {
+            if (serverData[field]) {
+              newErrors[field] = Array.isArray(serverData[field])
+                ? serverData[field].join(' ')
+                : String(serverData[field]);
+            }
+          });
+
+          // Non-field / general errors
+          if (serverData.non_field_errors) {
+            newErrors.general = Array.isArray(serverData.non_field_errors)
+              ? serverData.non_field_errors.join(' ')
+              : String(serverData.non_field_errors);
+          } else if (serverData.detail) {
+            newErrors.general = String(serverData.detail);
+          } else if (serverData.error) {
+            newErrors.general = String(serverData.error);
+          } else if (Object.keys(newErrors).length === 0) {
+            newErrors.general = 'Failed to save buyer. Please verify the entered information.';
+          }
+        } else {
+          newErrors.general = 'An unexpected server error occurred. Please try again.';
+        }
+
+        setFormErrors(newErrors);
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
   };
 
   const openDeleteModal = (buyer) => {
@@ -162,9 +300,21 @@ function Buyers() {
         setDeleteBuyerId(null);
         setDeleteBuyerName('');
         setDeleteNote('');
+        setToastNotification({
+          type: 'success',
+          text: 'Buyer archived/deleted successfully.'
+        });
+        setTimeout(() => setToastNotification(null), 4000);
         fetchBuyers();
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        setToastNotification({
+          type: 'error',
+          text: err.response?.data?.error || err.response?.data?.detail || 'Failed to delete buyer.'
+        });
+        setTimeout(() => setToastNotification(null), 5000);
+      });
   };
 
   useEffect(() => {
@@ -1009,6 +1159,37 @@ function Buyers() {
         </>
       )}
 
+      {/* Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '1.5rem',
+          right: '1.5rem',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '12px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+          backgroundColor: toastNotification.type === 'success' ? '#f0fdf4' : '#fef2f2',
+          border: `1.5px solid ${toastNotification.type === 'success' ? '#86efac' : '#fca5a5'}`,
+          color: toastNotification.type === 'success' ? '#166534' : '#991b1b',
+          fontSize: '0.92rem',
+          fontWeight: 600,
+          animation: 'fadeSlideDown 0.2s ease'
+        }}>
+          {toastNotification.type === 'success' ? <CheckCircle size={18} color="#16a34a" /> : <AlertCircle size={18} color="#dc2626" />}
+          <span>{toastNotification.text}</span>
+          <button
+            onClick={() => setToastNotification(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', marginLeft: '0.5rem', padding: 0 }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Modal */}
       {isModalOpen && (
         <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
@@ -1018,30 +1199,147 @@ function Buyers() {
               <button className="modal-close" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
             </div>
             <div className="modal-body">
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Buyer Name *</label>
-                  <input required type="text" name="name" className="form-input" value={formData.name} onChange={handleChange} placeholder="e.g. Acme Furniture Inc" />
+              {formErrors.general && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  padding: '0.75rem 1rem',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '10px',
+                  color: '#dc2626',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  marginBottom: '1.25rem'
+                }}>
+                  <AlertCircle size={18} style={{ flexShrink: 0 }} />
+                  <span>{formErrors.general}</span>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Buyer Code *</label>
-                  <input required type="text" name="code" className="form-input" value={formData.code} onChange={handleChange} placeholder="e.g. ACM-01" />
+              )}
+              <form onSubmit={handleSubmit} noValidate>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.35rem', display: 'block' }}>Buyer Name *</label>
+                  <input
+                    type="text"
+                    name="name"
+                    className="form-input"
+                    value={formData.name}
+                    onChange={handleChange}
+                    placeholder="e.g. Acme Furniture Inc"
+                    style={{
+                      borderColor: formErrors.name ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.name ? '#fff5f5' : undefined
+                    }}
+                  />
+                  {formErrors.name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.name}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input type="email" name="email" className="form-input" value={formData.email} onChange={handleChange} placeholder="e.g. buyer@acme.com" />
+
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.35rem', display: 'block' }}>Buyer Code *</label>
+                  <input
+                    type="text"
+                    name="code"
+                    className="form-input"
+                    value={formData.code}
+                    onChange={handleChange}
+                    placeholder="e.g. ACM-01"
+                    style={{
+                      borderColor: formErrors.code ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.code ? '#fff5f5' : undefined
+                    }}
+                  />
+                  {formErrors.code && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.code}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Phone</label>
-                  <input type="text" name="phone" className="form-input" value={formData.phone} onChange={handleChange} placeholder="e.g. +1 555-0199" />
+
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.35rem', display: 'block' }}>Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-input"
+                    value={formData.email}
+                    onChange={handleChange}
+                    placeholder="e.g. buyer@acme.com"
+                    style={{
+                      borderColor: formErrors.email ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.email ? '#fff5f5' : undefined
+                    }}
+                  />
+                  {formErrors.email && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.email}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Address</label>
-                  <textarea name="address" className="form-input" rows="3" value={formData.address} onChange={handleChange} placeholder="Billing/Shipping Address..."></textarea>
+
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.35rem', display: 'block' }}>Phone</label>
+                  <input
+                    type="text"
+                    name="phone"
+                    className="form-input"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="e.g. +1 555-0199 or +91 98765 43210"
+                    style={{
+                      borderColor: formErrors.phone ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.phone ? '#fff5f5' : undefined
+                    }}
+                  />
+                  {formErrors.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.phone}</span>
+                    </div>
+                  )}
                 </div>
+
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: '0.35rem', display: 'block' }}>Address</label>
+                  <textarea
+                    name="address"
+                    className="form-input"
+                    rows="3"
+                    value={formData.address}
+                    onChange={handleChange}
+                    placeholder="Billing/Shipping Address..."
+                    style={{
+                      borderColor: formErrors.address ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.address ? '#fff5f5' : undefined,
+                      resize: 'vertical'
+                    }}
+                  ></textarea>
+                  {formErrors.address && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.address}</span>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                   <button type="button" className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                  <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Buyer'}</button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={isSubmitting}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: isSubmitting ? 0.7 : 1 }}
+                  >
+                    {isSubmitting && <Loader2 size={16} className="spin" />}
+                    {editingId ? 'Save Changes' : 'Create Buyer'}
+                  </button>
                 </div>
               </form>
             </div>

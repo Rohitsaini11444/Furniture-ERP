@@ -158,7 +158,7 @@ function Finishing() {
   // Modal / Prompt confirmation states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [formErrors, setFormErrors] = useState({});
 
   // Multi-Selection, Excel Export & Import states
   const [selectionMode, setSelectionMode] = useState(false);
@@ -342,15 +342,83 @@ function Finishing() {
     }
   }, [id, location.state, navigate]);
 
-  // ── Form Handlers ──────────────────────────────────────────────────────────
+  // ── Form Validation & Handlers ──────────────────────────────────────────
+  const validateForm = () => {
+    const errors = {};
+    const name = (formData.name || '').trim();
+    const finish_code = (formData.finish_code || '').trim();
+    const color = (formData.color || '').trim();
+    const wood_type = (formData.wood_type || '').trim();
+
+    // 1. Finish Name
+    if (!name) {
+      errors.name = 'Finish name is required.';
+    } else if (name.length < 2) {
+      errors.name = 'Finish name must be at least 2 characters.';
+    } else if (name.length > 100) {
+      errors.name = 'Finish name cannot exceed 100 characters.';
+    } else {
+      const alphaCount = (name.match(/[a-zA-Z]/g) || []).length;
+      if (alphaCount < 2) {
+        errors.name = 'Finish name must contain at least 2 letters.';
+      } else if (!/^[A-Za-z0-9\s&.,'\-/( )]+$/.test(name)) {
+        errors.name = 'Finish name contains invalid characters. Use letters, numbers, spaces, and standard symbols (&, ., ,, -, \', /, (, )).';
+      } else if (/(.)\1{3,}/.test(name)) {
+        errors.name = 'Finish name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).';
+      } else if (name.split(/\s+/).some(w => w.length > 30)) {
+        errors.name = 'Finish name contains an excessively long continuous word.';
+      } else if (/([A-Za-z0-9]{2,3})\1{3,}/.test(name)) {
+        errors.name = 'Finish name appears to be repetitive gibberish.';
+      }
+    }
+
+    // 2. Finish Code
+    if (!finish_code) {
+      errors.finish_code = 'Finish code is required.';
+    } else if (finish_code.length < 2) {
+      errors.finish_code = 'Finish code must be at least 2 characters.';
+    } else if (finish_code.length > 30) {
+      errors.finish_code = 'Finish code cannot exceed 30 characters.';
+    } else if (!/^[A-Za-z0-9\-_/]+$/.test(finish_code)) {
+      errors.finish_code = 'Finish code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).';
+    } else if (/(.)\1{3,}/.test(finish_code)) {
+      errors.finish_code = 'Finish code cannot contain repetitive characters (e.g. 4 identical characters in a row).';
+    }
+
+    // 3. Color (optional)
+    if (color) {
+      if (color.length < 2) {
+        errors.color = 'Color must be at least 2 characters.';
+      } else if (color.length > 50) {
+        errors.color = 'Color cannot exceed 50 characters.';
+      } else {
+        const alphaCount = (color.match(/[a-zA-Z]/g) || []).length;
+        if (alphaCount < 2) {
+          errors.color = 'Color must contain at least 2 letters.';
+        } else if (!/^[A-Za-z\s\-/,'()]+$/.test(color)) {
+          errors.color = "Color can only contain letters, spaces, and hyphens (e.g. 'Walnut', 'Smokey Grey', 'Antique White'). Digits are not allowed.";
+        } else if (/(.)\1{3,}/.test(color)) {
+          errors.color = 'Color cannot contain repetitive characters.';
+        }
+      }
+    }
+
+    return errors;
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (formError) setFormError('');
+    if (formErrors[name] || formErrors.general) {
+      setFormErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        delete next.general;
+        return next;
+      });
+    }
     if (!editingId) setIsDirty(true); // mark dirty on new forms
   };
-
 
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
@@ -363,7 +431,14 @@ function Finishing() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setFormError('');
+    setFormErrors({});
+
+    // Client-side pre-validation
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      return;
+    }
 
     // Pre-check for duplicate finish code
     const code = formData.finish_code?.trim();
@@ -374,7 +449,7 @@ function Finishing() {
         String(f.id) !== String(editingId || '')
       );
       if (duplicate) {
-        setFormError('Finish Code of this finish is already present.');
+        setFormErrors({ finish_code: 'Finish Code of this finish is already present.' });
         return;
       }
     }
@@ -385,7 +460,7 @@ function Finishing() {
       const submitData = new FormData();
       Object.entries(formData).forEach(([key, val]) => {
         if (val !== undefined && val !== null) {
-          submitData.append(key, val);
+          submitData.append(key, typeof val === 'string' ? val.trim() : val);
         }
       });
 
@@ -409,16 +484,34 @@ function Finishing() {
       fetchFinishes();
     } catch (err) {
       console.error('Failed to save finish:', err);
-      if (err.response?.data?.finish_code) {
-        const msg = Array.isArray(err.response.data.finish_code)
-          ? err.response.data.finish_code[0]
-          : err.response.data.finish_code;
-        setFormError(msg || 'Finish Code of this finish is already present.');
-      } else if (err.response?.data?.detail) {
-        setFormError(err.response.data.detail);
+      const serverData = err.response?.data;
+      const newErrors = {};
+
+      if (serverData && typeof serverData === 'object') {
+        ['name', 'finish_code', 'color', 'wood_type', 'image'].forEach(field => {
+          if (serverData[field]) {
+            newErrors[field] = Array.isArray(serverData[field])
+              ? serverData[field].join(' ')
+              : String(serverData[field]);
+          }
+        });
+
+        if (serverData.non_field_errors) {
+          newErrors.general = Array.isArray(serverData.non_field_errors)
+            ? serverData.non_field_errors.join(' ')
+            : String(serverData.non_field_errors);
+        } else if (serverData.detail) {
+          newErrors.general = String(serverData.detail);
+        } else if (serverData.error) {
+          newErrors.general = String(serverData.error);
+        } else if (Object.keys(newErrors).length === 0) {
+          newErrors.general = 'Failed to save finish. Please check the entered data.';
+        }
       } else {
-        setFormError('Failed to save finish. Please try again.');
+        newErrors.general = 'Failed to save finish. Please try again.';
       }
+
+      setFormErrors(newErrors);
     } finally {
       setSubmitting(false);
     }
@@ -496,9 +589,9 @@ function Finishing() {
               </h2>
             </div>
 
-            <form id="finish-detail-form" onSubmit={handleSubmit}>
+            <form id="finish-detail-form" onSubmit={handleSubmit} noValidate>
               {/* Error Alert Banner */}
-              {formError && (
+              {formErrors.general && (
                 <div style={{
                   backgroundColor: '#fef2f2',
                   border: '1.5px solid #fca5a5',
@@ -513,7 +606,7 @@ function Finishing() {
                   fontWeight: 600
                 }}>
                   <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
-                  <span>{formError}</span>
+                  <span>{formErrors.general}</span>
                 </div>
               )}
 
@@ -556,27 +649,45 @@ function Finishing() {
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 650 }}>Finish Name *</label>
                   <input
-                    required
                     type="text"
                     name="name"
                     className="form-input"
                     placeholder="e.g. Smokey Grey PU"
                     value={formData.name}
                     onChange={handleInputChange}
+                    style={{
+                      borderColor: formErrors.name ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.name ? '#fff5f5' : undefined
+                    }}
                   />
+                  {formErrors.name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.name}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 650 }}>Finish Code *</label>
                   <input
-                    required
                     type="text"
                     name="finish_code"
                     className="form-input"
                     placeholder="e.g. FIN-109"
                     value={formData.finish_code}
                     onChange={handleInputChange}
+                    style={{
+                      borderColor: formErrors.finish_code ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.finish_code ? '#fff5f5' : undefined
+                    }}
                   />
+                  {formErrors.finish_code && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.finish_code}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -588,7 +699,17 @@ function Finishing() {
                     placeholder="e.g. Smokey Grey"
                     value={formData.color}
                     onChange={handleInputChange}
+                    style={{
+                      borderColor: formErrors.color ? '#dc2626' : undefined,
+                      backgroundColor: formErrors.color ? '#fff5f5' : undefined
+                    }}
                   />
+                  {formErrors.color && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.color}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -603,6 +724,12 @@ function Finishing() {
                     ]}
                     placeholder="Select Wood Type..."
                   />
+                  {formErrors.wood_type && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.wood_type}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

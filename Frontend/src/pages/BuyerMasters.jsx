@@ -15,29 +15,152 @@ import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 
 
-function SizeGroup({ label, prefix, values, onChange }) {
+function SizeGroup({ label, prefix, values, onChange, errors = {} }) {
   return (
     <div className="size-group">
       <label className="form-label">{label}</label>
       <div className="size-inputs">
-        {['length', 'breadth', 'height'].map(dim => (
-          <div key={dim} className="size-field">
-            <span className="size-dim-label">{dim[0].toUpperCase()}</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="form-input"
-              placeholder={`${dim.charAt(0).toUpperCase() + dim.slice(1)} cm`}
-              value={values[`${prefix}_${dim}`] || ''}
-              onChange={e => onChange(`${prefix}_${dim}`, e.target.value)}
-            />
-          </div>
-        ))}
+        {['length', 'breadth', 'height'].map(dim => {
+          const fieldKey = `${prefix}_${dim}`;
+          const hasErr = !!errors[fieldKey];
+          return (
+            <div key={dim} className="size-field">
+              <span className="size-dim-label">{dim[0].toUpperCase()}</span>
+              <input
+                type="number"
+                min="0"
+                max="99999999.99"
+                step="0.01"
+                className="form-input"
+                style={{
+                  borderColor: hasErr ? '#dc2626' : undefined,
+                  backgroundColor: hasErr ? '#fff5f5' : undefined
+                }}
+                placeholder={`${dim.charAt(0).toUpperCase() + dim.slice(1)} cm`}
+                value={values[fieldKey] || ''}
+                onChange={e => onChange(fieldKey, e.target.value)}
+              />
+            </div>
+          );
+        })}
       </div>
+      {['length', 'breadth', 'height'].some(dim => errors[`${prefix}_${dim}`]) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+          {['length', 'breadth', 'height'].map(dim => {
+            const fieldKey = `${prefix}_${dim}`;
+            if (!errors[fieldKey]) return null;
+            return (
+              <div key={dim} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem' }}>
+                <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                <span>{dim.charAt(0).toUpperCase() + dim.slice(1)}: {errors[fieldKey]}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
+
+const validateBuyerMaster = (data) => {
+  const errs = {};
+
+  // Buyer
+  if (!data.buyer) {
+    errs.buyer = 'Buyer selection is required.';
+  }
+
+  // Style No
+  const styleNo = data.style_no !== null && data.style_no !== undefined ? String(data.style_no).trim() : '';
+  if (!styleNo) {
+    errs.style_no = 'Style No. is required.';
+  } else if (styleNo.length > 100) {
+    errs.style_no = 'Style No. cannot exceed 100 characters.';
+  }
+
+  // Buyer Code
+  const buyerCode = data.buyer_code !== null && data.buyer_code !== undefined ? String(data.buyer_code).trim() : '';
+  if (!buyerCode) {
+    errs.buyer_code = 'Buyer code is required.';
+  } else if (buyerCode.length > 50) {
+    errs.buyer_code = 'Buyer code cannot exceed 50 characters.';
+  }
+
+  // Product Name
+  const prodName = data.product_name !== null && data.product_name !== undefined ? String(data.product_name).trim() : '';
+  if (!prodName) {
+    errs.product_name = 'Product name is required.';
+  } else if (prodName.length > 100) {
+    errs.product_name = 'Product name cannot exceed 100 characters.';
+  }
+
+  // Helper for decimal fields
+  const validateDecimal = (val, fieldName, label, maxWhole, maxDecimals, maxTotal) => {
+    if (val === '' || val === null || val === undefined) return;
+    const strVal = String(val).trim();
+    if (!strVal) return;
+    const num = Number(strVal);
+    if (isNaN(num)) {
+      errs[fieldName] = `${label} must be a valid number.`;
+      return;
+    }
+    if (num < 0) {
+      errs[fieldName] = `${label} cannot be negative.`;
+      return;
+    }
+    const parts = strVal.split('.');
+    const whole = parts[0].replace('-', '');
+    const decimals = parts[1] || '';
+    if (whole.length > maxWhole) {
+      errs[fieldName] = `${label} cannot exceed ${maxWhole} digits before decimal.`;
+    } else if (decimals.length > maxDecimals) {
+      errs[fieldName] = `${label} cannot have more than ${maxDecimals} decimal places.`;
+    } else if (whole.length + decimals.length > maxTotal) {
+      errs[fieldName] = `${label} cannot exceed ${maxTotal} digits in total.`;
+    }
+  };
+
+  // Price (USD) (max 10 whole, 2 decimals, max 12 total)
+  validateDecimal(data.price_usd, 'price_usd', 'Price (USD)', 10, 2, 12);
+
+  // Units
+  if (data.units !== '' && data.units !== null && data.units !== undefined) {
+    const uNum = Number(data.units);
+    if (isNaN(uNum) || !Number.isInteger(uNum)) {
+      errs.units = 'Units must be a valid whole number.';
+    } else if (uNum < 0) {
+      errs.units = 'Units cannot be negative.';
+    }
+  }
+
+  // Dimensions (cm) (max 8 whole, 2 decimals, max 10 total)
+  validateDecimal(data.size_length, 'size_length', 'Length', 8, 2, 10);
+  validateDecimal(data.size_breadth, 'size_breadth', 'Breadth', 8, 2, 10);
+  validateDecimal(data.size_height, 'size_height', 'Height', 8, 2, 10);
+
+  // CBM (max 6 whole, 4 decimals, max 10 total)
+  validateDecimal(data.cbm, 'cbm', 'CBM', 6, 4, 10);
+  validateDecimal(data.total_cbm, 'total_cbm', 'Total CBM', 8, 4, 12);
+
+  // Total Amount (max 12 whole, 2 decimals, max 14 total)
+  validateDecimal(data.total_amount, 'total_amount', 'Total Amount', 12, 2, 14);
+
+  // Financials (max 10 whole, 2 decimals, max 12 total)
+  validateDecimal(data.vendor_price, 'vendor_price', 'Vendor Price', 10, 2, 12);
+  validateDecimal(data.costing, 'costing', 'Costing', 10, 2, 12);
+  validateDecimal(data.purchase_price, 'purchase_price', 'Purchase Price', 10, 2, 12);
+
+  // Weights (max 8 whole, 2 decimals, max 10 total)
+  validateDecimal(data.net_weight, 'net_weight', 'Net Weight', 8, 2, 10);
+  validateDecimal(data.gross_weight, 'gross_weight', 'Gross Weight', 8, 2, 10);
+
+  // Box Dimensions (max 8 whole, 2 decimals, max 10 total)
+  validateDecimal(data.box_length, 'box_length', 'Box Length', 8, 2, 10);
+  validateDecimal(data.box_breadth, 'box_breadth', 'Box Breadth', 8, 2, 10);
+  validateDecimal(data.box_height, 'box_height', 'Box Height', 8, 2, 10);
+
+  return errs;
+};
 
 function BuyerMasters() {
   const { id, buyerId: paramBuyerId } = useParams();
@@ -306,6 +429,9 @@ function BuyerMasters() {
   const [materialsList, setMaterialsList] = useState(['']);
   const [finishesList, setFinishesList] = useState(['']);
   const [formError, setFormError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [toastNotification, setToastNotification] = useState(null);
 
   // ── Multi-Style Queue (new-form mode) ──
   const [selectedStyleIds, setSelectedStyleIds] = useState([]); // selected sample ids in multi-picker
@@ -459,6 +585,20 @@ function BuyerMasters() {
       }
       return next;
     });
+    setStyleQueue(prev => {
+      const next = [...prev];
+      const item = next[activeStyleIdx];
+      if (item && item.fieldErrors && item.fieldErrors[name]) {
+        const nextErrs = { ...item.fieldErrors };
+        delete nextErrs[name];
+        next[activeStyleIdx] = {
+          ...item,
+          fieldErrors: nextErrs,
+          error: Object.keys(nextErrs).length === 0 ? '' : item.error
+        };
+      }
+      return next;
+    });
   };
 
   const updateActiveMaterials = (list) => {
@@ -537,20 +677,42 @@ function BuyerMasters() {
     const url = isEdit ? `/buyer-masters/${item.existingId}/` : '/buyer-masters/';
     const method = isEdit ? 'put' : 'post';
 
+    // Pre-validate queue item
+    const valErrs = validateBuyerMaster({ ...item.formData, buyer: globalBuyerId });
+    if (Object.keys(valErrs).length > 0) {
+      setStyleQueue(prev => {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          status: 'error',
+          error: 'Please correct highlighted errors for this style.',
+          fieldErrors: valErrs
+        };
+        return next;
+      });
+      return false;
+    }
+
     try {
       await api[method](url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       setStyleQueue(prev => {
         const next = [...prev];
-        next[idx] = { ...next[idx], status: 'saved', error: '' };
+        next[idx] = { ...next[idx], status: 'saved', error: '', fieldErrors: {} };
         return next;
       });
       return true;
     } catch (err) {
       const errData = err.response?.data;
-      const errMsg = errData?.style_no?.[0] || errData?.detail || 'Failed to save. Please check inputs.';
+      const fieldErrors = {};
+      if (errData && typeof errData === 'object') {
+        Object.entries(errData).forEach(([k, v]) => {
+          fieldErrors[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+      }
+      const errMsg = errData?.style_no?.[0] || errData?.detail || Object.values(fieldErrors)[0] || 'Failed to save. Please check inputs.';
       setStyleQueue(prev => {
         const next = [...prev];
-        next[idx] = { ...next[idx], status: 'error', error: errMsg };
+        next[idx] = { ...next[idx], status: 'error', error: errMsg, fieldErrors };
         return next;
       });
       return false;
@@ -609,6 +771,13 @@ function BuyerMasters() {
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (formError) setFormError('');
+    if (errors[name]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
     setFormData(prev => {
       const next = { ...prev, [name]: value };
       if (name === 'units' || name === 'cbm' || name === 'price_usd') {
@@ -625,6 +794,13 @@ function BuyerMasters() {
   const handleBuyerChange = (e) => {
     const buyerId = e.target.value;
     const selectedBuyer = buyers.find(b => b.id === buyerId);
+    if (errors.buyer) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next.buyer;
+        return next;
+      });
+    }
     setFormData(prev => ({
       ...prev,
       buyer: buyerId,
@@ -633,6 +809,13 @@ function BuyerMasters() {
   };
 
   const handleDimChange = (key, val) => {
+    if (errors[key]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
     setFormData(prev => {
       const next = { ...prev, [key]: val };
       if (key.startsWith('box_')) {
@@ -1024,11 +1207,15 @@ function BuyerMasters() {
 
   const openCreateModal = () => {
     setFormError('');
+    setErrors({});
+    setSubmitting(false);
     navigate('/buyer-masters/new');
   };
 
   const openEditModal = (bm) => {
     setFormError('');
+    setErrors({});
+    setSubmitting(false);
     navigate(`/buyer-masters/${bm.id}`);
   };
 
@@ -1037,6 +1224,8 @@ function BuyerMasters() {
 
   const closeModal = () => {
     setFormError('');
+    setErrors({});
+    setSubmitting(false);
     if (fromBuyer) {
       navigate(`/buyers/${fromBuyer}`);
     } else {
@@ -1047,6 +1236,14 @@ function BuyerMasters() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setFormError('');
+
+    // Pre-validate with validateBuyerMaster
+    const valErrs = validateBuyerMaster(formData);
+    if (Object.keys(valErrs).length > 0) {
+      setErrors(valErrs);
+      setFormError('Please correct the highlighted errors below before saving.');
+      return;
+    }
 
     // Pre-check for duplicate style_no (scoped per buyer)
     const styleNo = formData.style_no?.trim();
@@ -1062,11 +1259,14 @@ function BuyerMasters() {
         );
       });
       if (duplicate) {
+        setErrors({ style_no: `Style No. '${styleNo}' already exists for this Buyer in Buyer Master.` });
         setFormError(`Style No. '${styleNo}' already exists for this Buyer in Buyer Master.`);
         return;
       }
     }
 
+    setSubmitting(true);
+    setErrors({});
 
     const woodTypeJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
     const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
@@ -1101,19 +1301,44 @@ function BuyerMasters() {
       .then(() => {
         closeModal();
         fetchData();
+        setToastNotification({
+          type: 'success',
+          text: editingId
+            ? `Style "${formData.style_no}" updated successfully!`
+            : `Style "${formData.style_no}" registered successfully!`
+        });
+        setTimeout(() => setToastNotification(null), 4000);
       })
       .catch(err => {
         console.error('Submit error:', err);
-        if (err.response?.data?.style_no) {
-          const msg = Array.isArray(err.response.data.style_no)
-            ? err.response.data.style_no[0]
-            : err.response.data.style_no;
-          setFormError(msg || `Style No. '${formData.style_no}' already exists in Buyer Master.`);
-        } else if (err.response?.data?.detail) {
-          setFormError(err.response.data.detail);
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const newErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            if (Array.isArray(val)) {
+              newErrors[key] = val.join(' ');
+            } else if (typeof val === 'object' && val !== null) {
+              newErrors[key] = Object.values(val).flat().join(' ');
+            } else {
+              newErrors[key] = String(val);
+            }
+          });
+          if (data.detail) {
+            setFormError(data.detail);
+          } else if (data.non_field_errors) {
+            setFormError(Array.isArray(data.non_field_errors) ? data.non_field_errors.join(' ') : data.non_field_errors);
+          } else if (Object.keys(newErrors).length > 0) {
+            setFormError('Please correct the highlighted errors below.');
+          } else {
+            setFormError('Failed to save Buyer Master style. Please check your inputs.');
+          }
+          setErrors(newErrors);
         } else {
-          setFormError('Failed to save Buyer Master style. Please check your inputs.');
+          setFormError('Failed to save Buyer Master style. Please check your network connection.');
         }
+      })
+      .finally(() => {
+        setSubmitting(false);
       });
   };
 
@@ -1171,7 +1396,7 @@ function BuyerMasters() {
           {editingId ? (
             <div className="form-card-container">
               <div className="modal-body" style={{ padding: 0 }}>
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} noValidate>
                   {formError && (
                     <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '0.75rem 1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#991b1b', fontSize: '0.9rem', fontWeight: 600 }}>
                       <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
@@ -1182,10 +1407,16 @@ function BuyerMasters() {
                     <h3 className="form-section-title">🔗 Linkings</h3>
                     <div className="form-grid-2">
                       <div className="form-group">
-                        <label className="form-label">Buyer *</label>
+                        <label className="form-label" style={{ fontWeight: 600 }}>Buyer *</label>
                         <CustomSelect name="buyer" value={formData.buyer} onChange={handleBuyerChange}
                           options={[{ value: '', label: 'Select Buyer...' }, ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))]}
                           placeholder="Select Buyer..." />
+                        {errors.buyer && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.buyer}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="form-group">
                         <label className="form-label">Style No (Autofill Source)</label>
@@ -1200,16 +1431,73 @@ function BuyerMasters() {
                     <h3 className="form-section-title">📋 Style Information</h3>
                     <div className="form-grid-2">
                       <div className="form-group">
-                        <label className="form-label">Style No *</label>
-                        <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-1002" />
+                        <label className="form-label" style={{ fontWeight: 600 }}>Style No *</label>
+                        <input
+                          required
+                          type="text"
+                          name="style_no"
+                          maxLength={100}
+                          className="form-input"
+                          style={{
+                            borderColor: errors.style_no ? '#dc2626' : undefined,
+                            backgroundColor: errors.style_no ? '#fff5f5' : undefined
+                          }}
+                          value={formData.style_no}
+                          onChange={handleChange}
+                          placeholder="e.g. STY-1002"
+                        />
+                        {errors.style_no && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.style_no}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Buyer Code *</label>
-                        <input required type="text" name="buyer_code" className="form-input" value={formData.buyer_code} onChange={handleChange} placeholder="e.g. BYR-001" />
+                        <label className="form-label" style={{ fontWeight: 600 }}>Buyer Code *</label>
+                        <input
+                          required
+                          type="text"
+                          name="buyer_code"
+                          maxLength={50}
+                          className="form-input"
+                          style={{
+                            borderColor: errors.buyer_code ? '#dc2626' : undefined,
+                            backgroundColor: errors.buyer_code ? '#fff5f5' : undefined
+                          }}
+                          value={formData.buyer_code}
+                          onChange={handleChange}
+                          placeholder="e.g. BYR-001"
+                        />
+                        {errors.buyer_code && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.buyer_code}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Product Name *</label>
-                        <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Mango Wood Dining Table" />
+                        <label className="form-label" style={{ fontWeight: 600 }}>Product Name *</label>
+                        <input
+                          required
+                          type="text"
+                          name="product_name"
+                          maxLength={100}
+                          className="form-input"
+                          style={{
+                            borderColor: errors.product_name ? '#dc2626' : undefined,
+                            backgroundColor: errors.product_name ? '#fff5f5' : undefined
+                          }}
+                          value={formData.product_name}
+                          onChange={handleChange}
+                          placeholder="e.g. Mango Wood Dining Table"
+                        />
+                        {errors.product_name && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.product_name}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -1235,17 +1523,76 @@ function BuyerMasters() {
                       </div>
                       <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                         <div className="form-group">
-                          <label className="form-label">Price (USD)</label>
-                          <input type="number" step="0.01" name="price_usd" className="form-input" value={formData.price_usd} onChange={handleChange} placeholder="e.g. 150.00" />
+                          <label className="form-label" style={{ fontWeight: 600 }}>Price (USD)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="9999999999.99"
+                            name="price_usd"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.price_usd ? '#dc2626' : undefined,
+                              backgroundColor: errors.price_usd ? '#fff5f5' : undefined
+                            }}
+                            value={formData.price_usd}
+                            onChange={handleChange}
+                            placeholder="e.g. 150.00"
+                          />
+                          {errors.price_usd ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.price_usd}</span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '2px' }}>Max 10 whole digits + 2 decimals</div>
+                          )}
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Units</label>
-                          <input type="number" name="units" className="form-input" value={formData.units} onChange={handleChange} placeholder="e.g. 1" />
+                          <label className="form-label" style={{ fontWeight: 600 }}>Units</label>
+                          <input
+                            type="number"
+                            min="0"
+                            name="units"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.units ? '#dc2626' : undefined,
+                              backgroundColor: errors.units ? '#fff5f5' : undefined
+                            }}
+                            value={formData.units}
+                            onChange={handleChange}
+                            placeholder="e.g. 1"
+                          />
+                          {errors.units && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.units}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Total Amount ($)</label>
-                        <input type="number" step="0.01" name="total_amount" className="form-input" value={formData.total_amount} onChange={handleChange} placeholder="Auto calculated" />
+                        <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          name="total_amount"
+                          className="form-input"
+                          style={{
+                            borderColor: errors.total_amount ? '#dc2626' : undefined,
+                            backgroundColor: errors.total_amount ? '#fff5f5' : undefined
+                          }}
+                          value={formData.total_amount}
+                          onChange={handleChange}
+                          placeholder="Auto calculated"
+                        />
+                        {errors.total_amount && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.total_amount}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                         <label className="form-label">Remark</label>
@@ -1256,7 +1603,7 @@ function BuyerMasters() {
 
                   <div className="form-section">
                     <h3 className="form-section-title">📐 Product Size</h3>
-                    <SizeGroup label="Dimensions (cm)" prefix="size" values={formData} onChange={handleDimChange} />
+                    <SizeGroup label="Dimensions (cm)" prefix="size" values={formData} onChange={handleDimChange} errors={errors} />
                   </div>
 
                   <div className="form-section">
@@ -1272,15 +1619,166 @@ function BuyerMasters() {
                           <label className="form-label">Vendor Details</label>
                           <textarea name="vendor_details" className="form-input" rows="2" value={formData.vendor_details} onChange={handleChange} placeholder="Vendor name, contact, etc..."></textarea>
                         </div>
-                        <div className="form-group"><label className="form-label">Vendor Price</label><input type="number" step="0.01" name="vendor_price" className="form-input" value={formData.vendor_price} onChange={handleChange} /></div>
-                        <div className="form-group"><label className="form-label">Costing</label><input type="number" step="0.01" name="costing" className="form-input" value={formData.costing} onChange={handleChange} /></div>
-                        <div className="form-group"><label className="form-label">Purchase Price</label><input type="number" step="0.01" name="purchase_price" className="form-input" value={formData.purchase_price} onChange={handleChange} /></div>
-                        <div className="form-group"><label className="form-label">CBM</label><input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" /></div>
-                        <div className="form-group"><label className="form-label">Total CBM</label><input type="number" step="0.0001" name="total_cbm" className="form-input" value={formData.total_cbm} onChange={handleChange} placeholder="Auto calculated" /></div>
-                        <div className="form-group"><label className="form-label">Net Weight (kg)</label><input type="number" step="0.01" name="net_weight" className="form-input" value={formData.net_weight} onChange={handleChange} /></div>
-                        <div className="form-group"><label className="form-label">Gross Weight (kg)</label><input type="number" step="0.01" name="gross_weight" className="form-input" value={formData.gross_weight} onChange={handleChange} /></div>
+                        <div className="form-group">
+                          <label className="form-label">Vendor Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="vendor_price"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.vendor_price ? '#dc2626' : undefined,
+                              backgroundColor: errors.vendor_price ? '#fff5f5' : undefined
+                            }}
+                            value={formData.vendor_price}
+                            onChange={handleChange}
+                          />
+                          {errors.vendor_price && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.vendor_price}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Costing</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="costing"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.costing ? '#dc2626' : undefined,
+                              backgroundColor: errors.costing ? '#fff5f5' : undefined
+                            }}
+                            value={formData.costing}
+                            onChange={handleChange}
+                          />
+                          {errors.costing && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.costing}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Purchase Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="purchase_price"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.purchase_price ? '#dc2626' : undefined,
+                              backgroundColor: errors.purchase_price ? '#fff5f5' : undefined
+                            }}
+                            value={formData.purchase_price}
+                            onChange={handleChange}
+                          />
+                          {errors.purchase_price && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.purchase_price}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">CBM</label>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            name="cbm"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.cbm ? '#dc2626' : undefined,
+                              backgroundColor: errors.cbm ? '#fff5f5' : undefined
+                            }}
+                            value={formData.cbm}
+                            onChange={handleChange}
+                            placeholder="e.g. 0.1250"
+                          />
+                          {errors.cbm ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.cbm}</span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '2px' }}>Max 6 whole digits + 4 decimals</div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Total CBM</label>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            name="total_cbm"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.total_cbm ? '#dc2626' : undefined,
+                              backgroundColor: errors.total_cbm ? '#fff5f5' : undefined
+                            }}
+                            value={formData.total_cbm}
+                            onChange={handleChange}
+                            placeholder="Auto calculated"
+                          />
+                          {errors.total_cbm && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.total_cbm}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Net Weight (kg)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="net_weight"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.net_weight ? '#dc2626' : undefined,
+                              backgroundColor: errors.net_weight ? '#fff5f5' : undefined
+                            }}
+                            value={formData.net_weight}
+                            onChange={handleChange}
+                          />
+                          {errors.net_weight && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.net_weight}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Gross Weight (kg)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="gross_weight"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.gross_weight ? '#dc2626' : undefined,
+                              backgroundColor: errors.gross_weight ? '#fff5f5' : undefined
+                            }}
+                            value={formData.gross_weight}
+                            onChange={handleChange}
+                          />
+                          {errors.gross_weight && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.gross_weight}</span>
+                            </div>
+                          )}
+                        </div>
                         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                          <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={formData} onChange={handleDimChange} />
+                          <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={formData} onChange={handleDimChange} errors={errors} />
                         </div>
                         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                           <label className="form-label">Box Size Summary</label>
@@ -1317,8 +1815,18 @@ function BuyerMasters() {
                   </div>
 
                   <div className="bm-edit-form-footer" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                    <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
-                    <button type="submit" className="btn-primary">{editingId ? 'Save Changes' : 'Create Style'}</button>
+                    <button type="button" className="btn-secondary" onClick={closeModal} disabled={submitting}>Cancel</button>
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={submitting}
+                      style={{
+                        opacity: submitting ? 0.7 : 1,
+                        cursor: submitting ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {submitting ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Style')}
+                    </button>
                   </div>
                 </form>
               </div>
@@ -1568,16 +2076,70 @@ function BuyerMasters() {
                           <h3 className="form-section-title">📋 Style Information</h3>
                           <div className="form-grid-2">
                             <div className="form-group">
-                              <label className="form-label">Style No *</label>
-                              <input required type="text" className="form-input" value={activeItem.formData.style_no} onChange={e => updateActiveField('style_no', e.target.value)} placeholder="e.g. STY-1002" />
+                              <label className="form-label" style={{ fontWeight: 600 }}>Style No *</label>
+                              <input
+                                required
+                                type="text"
+                                maxLength={100}
+                                className="form-input"
+                                style={{
+                                  borderColor: activeItem.fieldErrors?.style_no ? '#dc2626' : undefined,
+                                  backgroundColor: activeItem.fieldErrors?.style_no ? '#fff5f5' : undefined
+                                }}
+                                value={activeItem.formData.style_no}
+                                onChange={e => updateActiveField('style_no', e.target.value)}
+                                placeholder="e.g. STY-1002"
+                              />
+                              {activeItem.fieldErrors?.style_no && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                  <span>{activeItem.fieldErrors.style_no}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="form-group">
-                              <label className="form-label">Buyer Code</label>
-                              <input type="text" className="form-input" value={activeItem.formData.buyer_code} onChange={e => updateActiveField('buyer_code', e.target.value)} placeholder="e.g. BYR-001" />
+                              <label className="form-label" style={{ fontWeight: 600 }}>Buyer Code *</label>
+                              <input
+                                required
+                                type="text"
+                                maxLength={50}
+                                className="form-input"
+                                style={{
+                                  borderColor: activeItem.fieldErrors?.buyer_code ? '#dc2626' : undefined,
+                                  backgroundColor: activeItem.fieldErrors?.buyer_code ? '#fff5f5' : undefined
+                                }}
+                                value={activeItem.formData.buyer_code}
+                                onChange={e => updateActiveField('buyer_code', e.target.value)}
+                                placeholder="e.g. BYR-001"
+                              />
+                              {activeItem.fieldErrors?.buyer_code && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                  <span>{activeItem.fieldErrors.buyer_code}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                              <label className="form-label">Product Name *</label>
-                              <input required type="text" className="form-input" value={activeItem.formData.product_name} onChange={e => updateActiveField('product_name', e.target.value)} placeholder="e.g. Mango Wood Dining Table" />
+                              <label className="form-label" style={{ fontWeight: 600 }}>Product Name *</label>
+                              <input
+                                required
+                                type="text"
+                                maxLength={100}
+                                className="form-input"
+                                style={{
+                                  borderColor: activeItem.fieldErrors?.product_name ? '#dc2626' : undefined,
+                                  backgroundColor: activeItem.fieldErrors?.product_name ? '#fff5f5' : undefined
+                                }}
+                                value={activeItem.formData.product_name}
+                                onChange={e => updateActiveField('product_name', e.target.value)}
+                                placeholder="e.g. Mango Wood Dining Table"
+                              />
+                              {activeItem.fieldErrors?.product_name && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                  <span>{activeItem.fieldErrors.product_name}</span>
+                                </div>
+                              )}
                             </div>
 
                             {/* Materials */}
@@ -1611,17 +2173,73 @@ function BuyerMasters() {
 
                             <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                               <div className="form-group">
-                                <label className="form-label">Price (USD)</label>
-                                <input type="number" step="0.01" className="form-input" value={activeItem.formData.price_usd} onChange={e => updateActiveField('price_usd', e.target.value)} placeholder="e.g. 150.00" />
+                                <label className="form-label" style={{ fontWeight: 600 }}>Price (USD)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max="9999999999.99"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.price_usd ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.price_usd ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.price_usd}
+                                  onChange={e => updateActiveField('price_usd', e.target.value)}
+                                  placeholder="e.g. 150.00"
+                                />
+                                {activeItem.fieldErrors?.price_usd ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.price_usd}</span>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '2px' }}>Max 10 whole digits + 2 decimals</div>
+                                )}
                               </div>
                               <div className="form-group">
-                                <label className="form-label">Units</label>
-                                <input type="number" className="form-input" value={activeItem.formData.units} onChange={e => updateActiveField('units', e.target.value)} placeholder="e.g. 1" />
+                                <label className="form-label" style={{ fontWeight: 600 }}>Units</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.units ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.units ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.units}
+                                  onChange={e => updateActiveField('units', e.target.value)}
+                                  placeholder="e.g. 1"
+                                />
+                                {activeItem.fieldErrors?.units && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.units}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="form-group">
-                              <label className="form-label">Total Amount ($)</label>
-                              <input type="number" step="0.01" className="form-input" value={activeItem.formData.total_amount} onChange={e => updateActiveField('total_amount', e.target.value)} placeholder="Auto calculated" />
+                              <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className="form-input"
+                                style={{
+                                  borderColor: activeItem.fieldErrors?.total_amount ? '#dc2626' : undefined,
+                                  backgroundColor: activeItem.fieldErrors?.total_amount ? '#fff5f5' : undefined
+                                }}
+                                value={activeItem.formData.total_amount}
+                                onChange={e => updateActiveField('total_amount', e.target.value)}
+                                placeholder="Auto calculated"
+                              />
+                              {activeItem.fieldErrors?.total_amount && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                  <span>{activeItem.fieldErrors.total_amount}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                               <label className="form-label">Remark</label>
@@ -1638,6 +2256,7 @@ function BuyerMasters() {
                             prefix="size"
                             values={activeItem.formData}
                             onChange={(key, val) => updateActiveField(key, val)}
+                            errors={activeItem.fieldErrors || {}}
                           />
                         </div>
 
@@ -1652,15 +2271,159 @@ function BuyerMasters() {
                           {activeItem.showMoreDetails && (
                             <div className="form-grid-2">
                               <div className="form-group" style={{ gridColumn: '1 / -1' }}><label className="form-label">Vendor Details</label><textarea className="form-input" rows="2" value={activeItem.formData.vendor_details} onChange={e => updateActiveField('vendor_details', e.target.value)} placeholder="Vendor name, contact..."></textarea></div>
-                              <div className="form-group"><label className="form-label">Vendor Price</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.vendor_price} onChange={e => updateActiveField('vendor_price', e.target.value)} /></div>
-                              <div className="form-group"><label className="form-label">Costing</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.costing} onChange={e => updateActiveField('costing', e.target.value)} /></div>
-                              <div className="form-group"><label className="form-label">Purchase Price</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.purchase_price} onChange={e => updateActiveField('purchase_price', e.target.value)} /></div>
-                              <div className="form-group"><label className="form-label">CBM</label><input type="number" step="0.0001" className="form-input" value={activeItem.formData.cbm} onChange={e => updateActiveField('cbm', e.target.value)} placeholder="e.g. 0.1250" /></div>
-                              <div className="form-group"><label className="form-label">Total CBM</label><input type="number" step="0.0001" className="form-input" value={activeItem.formData.total_cbm} onChange={e => updateActiveField('total_cbm', e.target.value)} placeholder="Auto calculated" /></div>
-                              <div className="form-group"><label className="form-label">Net Weight (kg)</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.net_weight} onChange={e => updateActiveField('net_weight', e.target.value)} /></div>
-                              <div className="form-group"><label className="form-label">Gross Weight (kg)</label><input type="number" step="0.01" className="form-input" value={activeItem.formData.gross_weight} onChange={e => updateActiveField('gross_weight', e.target.value)} /></div>
+                              <div className="form-group">
+                                <label className="form-label">Vendor Price</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.vendor_price ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.vendor_price ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.vendor_price}
+                                  onChange={e => updateActiveField('vendor_price', e.target.value)}
+                                />
+                                {activeItem.fieldErrors?.vendor_price && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.vendor_price}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Costing</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.costing ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.costing ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.costing}
+                                  onChange={e => updateActiveField('costing', e.target.value)}
+                                />
+                                {activeItem.fieldErrors?.costing && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.costing}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Purchase Price</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.purchase_price ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.purchase_price ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.purchase_price}
+                                  onChange={e => updateActiveField('purchase_price', e.target.value)}
+                                />
+                                {activeItem.fieldErrors?.purchase_price && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.purchase_price}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">CBM</label>
+                                <input
+                                  type="number"
+                                  step="0.0001"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.cbm ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.cbm ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.cbm}
+                                  onChange={e => updateActiveField('cbm', e.target.value)}
+                                  placeholder="e.g. 0.1250"
+                                />
+                                {activeItem.fieldErrors?.cbm ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.cbm}</span>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.74rem', color: '#78716c', marginTop: '2px' }}>Max 6 whole digits + 4 decimals</div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Total CBM</label>
+                                <input
+                                  type="number"
+                                  step="0.0001"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.total_cbm ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.total_cbm ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.total_cbm}
+                                  onChange={e => updateActiveField('total_cbm', e.target.value)}
+                                  placeholder="Auto calculated"
+                                />
+                                {activeItem.fieldErrors?.total_cbm && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.total_cbm}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Net Weight (kg)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.net_weight ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.net_weight ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.net_weight}
+                                  onChange={e => updateActiveField('net_weight', e.target.value)}
+                                />
+                                {activeItem.fieldErrors?.net_weight && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.net_weight}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Gross Weight (kg)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.gross_weight ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.gross_weight ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.gross_weight}
+                                  onChange={e => updateActiveField('gross_weight', e.target.value)}
+                                />
+                                {activeItem.fieldErrors?.gross_weight && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.gross_weight}</span>
+                                  </div>
+                                )}
+                              </div>
                               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={activeItem.formData} onChange={(key, val) => updateActiveField(key, val)} />
+                                <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={activeItem.formData} onChange={(key, val) => updateActiveField(key, val)} errors={activeItem.fieldErrors || {}} />
                               </div>
                               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                                 <label className="form-label">Box Size Summary</label>
@@ -2546,6 +3309,47 @@ function BuyerMasters() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          zIndex: 9999,
+          backgroundColor: toastNotification.type === 'success' ? '#f0fdf4' : '#fef2f2',
+          border: `1.5px solid ${toastNotification.type === 'success' ? '#86efac' : '#fca5a5'}`,
+          color: toastNotification.type === 'success' ? '#166534' : '#991b1b',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontWeight: 600,
+          fontSize: '0.9rem'
+        }}>
+          {toastNotification.type === 'success' ? <CheckCircle size={20} color="#16a34a" /> : <AlertCircle size={20} color="#dc2626" />}
+          <span>{toastNotification.text}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'inherit',
+              padding: 0,
+              marginLeft: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.7
+            }}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Undo2, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Undo2, Save, AlertCircle, CheckCircle, X } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
@@ -45,9 +45,19 @@ export default function StoreMaterialReturnPage() {
     remark: ''
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (toastNotification) {
+      const timer = setTimeout(() => setToastNotification(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastNotification]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -88,6 +98,18 @@ export default function StoreMaterialReturnPage() {
       .finally(() => setLoadingData(false));
   }, []);
 
+  const handleFieldChange = (field, val) => {
+    setFormData(prev => ({ ...prev, [field]: val }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
   const handleDateChange = (e) => {
     const val = e.target.value;
     const computedMonthYear = getMonthYearFromDate(val);
@@ -96,6 +118,14 @@ export default function StoreMaterialReturnPage() {
       return_date: val,
       month_year: computedMonthYear
     }));
+    if (formErrors.return_date) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.return_date;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleItemChange = (val, selectedObj) => {
@@ -114,53 +144,104 @@ export default function StoreMaterialReturnPage() {
     } else {
       setFormData(prev => ({ ...prev, item: itemId }));
     }
+    if (formErrors.item) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.item;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
-  const parseFieldErrors = (err) => {
-    const data = err.response?.data;
-    if (!data) return 'Network error or server unavailable.';
-    if (typeof data === 'string') return data;
-    if (data.detail) return data.detail;
-    if (data.error) return data.error;
-
-    if (typeof data === 'object') {
-      const errorMsgs = [];
-      Object.keys(data).forEach(field => {
-        const errs = Array.isArray(data[field]) ? data[field] : [data[field]];
-        const fieldName = field.replace('_', ' ').toUpperCase();
-        errorMsgs.push(`${fieldName}: ${errs.join(' ')}`);
-      });
-      if (errorMsgs.length > 0) return errorMsgs.join(' | ');
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.voucher_no || !formData.voucher_no.trim()) {
+      errors.voucher_no = 'Return voucher number is required.';
+    } else if (formData.voucher_no.trim().length > 100) {
+      errors.voucher_no = 'Voucher number cannot exceed 100 characters.';
     }
-    return 'Failed to save material return. Please check all inputs.';
+
+    if (!formData.return_date) {
+      errors.return_date = 'Return date is required.';
+    }
+
+    if (!formData.contractor) {
+      errors.contractor = 'Please select a contractor returning the material.';
+    }
+
+    if (!formData.item) {
+      errors.item = 'Please select a Store Item to return.';
+    }
+
+    const q = parseFloat(formData.qty);
+    if (formData.qty === '' || formData.qty === null || formData.qty === undefined || isNaN(q)) {
+      errors.qty = 'Returned quantity is required.';
+    } else if (q <= 0) {
+      errors.qty = 'Returned quantity must be greater than zero.';
+    } else if (q > 10000000) {
+      errors.qty = 'Quantity exceeds maximum limit (10,000,000).';
+    }
+
+    if (formData.rate !== '' && formData.rate !== null && formData.rate !== undefined) {
+      const r = parseFloat(formData.rate);
+      if (isNaN(r) || r < 0) {
+        errors.rate = 'Return rate cannot be negative.';
+      }
+    }
+
+    return errors;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setError(null);
-
-    if (!formData.contractor) {
-      setError('CONTRACTOR: Please select a target contractor returning the material.');
-      return;
-    }
-    if (!formData.item) {
-      setError('STORE ITEM: Please select an item to return.');
-      return;
-    }
-    if (!formData.qty || parseFloat(formData.qty) <= 0) {
-      setError('RETURNED QTY: Returned quantity must be greater than 0.');
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg || 'Please resolve highlighted errors below.');
+      setToastNotification({
+        type: 'error',
+        message: firstMsg || 'Please resolve highlighted errors before confirming.'
+      });
       return;
     }
 
     setSubmitting(true);
+    setError(null);
+    setFormErrors({});
+
     api.post('/store/material-returns/', formData)
       .then(() => {
         setSuccessMsg('Store Material Return recorded successfully! Inventory stock credited.');
+        setToastNotification({
+          type: 'success',
+          message: 'Store Material Return recorded successfully!'
+        });
         setTimeout(() => navigate('/store-management'), 1200);
       })
       .catch(err => {
         console.error('Material return submission failed:', err);
-        setError(parseFieldErrors(err));
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const backendErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            backendErrors[key] = Array.isArray(val) ? val.join(' ') : String(val);
+          });
+          setFormErrors(backendErrors);
+          const firstErr = Object.values(backendErrors)[0];
+          setError(firstErr || 'Failed to save material return.');
+          setToastNotification({
+            type: 'error',
+            message: firstErr || 'Validation failed. Check highlighted fields.'
+          });
+        } else {
+          setError(err.message || 'Server error while recording return.');
+          setToastNotification({
+            type: 'error',
+            message: err.message || 'Server error occurred.'
+          });
+        }
       })
       .finally(() => setSubmitting(false));
   };
@@ -273,25 +354,39 @@ export default function StoreMaterialReturnPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           padding: '1.75rem'
         }}>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             {/* Row 1: Voucher & Dates */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.voucher_no ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Return Voucher No *
                 </label>
                 <input
                   type="text"
                   value={formData.voucher_no}
-                  onChange={(e) => setFormData({ ...formData, voucher_no: e.target.value })}
+                  onChange={(e) => handleFieldChange('voucher_no', e.target.value)}
                   required
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.voucher_no ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.voucher_no ? '#fff5f5' : '#ffffff',
+                    fontWeight: 700,
+                    boxSizing: 'border-box'
+                  }}
                 />
+                {formErrors.voucher_no && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.voucher_no}</span>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.return_date ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Return Date *
                 </label>
                 <input
@@ -299,8 +394,21 @@ export default function StoreMaterialReturnPage() {
                   value={formData.return_date}
                   onChange={handleDateChange}
                   required
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.return_date ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.return_date ? '#fff5f5' : '#ffffff',
+                    boxSizing: 'border-box'
+                  }}
                 />
+                {formErrors.return_date && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.return_date}</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -330,41 +438,64 @@ export default function StoreMaterialReturnPage() {
             {/* Row 2: Target Contractor */}
             <div className="return-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Target Contractor / Supervisor Returning Material *
                 </label>
                 <SearchableSelect
                   options={contractors.map(c => ({ ...c, name: `${c.full_name || c.username} (@${c.username})` }))}
                   value={formData.contractor}
-                  onChange={(val) => setFormData(prev => ({ ...prev, contractor: typeof val === 'object' ? val.id : val }))}
+                  onChange={(val) => {
+                    const cId = typeof val === 'object' ? val.id : val;
+                    handleFieldChange('contractor', cId);
+                  }}
                   placeholder="Search contractor returning material..."
                   idKey="id"
                   titleKey="name"
                   pageSize={15}
+                  hasError={Boolean(formErrors.contractor)}
                 />
+                {formErrors.contractor && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.contractor}</span>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.production_unit ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Factory Unit / Department
                 </label>
                 <select
                   value={formData.production_unit}
-                  onChange={(e) => setFormData({ ...formData, production_unit: e.target.value })}
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                  onChange={(e) => handleFieldChange('production_unit', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.production_unit ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.production_unit ? '#fff5f5' : '#ffffff',
+                    boxSizing: 'border-box'
+                  }}
                 >
                   <option value="">Select Factory Unit (Optional)</option>
                   {units.map(u => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
+                {formErrors.production_unit && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.production_unit}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Row 3: Store Item & Current Stock */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: formErrors.item ? '#dc2626' : '#334155' }}>
                   Returned Store Item *
                 </label>
                 {selectedItemObj && (
@@ -392,13 +523,20 @@ export default function StoreMaterialReturnPage() {
                 codeKey="item_code"
                 titleKey="item_name"
                 pageSize={15}
+                hasError={Boolean(formErrors.item)}
               />
+              {formErrors.item && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.item}</span>
+                </div>
+              )}
             </div>
 
             {/* Row 4: Returned Qty, Rate & Credit Status */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.qty ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Returned Qty ({formData.unit}) *
                 </label>
                 <input
@@ -406,26 +544,54 @@ export default function StoreMaterialReturnPage() {
                   step="0.001"
                   min="0.001"
                   value={formData.qty}
-                  onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
+                  onChange={(e) => handleFieldChange('qty', e.target.value)}
                   placeholder="0.00"
                   required
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.qty ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.qty ? '#fff5f5' : '#ffffff',
+                    fontWeight: 700,
+                    boxSizing: 'border-box'
+                  }}
                 />
+                {formErrors.qty && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.qty}</span>
+                  </div>
+                )}
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.rate ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                   Return Rate (₹) *
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   value={formData.rate}
-                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                  onChange={(e) => handleFieldChange('rate', e.target.value)}
                   placeholder="0.00"
                   required
-                  style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.rate ? '#fff5f5' : '#ffffff',
+                    fontWeight: 700,
+                    boxSizing: 'border-box'
+                  }}
                 />
+                {formErrors.rate && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.rate}</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -434,7 +600,7 @@ export default function StoreMaterialReturnPage() {
                 </label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  onChange={(e) => handleFieldChange('status', e.target.value)}
                   required
                   style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
                 >
@@ -452,7 +618,7 @@ export default function StoreMaterialReturnPage() {
               <input
                 type="text"
                 value={formData.remark}
-                onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+                onChange={(e) => handleFieldChange('remark', e.target.value)}
                 placeholder="Reason for return (e.g. Unused stock returned after batch completion)"
                 style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
               />
@@ -496,6 +662,7 @@ export default function StoreMaterialReturnPage() {
                   fontWeight: 700,
                   fontSize: '0.9rem',
                   cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.7 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
@@ -508,6 +675,37 @@ export default function StoreMaterialReturnPage() {
             </div>
 
           </form>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          backgroundColor: toastNotification.type === 'error' ? '#fef2f2' : '#f0fdf4',
+          border: `1px solid ${toastNotification.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
+          color: toastNotification.type === 'error' ? '#991b1b' : '#166534',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '10px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.65rem',
+          zIndex: 9999,
+          maxWidth: '420px',
+          fontSize: '0.9rem'
+        }}>
+          {toastNotification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle size={20} />}
+          <span style={{ flex: 1 }}>{toastNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px' }}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

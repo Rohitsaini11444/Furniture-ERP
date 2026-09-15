@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Warehouse, Upload, Download, FileSpreadsheet, Plus, CheckCircle,
-  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw, FileText
+  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw, FileText, X
 } from 'lucide-react';
 import api from '../api/axios';
 import CustomFileUpload from '../components/CustomFileUpload';
@@ -40,11 +40,21 @@ export default function StoreItemMasterPage() {
     remark: '',
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (toastNotification) {
+      const timer = setTimeout(() => setToastNotification(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastNotification]);
 
   const {
     setIsDirty,
@@ -137,6 +147,27 @@ export default function StoreItemMasterPage() {
       }
       return next;
     });
+    if (formErrors[name]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[name];
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const handleFieldChange = (name, value) => {
+    setIsDirty(true);
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[name];
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleImageChange = (file) => {
@@ -150,15 +181,74 @@ export default function StoreItemMasterPage() {
     }
   };
 
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.item_code || !formData.item_code.trim()) {
+      errors.item_code = 'Item code is required.';
+    } else if (formData.item_code.trim().length > 50) {
+      errors.item_code = 'Item code cannot exceed 50 characters.';
+    } else if (/([^\d])\1{4,}/i.test(formData.item_code.trim())) {
+      errors.item_code = 'Item code contains invalid repetitive characters.';
+    }
+
+    if (!formData.item_name || !formData.item_name.trim()) {
+      errors.item_name = 'Item name is required.';
+    } else if (formData.item_name.trim().length > 200) {
+      errors.item_name = 'Item name cannot exceed 200 characters.';
+    }
+
+    if (!formData.unit) {
+      errors.unit = 'Unit of measurement is required.';
+    }
+
+    const baseRate = parseFloat(formData.base_rate);
+    if (formData.base_rate === '' || formData.base_rate === null || formData.base_rate === undefined || isNaN(baseRate)) {
+      errors.base_rate = 'Master base rate is required.';
+    } else if (baseRate < 0) {
+      errors.base_rate = 'Base rate cannot be negative.';
+    }
+
+    if (formData.current_rate !== '' && formData.current_rate !== null && formData.current_rate !== undefined) {
+      const curRate = parseFloat(formData.current_rate);
+      if (isNaN(curRate) || curRate < 0) {
+        errors.current_rate = 'Current rate cannot be negative.';
+      }
+    }
+
+    if (formData.reorder_level !== '' && formData.reorder_level !== null && formData.reorder_level !== undefined) {
+      const rl = parseFloat(formData.reorder_level);
+      if (isNaN(rl) || rl < 0) {
+        errors.reorder_level = 'Reorder level cannot be negative.';
+      }
+    }
+
+    if (formData.weight !== '' && formData.weight !== null && formData.weight !== undefined) {
+      const w = parseFloat(formData.weight);
+      if (isNaN(w) || w < 0) {
+        errors.weight = 'Weight cannot be negative.';
+      }
+    }
+
+    return errors;
+  };
+
   const handleSubmitForm = (e) => {
     e.preventDefault();
-    if (!formData.item_name.trim()) {
-      setError('Item Name is required.');
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg || 'Please resolve the highlighted field errors below.');
+      setToastNotification({
+        type: 'error',
+        message: firstMsg || 'Please resolve highlighted errors before saving.'
+      });
       return;
     }
 
     setLoading(true);
     setError(null);
+    setFormErrors({});
 
     const payload = new FormData();
     Object.keys(formData).forEach(key => {
@@ -180,11 +270,34 @@ export default function StoreItemMasterPage() {
         if (currentDraftId) clearDraft(currentDraftId);
         setIsDirty(false);
         setSuccessMsg(isEditing ? 'Store item updated successfully!' : 'Store item created successfully!');
+        setToastNotification({
+          type: 'success',
+          message: isEditing ? 'Store item updated successfully!' : 'Store item created successfully!'
+        });
         setTimeout(() => navigate('/store-management'), 1200);
       })
       .catch(err => {
         console.error('Failed to save store item:', err);
-        setError(err.response?.data?.detail || err.response?.data?.item_code?.[0] || 'Failed to save store item. Please check inputs.');
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const backendErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            backendErrors[key] = Array.isArray(val) ? val.join(' ') : String(val);
+          });
+          setFormErrors(backendErrors);
+          const firstErr = Object.values(backendErrors)[0];
+          setError(firstErr || 'Failed to save store item. Please check inputs.');
+          setToastNotification({
+            type: 'error',
+            message: firstErr || 'Validation failed. Check highlighted fields.'
+          });
+        } else {
+          setError(err.message || 'Failed to save store item.');
+          setToastNotification({
+            type: 'error',
+            message: err.message || 'Server error occurred.'
+          });
+        }
       })
       .finally(() => setLoading(false));
   };
@@ -427,11 +540,11 @@ export default function StoreItemMasterPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           padding: '1.75rem'
         }}>
-          <form id="store-item-master-form" onSubmit={handleSubmitForm}>
+          <form id="store-item-master-form" noValidate onSubmit={handleSubmitForm}>
             <div className="item-master-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem' }}>
               {/* Item Code */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.item_code ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Item Code *
                 </label>
                 <input
@@ -445,16 +558,23 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.item_code ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.item_code ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.item_code && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.item_code}</span>
+                  </div>
+                )}
               </div>
 
               {/* Item Name */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.item_name ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Item Name *
                 </label>
                 <input
@@ -468,17 +588,24 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.item_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.item_name ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.item_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.item_name}</span>
+                  </div>
+                )}
               </div>
 
               {/* Category */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <label style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155', margin: 0 }}>
+                  <label style={{ fontWeight: 700, fontSize: '0.85rem', color: formErrors.category ? '#dc2626' : '#334155', margin: 0 }}>
                     Category
                   </label>
                   <button
@@ -503,18 +630,25 @@ export default function StoreItemMasterPage() {
                 <SearchableSelect
                   options={categories}
                   value={formData.category}
-                  onChange={(val) => setFormData(prev => ({ ...prev, category: val }))}
+                  onChange={(val) => handleFieldChange('category', val)}
                   placeholder="Select Category..."
                   searchPlaceholder="Search category name..."
                   idKey="id"
                   titleKey="name"
                   pageSize={15}
+                  hasError={Boolean(formErrors.category)}
                 />
+                {formErrors.category && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.category}</span>
+                  </div>
+                )}
               </div>
 
               {/* Unit */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.unit ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Unit of Measurement *
                 </label>
                 <select
@@ -526,9 +660,9 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.unit ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
                     fontSize: '0.9rem',
-                    backgroundColor: '#ffffff',
+                    backgroundColor: formErrors.unit ? '#fff5f5' : '#ffffff',
                     boxSizing: 'border-box'
                   }}
                 >
@@ -540,11 +674,17 @@ export default function StoreItemMasterPage() {
                   <option value="roll">roll (Roll)</option>
                   <option value="meter">meter (Meters)</option>
                 </select>
+                {formErrors.unit && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.unit}</span>
+                  </div>
+                )}
               </div>
 
               {/* Base Rate */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.base_rate ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Master Base Rate (₹) *
                 </label>
                 <input
@@ -559,11 +699,18 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.base_rate && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.base_rate}</span>
+                  </div>
+                )}
               </div>
 
               {/* Default Debit Status */}
@@ -593,7 +740,7 @@ export default function StoreItemMasterPage() {
 
               {/* Reorder Threshold */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.reorder_level ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Reorder Level Threshold
                 </label>
                 <input
@@ -607,16 +754,23 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.reorder_level ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.reorder_level ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.reorder_level && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.reorder_level}</span>
+                  </div>
+                )}
               </div>
 
               {/* Weight */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.4rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.weight ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
                   Unit Weight (kg)
                 </label>
                 <input
@@ -630,11 +784,18 @@ export default function StoreItemMasterPage() {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.weight ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.weight ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
                 />
+                {formErrors.weight && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                    <AlertCircle size={13} />
+                    <span>{formErrors.weight}</span>
+                  </div>
+                )}
               </div>
 
               {/* Remarks */}
@@ -735,6 +896,7 @@ export default function StoreItemMasterPage() {
                   fontWeight: 700,
                   fontSize: '0.9rem',
                   cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
@@ -947,6 +1109,37 @@ export default function StoreItemMasterPage() {
         onDiscard={handleDiscardAndExit}
         onCancel={handleCancelExit}
       />
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          backgroundColor: toastNotification.type === 'error' ? '#fef2f2' : '#f0fdf4',
+          border: `1px solid ${toastNotification.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
+          color: toastNotification.type === 'error' ? '#991b1b' : '#166534',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '10px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.65rem',
+          zIndex: 9999,
+          maxWidth: '420px',
+          fontSize: '0.9rem'
+        }}>
+          {toastNotification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle size={20} />}
+          <span style={{ flex: 1 }}>{toastNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

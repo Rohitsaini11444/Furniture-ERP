@@ -13,21 +13,38 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
     purpose: ''
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (isOpen && items.length > 0 && !formData.item) {
-      const first = items[0];
-      setFormData(prev => ({
-        ...prev,
-        item: first.id,
-        unit: first.unit
-      }));
+    if (isOpen) {
+      setFormErrors({});
+      setError(null);
+      if (items.length > 0 && !formData.item) {
+        const first = items[0];
+        setFormData(prev => ({
+          ...prev,
+          item: first.id,
+          unit: first.unit
+        }));
+      }
     }
   }, [isOpen, items]);
 
   if (!isOpen) return null;
+
+  const handleFieldChange = (field, val) => {
+    setFormData(prev => ({ ...prev, [field]: val }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const updated = { ...prev };
+        delete updated[field];
+        return updated;
+      });
+    }
+    if (error) setError(null);
+  };
 
   const handleItemChange = (val, selectedObj) => {
     const itemId = typeof val === 'object' ? val.id : val;
@@ -41,30 +58,72 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
     } else {
       setFormData(prev => ({ ...prev, item: itemId }));
     }
+    if (formErrors.item) {
+      setFormErrors(prev => {
+        const updated = { ...prev };
+        delete updated.item;
+        return updated;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.requisition_no?.trim()) {
+      errors.requisition_no = 'Requisition number is required.';
+    }
+    if (!formData.item) {
+      errors.item = 'Please select a store item.';
+    }
+    const qty = parseFloat(formData.requested_qty);
+    if (formData.requested_qty === '' || formData.requested_qty === null || isNaN(qty)) {
+      errors.requested_qty = 'Requested quantity is required.';
+    } else if (qty <= 0) {
+      errors.requested_qty = 'Requested quantity must be greater than 0.';
+    } else if (qty > 9999999) {
+      errors.requested_qty = 'Requested quantity cannot exceed 9,999,999.';
+    }
+    return errors;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError(null);
 
-    if (!formData.item) {
-      setError('STORE ITEM: Please select a store item.');
-      return;
-    }
-    if (!formData.requested_qty || parseFloat(formData.requested_qty) <= 0) {
-      setError('REQUESTED QTY: Requested quantity must be greater than 0.');
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg);
       return;
     }
 
     setSubmitting(true);
     api.post('/store/requisitions/', formData)
       .then(() => {
+        setFormErrors({});
+        setError(null);
         onSuccess();
         onClose();
       })
       .catch(err => {
         console.error('Requisition save error:', err);
-        setError(err.response?.data?.detail || 'Failed to submit Material Requisition Note.');
+        const serverData = err.response?.data;
+        if (serverData && typeof serverData === 'object') {
+          const newErrors = {};
+          let firstMsg = '';
+          Object.keys(serverData).forEach(k => {
+            const val = serverData[k];
+            const msg = Array.isArray(val) ? val.join(' ') : String(val);
+            newErrors[k] = msg;
+            if (!firstMsg) firstMsg = msg;
+          });
+          setFormErrors(newErrors);
+          setError(firstMsg || 'Failed to submit Material Requisition Note.');
+        } else {
+          setError(serverData?.detail || 'Failed to submit Material Requisition Note.');
+        }
       })
       .finally(() => setSubmitting(false));
   };
@@ -126,6 +185,7 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
           >
@@ -134,7 +194,7 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+        <form noValidate onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
           {error && (
             <div style={{
               backgroundColor: '#fef2f2',
@@ -159,10 +219,22 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
             <input
               type="text"
               value={formData.requisition_no}
-              onChange={e => setFormData({ ...formData, requisition_no: e.target.value })}
-              required
-              style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+              onChange={e => handleFieldChange('requisition_no', e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.75rem',
+                borderRadius: '8px',
+                border: formErrors.requisition_no ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                backgroundColor: formErrors.requisition_no ? '#fff5f5' : '#ffffff',
+                fontWeight: 700,
+                boxSizing: 'border-box'
+              }}
             />
+            {formErrors.requisition_no && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.requisition_no}
+              </span>
+            )}
           </div>
 
           <div>
@@ -178,7 +250,13 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
               codeKey="item_code"
               titleKey="item_name"
               pageSize={15}
+              hasError={Boolean(formErrors.item)}
             />
+            {formErrors.item && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.item}
+              </span>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.1rem' }}>
@@ -191,11 +269,23 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
                 step="0.001"
                 min="0.001"
                 value={formData.requested_qty}
-                onChange={e => setFormData({ ...formData, requested_qty: e.target.value })}
+                onChange={e => handleFieldChange('requested_qty', e.target.value)}
                 placeholder="0.00"
-                required
-                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  borderRadius: '8px',
+                  border: formErrors.requested_qty ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.requested_qty ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.requested_qty && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                  <AlertCircle size={12} /> {formErrors.requested_qty}
+                </span>
+              )}
             </div>
 
             <div>
@@ -204,14 +294,26 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
               </label>
               <select
                 value={formData.production_unit}
-                onChange={e => setFormData({ ...formData, production_unit: e.target.value })}
-                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                onChange={e => handleFieldChange('production_unit', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  borderRadius: '8px',
+                  border: formErrors.production_unit ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.production_unit ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               >
                 <option value="">Select Factory Unit (Optional)</option>
                 {units.map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
+              {formErrors.production_unit && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                  <AlertCircle size={12} /> {formErrors.production_unit}
+                </span>
+              )}
             </div>
           </div>
 
@@ -222,10 +324,22 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
             <textarea
               rows={3}
               value={formData.purpose}
-              onChange={e => setFormData({ ...formData, purpose: e.target.value })}
+              onChange={e => handleFieldChange('purpose', e.target.value)}
               placeholder="e.g. Required for sanding batch #104 (50 pcs chairs)"
-              style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.75rem',
+                borderRadius: '8px',
+                border: formErrors.purpose ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                backgroundColor: formErrors.purpose ? '#fff5f5' : '#ffffff',
+                boxSizing: 'border-box'
+              }}
             />
+            {formErrors.purpose && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.purpose}
+              </span>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -249,6 +363,7 @@ export default function StoreRequisitionModal({ isOpen, onClose, onSuccess, item
                 fontWeight: 700,
                 fontSize: '0.875rem',
                 cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.7 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',

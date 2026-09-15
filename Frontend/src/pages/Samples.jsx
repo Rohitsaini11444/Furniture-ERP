@@ -34,25 +34,41 @@ const emptyForm = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SizeGroup({ label, prefix, values, onChange }) {
+function SizeGroup({ label, prefix, values, onChange, errors = {} }) {
   return (
     <div className="size-group">
       <label className="form-label">{label}</label>
       <div className="size-inputs">
-        {['length', 'breadth', 'height'].map(dim => (
-          <div key={dim} className="size-field">
-            <span className="size-dim-label">{dim[0].toUpperCase()}</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="form-input"
-              placeholder={`${dim.charAt(0).toUpperCase() + dim.slice(1)} cm`}
-              value={values[`${prefix}_${dim}`] || ''}
-              onChange={e => onChange(`${prefix}_${dim}`, e.target.value)}
-            />
-          </div>
-        ))}
+        {['length', 'breadth', 'height'].map(dim => {
+          const fieldKey = `${prefix}_${dim}`;
+          const err = errors[fieldKey];
+          return (
+            <div key={dim} className="size-field" style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                <span className="size-dim-label">{dim[0].toUpperCase()}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="99999"
+                  step="0.01"
+                  className="form-input"
+                  placeholder={`${dim.charAt(0).toUpperCase() + dim.slice(1)} cm`}
+                  value={values[fieldKey] || ''}
+                  onChange={e => onChange(fieldKey, e.target.value)}
+                  style={{
+                    borderColor: err ? '#dc2626' : undefined,
+                    backgroundColor: err ? '#fff5f5' : undefined
+                  }}
+                />
+              </div>
+              {err && (
+                <span style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <AlertCircle size={12} style={{ flexShrink: 0 }} /> {err}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -179,7 +195,7 @@ function Samples() {
   const [formData, setFormData] = useState(emptyForm);
   const [finishesOptions, setFinishesOptions] = useState([]);
 
-  const [formError, setFormError] = useState('');
+  const [formErrors, setFormErrors] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -466,8 +482,16 @@ function Samples() {
 
   const handleChange = (e) => {
     setIsDirty(true);
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    if (formError) setFormError('');
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (formErrors[name] || formErrors.general) {
+      setFormErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        delete next.general;
+        return next;
+      });
+    }
   };
 
   const handleMaterialItemChange = (idx, value) => {
@@ -475,20 +499,46 @@ function Samples() {
     const next = [...materialsList];
     next[idx] = value;
     setMaterialsList(next);
+    if (formErrors.material || formErrors.general) {
+      setFormErrors(prev => {
+        const nextErr = { ...prev };
+        delete nextErr.material;
+        delete nextErr.general;
+        return nextErr;
+      });
+    }
   };
   const addMaterialField = () => setMaterialsList(prev => [...prev, '']);
   const removeMaterialField = (idx) => setMaterialsList(prev => prev.filter((_, i) => i !== idx));
 
   const handleFinishItemChange = (idx, value) => {
+    setIsDirty(true);
     const next = [...finishesList];
     next[idx] = value;
     setFinishesList(next);
+    if (formErrors.finish_color || formErrors.general) {
+      setFormErrors(prev => {
+        const nextErr = { ...prev };
+        delete nextErr.finish_color;
+        delete nextErr.general;
+        return nextErr;
+      });
+    }
   };
   const addFinishField = () => setFinishesList(prev => [...prev, '']);
   const removeFinishField = (idx) => setFinishesList(prev => prev.filter((_, i) => i !== idx));
 
   const handleDimChange = (key, val) => {
+    setIsDirty(true);
     setFormData(prev => ({ ...prev, [key]: val }));
+    if (formErrors[key] || formErrors.general) {
+      setFormErrors(prev => {
+        const nextErr = { ...prev };
+        delete nextErr[key];
+        delete nextErr.general;
+        return nextErr;
+      });
+    }
   };
 
   const handleImageAdd = (e) => {
@@ -534,39 +584,161 @@ function Samples() {
   // (Now mapping to routing paths)
 
   const openCreateModal = () => {
-    setFormError('');
+    setFormErrors({});
     navigate('/samples/new');
   };
 
   const openEditModal = (sample) => {
-    setFormError('');
+    setFormErrors({});
     navigate(`/samples/${sample.id}`);
   };
 
   const closeModal = () => {
-    setFormError('');
+    setFormErrors({});
     setShowDeleteConfirm(false);
     navigate('/samples');
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
+  // ── Validation ─────────────────────────────────────────────────────────────
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setFormError('');
+  const validateForm = () => {
+    const errors = {};
+    const hasRepeating = (str) => /(.)\1{3,}/i.test(str);
+    const hasLongWord = (str) => /[^\s]{31,}/.test(str);
 
-    // Pre-check for duplicate style_no
-    const styleNo = formData.style_no?.trim();
-    if (styleNo) {
+    // style_no
+    const styleNo = (formData.style_no || '').trim();
+    if (!styleNo) {
+      errors.style_no = 'Style number is required.';
+    } else if (styleNo.length < 2) {
+      errors.style_no = 'Style number must be at least 2 characters.';
+    } else if (styleNo.length > 50) {
+      errors.style_no = 'Style number cannot exceed 50 characters.';
+    } else if (!/^[A-Za-z0-9\-_/ ]+$/.test(styleNo)) {
+      errors.style_no = 'Style number can only contain letters, numbers, hyphens, underscores, slashes, and spaces.';
+    } else if (hasRepeating(styleNo)) {
+      errors.style_no = 'Style number contains excessive repetitive characters.';
+    } else {
       const duplicate = samples.find(s =>
         s.style_no &&
         s.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
         String(s.id) !== String(editingId || '')
       );
       if (duplicate) {
-        setFormError(`Style No. '${styleNo}' already exists in Samples Catalog.`);
-        return;
+        errors.style_no = `Style No. '${styleNo}' already exists in Samples Catalog.`;
       }
+    }
+
+    // product_name
+    const productName = (formData.product_name || '').trim();
+    if (!productName) {
+      errors.product_name = 'Product name is required.';
+    } else if (productName.length < 2) {
+      errors.product_name = 'Product name must be at least 2 characters.';
+    } else if (productName.length > 100) {
+      errors.product_name = 'Product name cannot exceed 100 characters.';
+    } else if ((productName.match(/[A-Za-z]/g) || []).length < 2) {
+      errors.product_name = 'Product name must contain at least 2 alphabetic characters.';
+    } else if (hasRepeating(productName)) {
+      errors.product_name = 'Product name contains excessive repetitive characters.';
+    } else if (hasLongWord(productName)) {
+      errors.product_name = 'Product name contains an excessively long word or gibberish.';
+    }
+
+    // material
+    const materialJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
+    if (!materialJoined) {
+      errors.material = 'At least one material is required.';
+    } else if (materialJoined.length < 2) {
+      errors.material = 'Material must be at least 2 characters.';
+    } else if (materialJoined.length > 255) {
+      errors.material = 'Material cannot exceed 255 characters.';
+    } else if (hasRepeating(materialJoined)) {
+      errors.material = 'Material contains excessive repetitive characters.';
+    } else if (hasLongWord(materialJoined)) {
+      errors.material = 'Material contains an excessively long word or gibberish.';
+    }
+
+    // finish_color
+    const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+    if (finishJoined) {
+      if (finishJoined.length > 255) {
+        errors.finish_color = 'Finish / Color cannot exceed 255 characters.';
+      } else if (hasRepeating(finishJoined)) {
+        errors.finish_color = 'Finish / Color contains excessive repetitive characters.';
+      } else if (hasLongWord(finishJoined)) {
+        errors.finish_color = 'Finish / Color contains an excessively long word or gibberish.';
+      }
+    }
+
+    // vendor_name
+    const vendorName = (formData.vendor_name || '').trim();
+    if (vendorName) {
+      if (vendorName.length > 100) {
+        errors.vendor_name = 'Vendor name cannot exceed 100 characters.';
+      } else if (hasRepeating(vendorName)) {
+        errors.vendor_name = 'Vendor name contains excessive repetitive characters.';
+      } else if (hasLongWord(vendorName)) {
+        errors.vendor_name = 'Vendor name contains an excessively long word or gibberish.';
+      }
+    }
+
+    // cbm
+    if (formData.cbm !== '' && formData.cbm !== null && formData.cbm !== undefined) {
+      const cbmVal = parseFloat(formData.cbm);
+      if (isNaN(cbmVal) || cbmVal <= 0) {
+        errors.cbm = 'CBM must be a positive number greater than 0.';
+      } else if (cbmVal > 100) {
+        errors.cbm = 'CBM must be a realistic value between 0.0001 and 100.0000 m³.';
+      } else if (String(formData.cbm).replace('.', '').length > 10) {
+        errors.cbm = 'Ensure that there are no more than 10 digits in total.';
+      }
+    }
+
+    // usd
+    if (formData.usd !== '' && formData.usd !== null && formData.usd !== undefined) {
+      const usdVal = parseFloat(formData.usd);
+      if (isNaN(usdVal) || usdVal < 0) {
+        errors.usd = 'Price (USD) must be a non-negative number.';
+      } else if (usdVal > 999999.99) {
+        errors.usd = 'Price (USD) must be a realistic amount up to $999,999.99.';
+      } else if (String(formData.usd).replace('.', '').length > 12) {
+        errors.usd = 'Ensure that there are no more than 12 digits in total.';
+      }
+    }
+
+    // dimensions
+    ['size_length', 'size_breadth', 'size_height'].forEach(dimKey => {
+      const val = formData[dimKey];
+      const dimLabel = dimKey.replace('size_', '');
+      if (val !== '' && val !== null && val !== undefined) {
+        const num = parseFloat(val);
+        if (isNaN(num) || num <= 0) {
+          errors[dimKey] = `${dimLabel} must be greater than 0.`;
+        } else if (num < 0.1 || num > 9999.99) {
+          errors[dimKey] = `${dimLabel} must be between 0.1 and 9999.9 cm.`;
+        } else if (String(val).replace('.', '').length > 10) {
+          errors[dimKey] = 'Ensure that there are no more than 10 digits in total.';
+        }
+      }
+    });
+
+    if (Object.keys(errors).length > 0) {
+      errors.general = 'Please correct the highlighted errors below.';
+      setFormErrors(errors);
+      return false;
+    }
+
+    setFormErrors({});
+    return true;
+  };
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) {
+      return;
     }
 
     setSubmitting(true);
@@ -619,15 +791,28 @@ function Samples() {
       fetchSamples();
     } catch (err) {
       console.error('Submit error', err);
-      if (err.response?.data?.style_no) {
-        const msg = Array.isArray(err.response.data.style_no)
-          ? err.response.data.style_no[0]
-          : err.response.data.style_no;
-        setFormError(msg || `Style No. '${formData.style_no}' already exists in Samples Catalog.`);
-      } else if (err.response?.data?.detail) {
-        setFormError(err.response.data.detail);
+      const data = err.response?.data;
+      if (data && typeof data === 'object') {
+        const newErrors = {};
+        Object.entries(data).forEach(([key, val]) => {
+          if (Array.isArray(val)) {
+            newErrors[key] = val.join(' ');
+          } else if (typeof val === 'string') {
+            newErrors[key] = val;
+          }
+        });
+        if (data.detail) {
+          newErrors.general = data.detail;
+        } else if (data.non_field_errors) {
+          newErrors.general = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(' ') : data.non_field_errors;
+        } else if (Object.keys(newErrors).length > 0) {
+          newErrors.general = 'Please correct the highlighted errors below.';
+        } else {
+          newErrors.general = 'Failed to save sample. Please check your inputs.';
+        }
+        setFormErrors(newErrors);
       } else {
-        setFormError('Failed to save sample. Please check your inputs.');
+        setFormErrors({ general: 'Failed to save sample. Please check your inputs.' });
       }
     } finally {
       setSubmitting(false);
@@ -639,43 +824,537 @@ function Samples() {
   return (
     <div>
       {id ? (
-        <div className="new-page-form" style={{ padding: '1rem 0' }}>
-          <div className="form-card-container">
-            <div className="modal-header" style={{ padding: 0, marginBottom: '2rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 700 }}>{editingId ? '✏️ Edit Sample' : '+ Create New Sample'}</h2>
+        <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
+          <style>{`
+            @media (max-width: 768px) {
+              .sample-action-btns {
+                flex-direction: column-reverse !important;
+                width: 100% !important;
+              }
+              .sample-action-btns button {
+                width: 100% !important;
+                justify-content: center !important;
+                padding: 0.8rem 1rem !important;
+              }
+            }
+          `}</style>
+          {/* Header with Back Button and Title (Daily Issue style) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '1.5rem',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmExit('/samples')) closeModal();
+                }}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#334155',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Back to Samples Catalog"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Samples Catalog
+                  </span>
+                </div>
+                <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
+                  {editingId ? `Edit Sample (${formData.style_no || 'Draft'})` : 'Create New Sample'}
+                </h1>
+              </div>
             </div>
-            
-            <div className="modal-body" style={{ padding: 0 }}>
-              <form id="sample-form" onSubmit={handleSubmit}>
-                {formError && (
-                  <div style={{
-                    backgroundColor: '#fef2f2',
-                    border: '1.5px solid #fca5a5',
-                    borderRadius: '12px',
-                    padding: '0.75rem 1rem',
-                    marginBottom: '1.25rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    color: '#991b1b',
-                    fontSize: '0.9rem',
-                    fontWeight: 600
-                  }}>
-                    <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
-                    <span>{formError}</span>
-                  </div>
-                )}
-                {/* ── Images ──────────────────────────────────────────── */}
-                <div className="form-section">
-                  <h3 className="form-section-title">📷 Images</h3>
-                  <ImageGrid
-                    images={images}
-                    onRemove={handleImageRemove}
-                    onPreview={(idx) => setLightboxIndex(idx)}
+          </div>
+
+          {/* Form Container (Full Width across desktop) */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            padding: '1.75rem',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
+            <form id="sample-form" onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {formErrors.general && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1.5px solid #fca5a5',
+                  borderRadius: '12px',
+                  padding: '0.85rem 1.15rem',
+                  color: '#991b1b',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem'
+                }}>
+                  <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
+                  <span>{formErrors.general}</span>
+                </div>
+              )}
+
+              {/* Row 1: Core Identifiers (4-columns across desktop) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.style_no ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Style No. *
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    name="style_no"
+                    className="form-input"
+                    value={formData.style_no}
+                    onChange={handleChange}
+                    placeholder="e.g. STY-204"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.style_no ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.style_no ? '#fff5f5' : '#ffffff',
+                      fontWeight: 700,
+                      boxSizing: 'border-box'
+                    }}
                   />
-                  <label className="image-upload-zone">
-                    <Upload size={20} />
-                    <span>Click or drag to add images</span>
+                  {formErrors.style_no && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.style_no}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.product_name ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Product Name *
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    name="product_name"
+                    className="form-input"
+                    value={formData.product_name}
+                    onChange={handleChange}
+                    placeholder="e.g. Walnut Dining Table"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.product_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.product_name ? '#fff5f5' : '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {formErrors.product_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.product_name}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.buyer ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Buyer
+                  </label>
+                  <CustomSelect
+                    name="buyer"
+                    value={formData.buyer}
+                    onChange={handleChange}
+                    options={[
+                      { value: '', label: 'Select Buyer...' },
+                      ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                    ]}
+                    placeholder="Select Buyer..."
+                  />
+                  {formErrors.buyer && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.buyer}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.finish ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Finish (Catalog Reference)
+                  </label>
+                  <CustomSelect
+                    name="finish"
+                    value={formData.finish || ''}
+                    onChange={handleChange}
+                    options={[
+                      { value: '', label: 'Select Registered Finish...' },
+                      ...finishesOptions.map(f => ({
+                        value: f.id,
+                        label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})`
+                      }))
+                    ]}
+                    placeholder="Select Registered Finish..."
+                  />
+                  {formErrors.finish && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.finish}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Commercial & Logistics (4-columns across desktop) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.usd ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Price (USD)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="usd"
+                    className="form-input"
+                    value={formData.usd}
+                    onChange={handleChange}
+                    placeholder="0.00"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.usd ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.usd ? '#fff5f5' : '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {formErrors.usd && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.usd}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.cbm ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    CBM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    name="cbm"
+                    className="form-input"
+                    value={formData.cbm}
+                    onChange={handleChange}
+                    placeholder="0.0000"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.cbm ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.cbm ? '#fff5f5' : '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {formErrors.cbm && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.cbm}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.vendor_name ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+                    Vendor Name
+                  </label>
+                  <input
+                    type="text"
+                    name="vendor_name"
+                    className="form-input"
+                    value={formData.vendor_name}
+                    onChange={handleChange}
+                    placeholder="e.g. Raj Artisans"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.vendor_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.vendor_name ? '#fff5f5' : '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  {formErrors.vendor_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.vendor_name}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Remark / Production Note
+                  </label>
+                  <input
+                    type="text"
+                    name="remark"
+                    className="form-input"
+                    value={formData.remark}
+                    onChange={handleChange}
+                    placeholder="Any special remarks or specifications..."
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Dynamic Multi-Value Attributes (Side by Side 2-Columns) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                {/* Col 1: Material(s) */}
+                <div style={{
+                  padding: '1rem 1.15rem',
+                  borderRadius: '12px',
+                  border: formErrors.material ? '1.5px solid #dc2626' : '1px solid #e2e8f0',
+                  backgroundColor: formErrors.material ? '#fff5f5' : '#fafaf9'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
+                      Material(s) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addMaterialField}
+                      style={{
+                        padding: '0.3rem 0.65rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#8b5a2b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      + Add Material
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {materialsList.map((mat, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          required={idx === 0}
+                          type="text"
+                          className="form-input"
+                          value={mat}
+                          onChange={e => handleMaterialItemChange(idx, e.target.value)}
+                          placeholder={`Material ${idx + 1} (e.g. ${idx === 0 ? 'Mango' : 'Silk'})`}
+                          style={{
+                            width: '100%',
+                            padding: '0.6rem 0.8rem',
+                            borderRadius: '6px',
+                            border: formErrors.material ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                            backgroundColor: '#ffffff',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        {materialsList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeMaterialField(idx)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                            title="Remove Material"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {formErrors.material && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '6px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.material}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Col 2: Finish / Color(s) */}
+                <div style={{
+                  padding: '1rem 1.15rem',
+                  borderRadius: '12px',
+                  border: formErrors.finish_color ? '1.5px solid #dc2626' : '1px solid #e2e8f0',
+                  backgroundColor: formErrors.finish_color ? '#fff5f5' : '#fafaf9'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
+                      Finish / Color(s) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addFinishField}
+                      style={{
+                        padding: '0.3rem 0.65rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#8b5a2b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      + Add Finish
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {finishesList.map((fin, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          required={idx === 0}
+                          type="text"
+                          className="form-input"
+                          value={fin}
+                          onChange={e => handleFinishItemChange(idx, e.target.value)}
+                          placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric Linen'})`}
+                          style={{
+                            width: '100%',
+                            padding: '0.6rem 0.8rem',
+                            borderRadius: '6px',
+                            border: formErrors.finish_color ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                            backgroundColor: '#ffffff',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        {finishesList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeFinishField(idx)}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
+                            title="Remove Finish"
+                          >
+                            <X size={18} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {formErrors.finish_color && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '6px' }}>
+                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                      <span>{formErrors.finish_color}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 4: Dimensions (cm inputs + auto-calculated inches side by side) */}
+              <div style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                backgroundColor: '#fafaf9'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
+                    📐 Dimensions
+                  </label>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Enter in centimeters (cm); auto-converts to inches</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', alignItems: 'center' }}>
+                  <SizeGroup
+                    label="Size (cm)"
+                    prefix="size"
+                    values={formData}
+                    onChange={handleDimChange}
+                    errors={formErrors}
+                  />
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '0.75rem',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px'
+                  }}>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>Length (in)</span>
+                      <strong style={{ color: '#0f172a', fontSize: '0.92rem' }}>
+                        {formData.size_length ? (parseFloat(formData.size_length) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #f1f5f9', paddingLeft: '0.75rem' }}>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>Breadth (in)</span>
+                      <strong style={{ color: '#0f172a', fontSize: '0.92rem' }}>
+                        {formData.size_breadth ? (parseFloat(formData.size_breadth) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid #f1f5f9', paddingLeft: '0.75rem' }}>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>Height (in)</span>
+                      <strong style={{ color: '#0f172a', fontSize: '0.92rem' }}>
+                        {formData.size_height ? (parseFloat(formData.size_height) / 2.54).toFixed(2) + ' in' : '—'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 5: Product Images (Compact Inline Row) */}
+              <div style={{
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                backgroundColor: '#fafaf9'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                    <ImageIcon size={16} color="#8b5a2b" />
+                    <span>Product Images ({images.length})</span>
+                  </label>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Upload sample photos or sketches</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  <label
+                    className="image-upload-zone"
+                    style={{
+                      margin: 0,
+                      padding: '0.65rem 1.25rem',
+                      minHeight: '76px',
+                      height: '76px',
+                      boxSizing: 'border-box',
+                      borderRadius: '10px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Upload size={18} />
+                    <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>Click or drag to add images</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -684,236 +1363,113 @@ function Samples() {
                       onChange={handleImageAdd}
                     />
                   </label>
+                  {images.length > 0 && (
+                    <ImageGrid
+                      images={images}
+                      onRemove={handleImageRemove}
+                      onPreview={(idx) => setLightboxIndex(idx)}
+                    />
+                  )}
                 </div>
+              </div>
 
-                {/* ── Basic Info ───────────────────────────────────────── */}
-                <div className="form-section">
-                  <h3 className="form-section-title">📋 Basic Info</h3>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Style No. *</label>
-                      <input required type="text" name="style_no" className="form-input" value={formData.style_no} onChange={handleChange} placeholder="e.g. STY-204" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Buyer</label>
-                      <CustomSelect
-                        name="buyer"
-                        value={formData.buyer}
-                        onChange={handleChange}
-                        options={[
-                          { value: '', label: 'Select Buyer...' },
-                          ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
-                        ]}
-                        placeholder="Select Buyer..."
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Product Name *</label>
-                      <input required type="text" name="product_name" className="form-input" value={formData.product_name} onChange={handleChange} placeholder="e.g. Walnut Dining Table" />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Finish (Catalog Reference)</label>
-                      <CustomSelect
-                        name="finish"
-                        value={formData.finish || ''}
-                        onChange={handleChange}
-                        options={[
-                          { value: '', label: 'Select Registered Finish...' },
-                          ...finishesOptions.map(f => ({
-                            value: f.id,
-                            label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})`
-                          }))
-                        ]}
-                        placeholder="Select Registered Finish..."
-                      />
-                    </div>
-
-                    {/* ── Material(s) ── */}
-                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) *</label>
-                        <button
-                          type="button"
-                          onClick={addMaterialField}
-                          className="btn-secondary"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
-                        >
-                          + Add Material
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        {materialsList.map((mat, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <input
-                              required={idx === 0}
-                              type="text"
-                              className="form-input"
-                              value={mat}
-                              onChange={e => handleMaterialItemChange(idx, e.target.value)}
-                              placeholder={`Material ${idx + 1} (e.g. ${idx === 0 ? 'Mango' : 'Silk'})`}
-                            />
-                            {materialsList.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeMaterialField(idx)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                                title="Remove Material"
-                              >
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* ── Finish / Color(s) ── */}
-                    <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Finish / Color(s) *</label>
-                        <button
-                          type="button"
-                          onClick={addFinishField}
-                          className="btn-secondary"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', background: '#fff' }}
-                        >
-                          + Add Finish
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        {finishesList.map((fin, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                            <input
-                              required={idx === 0}
-                              type="text"
-                              className="form-input"
-                              value={fin}
-                              onChange={e => handleFinishItemChange(idx, e.target.value)}
-                              placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric 1557 Linen'})`}
-                            />
-                            {finishesList.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeFinishField(idx)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                                title="Remove Finish"
-                              >
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">CBM</label>
-                      <input type="number" step="0.0001" name="cbm" className="form-input" value={formData.cbm} onChange={handleChange} placeholder="e.g. 0.1250" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Price (USD)</label>
-                      <input type="number" step="0.01" name="usd" className="form-input" value={formData.usd} onChange={handleChange} placeholder="e.g. 150.00" />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Vendor Name</label>
-                      <input type="text" name="vendor_name" className="form-input" value={formData.vendor_name} onChange={handleChange} placeholder="e.g. Raj Artisans" />
-                    </div>
-                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                      <label className="form-label">Remark</label>
-                      <textarea name="remark" className="form-input" rows="2" value={formData.remark} onChange={handleChange} placeholder="Any additional notes..." />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Dimensions ───────────────────────────────────────── */}
-                <div className="form-section">
-                  <h3 className="form-section-title">📐 Dimensions</h3>
-
-                  <SizeGroup
-                    label="Size (cm)"
-                    prefix="size"
-                    values={formData}
-                    onChange={handleDimChange}
-                  />
-
-                  {/* Auto-calculate inches display */}
-                  <div style={{ marginTop: '1rem', display: 'flex', gap: '2rem', fontSize: '0.9rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.75rem', borderRadius: '6px' }}>
-                    <div>
-                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Length (in)</span>
-                      <strong style={{ color: 'var(--text-color)' }}>
-                        {formData.size_length ? (parseFloat(formData.size_length) / 2.54).toFixed(2) + ' in' : '—'}
-                      </strong>
-                    </div>
-                    <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '2rem' }}>
-                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Breadth (in)</span>
-                      <strong style={{ color: 'var(--text-color)' }}>
-                        {formData.size_breadth ? (parseFloat(formData.size_breadth) / 2.54).toFixed(2) + ' in' : '—'}
-                      </strong>
-                    </div>
-                    <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: '2rem' }}>
-                      <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Size Height (in)</span>
-                      <strong style={{ color: 'var(--text-color)' }}>
-                        {formData.size_height ? (parseFloat(formData.size_height) / 2.54).toFixed(2) + ' in' : '—'}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Actions ──────────────────────────────────────────── */}
-                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1.15rem', borderTop: '1px solid #f1f5f9', gap: '1rem' }}>
-                  <div>
-                    {editingId && isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => setShowDeleteConfirm(true)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          backgroundColor: '#fef2f2',
-                          color: '#ef4444',
-                          border: '1px solid #fca5a5',
-                          padding: '0.55rem 1.1rem',
-                          borderRadius: '10px',
-                          fontWeight: 600,
-                          fontSize: '0.88rem',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                      >
-                        <Trash2 size={16} /> Delete Sample
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {/* Bottom Action Buttons (like Daily Issue Entry) */}
+              <div style={{
+                marginTop: '0.5rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingTop: '1.25rem',
+                borderTop: '1px solid #f1f5f9',
+                flexWrap: 'wrap',
+                gap: '1rem'
+              }}>
+                <div>
+                  {editingId && isAdmin && (
                     <button
                       type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        if (confirmExit('/samples')) closeModal();
+                      onClick={() => setShowDeleteConfirm(true)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        backgroundColor: '#fef2f2',
+                        color: '#ef4444',
+                        border: '1px solid #fca5a5',
+                        padding: '0.65rem 1.2rem',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        fontSize: '0.88rem',
+                        cursor: 'pointer'
                       }}
                     >
-                      Cancel
+                      <Trash2 size={16} /> Delete Sample
                     </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ borderColor: '#8b5a2b', color: '#8b5a2b', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                      onClick={() => handleSaveDraft()}
-                    >
-                      <FileText size={16} /> Save as Draft
-                    </button>
-                    <button type="submit" className="btn-primary" disabled={submitting}>
-                      {submitting ? 'Saving...' : (editingId ? 'Save Changes' : 'Create Sample')}
-                    </button>
-                  </div>
+                  )}
                 </div>
-              </form>
-            </div>
+
+                <div className="sample-action-btns" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirmExit('/samples')) closeModal();
+                    }}
+                    style={{
+                      padding: '0.65rem 1.25rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      backgroundColor: '#ffffff',
+                      color: '#475569',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDraft()}
+                    style={{
+                      padding: '0.65rem 1.25rem',
+                      borderRadius: '8px',
+                      border: '1px solid #8b5a2b',
+                      backgroundColor: '#ffffff',
+                      color: '#8b5a2b',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <FileText size={16} /> Save as Draft
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={{
+                      padding: '0.65rem 1.6rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#8b5a2b',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: submitting ? 'not-allowed' : 'pointer',
+                      opacity: submitting ? 0.7 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 2px 4px rgba(139, 90, 43, 0.2)'
+                    }}
+                  >
+                    <span>{submitting ? 'Saving Sample...' : (editingId ? 'Save Sample Changes' : 'Confirm & Create Sample')}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
 
           {/* Delete Confirmation Modal */}
@@ -977,6 +1533,15 @@ function Samples() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Lightbox for previewing sample images */}
+          {lightboxIndex !== null && (
+            <Lightbox
+              images={images}
+              startIndex={lightboxIndex}
+              onClose={() => setLightboxIndex(null)}
+            />
           )}
         </div>
       ) : (

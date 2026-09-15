@@ -6,6 +6,7 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [isCodeTouched, setIsCodeTouched] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -14,6 +15,7 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
       setName('');
       setCode('');
       setIsCodeTouched(false);
+      setFormErrors({});
       setError(null);
     }
   }, [isOpen]);
@@ -31,24 +33,70 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
         .replace(/_+/g, '_')
         .slice(0, 20);
       setCode(generatedCode);
+      if (formErrors.code) {
+        setFormErrors(prev => {
+          const copy = { ...prev };
+          delete copy.code;
+          return copy;
+        });
+      }
     }
+    if (formErrors.name) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.name;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleCodeChange = (e) => {
     setIsCodeTouched(true);
     setCode(e.target.value.toUpperCase());
+    if (formErrors.code) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.code;
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!name.trim()) {
+      errors.name = 'Category name is required.';
+    } else if (name.trim().length > 100) {
+      errors.name = 'Category name cannot exceed 100 characters.';
+    }
+
+    const finalCode = code.trim() || name.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20);
+    if (!finalCode) {
+      errors.code = 'Category code is required.';
+    } else if (finalCode.length > 50) {
+      errors.code = 'Category code cannot exceed 50 characters.';
+    }
+
+    return errors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError('Category Name is required.');
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg || 'Please fix the highlighted errors.');
       return;
     }
+
     const finalCode = code.trim() || name.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 20);
 
     setLoading(true);
     setError(null);
+    setFormErrors({});
 
     try {
       const res = await api.post('/store/categories/', {
@@ -61,12 +109,18 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
       onClose();
     } catch (err) {
       console.error('Failed to create store category:', err);
-      setError(
-        err.response?.data?.name?.[0] ||
-        err.response?.data?.code?.[0] ||
-        err.response?.data?.detail ||
-        'Failed to add category. Please make sure the category name/code is unique.'
-      );
+      const resData = err.response?.data;
+      if (resData && typeof resData === 'object') {
+        const backendErrors = {};
+        Object.entries(resData).forEach(([k, v]) => {
+          backendErrors[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+        setFormErrors(backendErrors);
+        const firstErr = Object.values(backendErrors)[0];
+        setError(firstErr || 'Failed to add category. Please verify unique name/code.');
+      } else {
+        setError(err.message || 'Failed to add category.');
+      }
     } finally {
       setLoading(false);
     }
@@ -183,7 +237,7 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
           </div>
 
           {/* Body */}
-          <form className="scm-body" onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
+          <form className="scm-body" noValidate onSubmit={handleSubmit} style={{ padding: '1.5rem' }}>
             {error && (
               <div
                 style={{
@@ -211,7 +265,7 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
                     display: 'block',
                     fontSize: '0.85rem',
                     fontWeight: 700,
-                    color: '#334155',
+                    color: formErrors.name ? '#dc2626' : '#334155',
                     marginBottom: '6px',
                   }}
                 >
@@ -228,12 +282,19 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.name ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     outline: 'none',
                     boxSizing: 'border-box',
                   }}
                 />
+                {formErrors.name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.name}</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -242,7 +303,7 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
                     display: 'block',
                     fontSize: '0.85rem',
                     fontWeight: 700,
-                    color: '#334155',
+                    color: formErrors.code ? '#dc2626' : '#334155',
                     marginBottom: '6px',
                   }}
                 >
@@ -258,12 +319,19 @@ export default function StoreCategoryModal({ isOpen, onClose, onSuccess }) {
                     width: '100%',
                     padding: '0.65rem 0.85rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.code ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.code ? '#fff5f5' : '#ffffff',
                     fontSize: '0.9rem',
                     outline: 'none',
                     boxSizing: 'border-box',
                   }}
                 />
+                {formErrors.code && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <AlertCircle size={12} />
+                    <span>{formErrors.code}</span>
+                  </div>
+                )}
                 <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>
                   Unique short code to identify this category across the ERP.
                 </span>

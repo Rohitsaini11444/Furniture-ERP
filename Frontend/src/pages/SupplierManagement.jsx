@@ -28,8 +28,20 @@ export default function SupplierManagement() {
   });
 
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const [successMsg, setSuccessMsg] = useState('');
+
+  const handleInputChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    if (errors[field] || errors.general) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[field];
+        delete next.general;
+        return next;
+      });
+    }
+  };
 
   const fetchSuppliers = useCallback(async () => {
     setLoading(true);
@@ -58,7 +70,7 @@ export default function SupplierManagement() {
       cartage_ledger_name: 'PUR. CARTAGE GST @ 18% -  3 %',
       address: '',
     });
-    setError('');
+    setErrors({});
     setIsFormOpen(true);
   };
 
@@ -73,7 +85,7 @@ export default function SupplierManagement() {
       cartage_ledger_name: sup.cartage_ledger_name || 'PUR. CARTAGE GST @ 18% -  3 %',
       address: sup.address || '',
     });
-    setError('');
+    setErrors({});
     setIsFormOpen(true);
   };
 
@@ -91,30 +103,180 @@ export default function SupplierManagement() {
     }
   };
 
+  const validateForm = () => {
+    const errs = {};
+    const hasRepeating = (str) => /(.)\1{3,}/i.test(str);
+    const hasLongWord = (str, len = 30) => str.split(/\s+/).some(w => w.length > len);
+
+    // Supplier Name
+    const name = form.name.trim();
+    if (!name) {
+      errs.name = 'Supplier Name is required.';
+    } else if (name.length < 2) {
+      errs.name = 'Supplier Name must be at least 2 characters.';
+    } else if (name.length > 200) {
+      errs.name = 'Supplier Name cannot exceed 200 characters.';
+    } else if (hasRepeating(name)) {
+      errs.name = 'Supplier Name contains excessive repetitive characters.';
+    } else if (hasLongWord(name, 30)) {
+      errs.name = 'Supplier Name contains an excessively long continuous word.';
+    } else if ((name.match(/[A-Za-z]/g) || []).length < 2) {
+      errs.name = 'Supplier Name must contain at least 2 alphabetic characters.';
+    } else if (!/^[A-Za-z0-9\s.,&'\-()/@#]+$/.test(name)) {
+      errs.name = 'Supplier Name contains invalid characters.';
+    } else {
+      const duplicate = suppliers.find(s =>
+        s.name && s.name.trim().toLowerCase() === name.toLowerCase() &&
+        String(s.id) !== String(editingId || '')
+      );
+      if (duplicate) {
+        errs.name = `Supplier '${name}' already exists in Supplier Master.`;
+      }
+    }
+
+    // Phone Number
+    const phone = form.phone.trim();
+    if (phone) {
+      if (phone.length > 50) {
+        errs.phone = 'Phone number cannot exceed 50 characters.';
+      } else if (!/^\+?[0-9\s\-()]{7,20}$/.test(phone)) {
+        errs.phone = "Please enter a valid phone number (digits, optional '+', hyphens).";
+      } else {
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 7) {
+          errs.phone = 'Phone number must contain at least 7 digits.';
+        } else if (/^(\d)\1+$/.test(digits)) {
+          errs.phone = 'Phone number cannot consist of identical repeating digits.';
+        }
+      }
+    }
+
+    // GSTIN
+    const gstin = form.gstin.trim().toUpperCase();
+    if (gstin) {
+      if (gstin.length > 50) {
+        errs.gstin = 'GSTIN cannot exceed 50 characters.';
+      } else {
+        const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+        if (!gstinRegex.test(gstin) && !/^[A-Z0-9]{15}$/.test(gstin)) {
+          errs.gstin = 'GSTIN must be a valid 15-character format (e.g. 08ABCDE1234F1Z5).';
+        }
+      }
+    }
+
+    // State Name
+    const stateName = form.state_name.trim();
+    if (stateName) {
+      if (stateName.length < 2) {
+        errs.state_name = 'State Name must be at least 2 characters.';
+      } else if (stateName.length > 100) {
+        errs.state_name = 'State Name cannot exceed 100 characters.';
+      } else if (!/^[A-Za-z\s.\-]+$/.test(stateName)) {
+        errs.state_name = 'State Name can only contain letters, spaces, and hyphens.';
+      } else if (hasRepeating(stateName)) {
+        errs.state_name = 'State Name contains excessive repetitive characters.';
+      }
+    }
+
+    // Cartage GST Rate
+    if (form.cartage_gst_rate !== '' && form.cartage_gst_rate !== null && form.cartage_gst_rate !== undefined) {
+      const rate = parseFloat(form.cartage_gst_rate);
+      if (isNaN(rate)) {
+        errs.cartage_gst_rate = 'Cartage GST Rate must be a valid number.';
+      } else if (rate < 0) {
+        errs.cartage_gst_rate = 'Cartage GST Rate cannot be negative.';
+      } else if (rate > 100) {
+        errs.cartage_gst_rate = 'Cartage GST Rate cannot exceed 100.00%.';
+      } else if (String(form.cartage_gst_rate).replace('.', '').length > 5) {
+        errs.cartage_gst_rate = 'Ensure that there are no more than 5 digits in total.';
+      }
+    }
+
+    // Cartage Ledger Name
+    const ledger = form.cartage_ledger_name.trim();
+    if (!ledger) {
+      errs.cartage_ledger_name = 'Cartage Ledger Name is required.';
+    } else if (ledger.length < 2) {
+      errs.cartage_ledger_name = 'Cartage Ledger Name must be at least 2 characters.';
+    } else if (ledger.length > 200) {
+      errs.cartage_ledger_name = 'Cartage Ledger Name cannot exceed 200 characters.';
+    } else if (hasRepeating(ledger)) {
+      errs.cartage_ledger_name = 'Cartage Ledger Name contains excessive repetitive characters.';
+    } else if (hasLongWord(ledger, 40)) {
+      errs.cartage_ledger_name = 'Cartage Ledger Name contains an excessively long continuous word.';
+    }
+
+    // Address
+    const address = form.address.trim();
+    if (address) {
+      if (address.length > 500) {
+        errs.address = 'Address cannot exceed 500 characters.';
+      } else if (hasLongWord(address, 40)) {
+        errs.address = 'Address contains an excessively long continuous word.';
+      }
+    }
+
+    if (Object.keys(errs).length > 0) {
+      errs.general = 'Please correct the highlighted errors below.';
+      setErrors(errs);
+      return false;
+    }
+
+    setErrors({});
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      setError('Supplier Name is required.');
+    if (!validateForm()) {
       return;
     }
 
     setSaving(true);
-    setError('');
+    setErrors({});
 
     try {
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        gstin: form.gstin.trim().toUpperCase(),
+        state_name: form.state_name.trim(),
+        cartage_ledger_name: form.cartage_ledger_name.trim(),
+        address: form.address.trim(),
+      };
+
       if (editingId) {
-        await api.put(`/suppliers/${editingId}/`, form);
-        setSuccessMsg(`Supplier "${form.name}" updated successfully.`);
+        await api.put(`/suppliers/${editingId}/`, payload);
+        setSuccessMsg(`Supplier "${payload.name}" updated successfully.`);
       } else {
-        await api.post('/suppliers/', form);
-        setSuccessMsg(`New supplier "${form.name}" created successfully.`);
+        await api.post('/suppliers/', payload);
+        setSuccessMsg(`New supplier "${payload.name}" created successfully.`);
       }
       setTimeout(() => setSuccessMsg(''), 3000);
       setIsFormOpen(false);
       fetchSuppliers();
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.detail || 'Failed to save supplier details.');
+      const data = err.response?.data;
+      if (data && typeof data === 'object') {
+        const newErrors = {};
+        Object.entries(data).forEach(([k, v]) => {
+          newErrors[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+        if (data.detail) {
+          newErrors.general = data.detail;
+        } else if (data.non_field_errors) {
+          newErrors.general = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(' ') : data.non_field_errors;
+        } else if (Object.keys(newErrors).length > 0) {
+          newErrors.general = 'Please correct the highlighted errors below.';
+        } else {
+          newErrors.general = 'Failed to save supplier details. Please check your inputs.';
+        }
+        setErrors(newErrors);
+      } else {
+        setErrors({ general: 'Failed to save supplier details. Please check your inputs.' });
+      }
     } finally {
       setSaving(false);
     }
@@ -238,54 +400,182 @@ export default function SupplierManagement() {
             </button>
           </div>
 
-          {error && (
-            <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '0.85rem', marginBottom: '1rem', fontWeight: 600 }}>
-              ⚠️ {error}
+          {errors.general && (
+            <div style={{
+              backgroundColor: '#fef2f2',
+              border: '1.5px solid #fca5a5',
+              color: '#991b1b',
+              padding: '0.75rem 1rem',
+              borderRadius: '12px',
+              fontSize: '0.88rem',
+              marginBottom: '1.25rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem'
+            }}>
+              <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+              <span>{errors.general}</span>
             </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '1.25rem' }}>
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: 700 }}>Supplier Name *</label>
-              <input required type="text" className="form-input" placeholder="e.g. Pinkcity Handicrafts Ltd" style={{ height: '42px' }}
-                value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+              <input
+                required
+                type="text"
+                className="form-input"
+                placeholder="e.g. Pinkcity Handicrafts Ltd"
+                style={{
+                  height: '42px',
+                  borderColor: errors.name ? '#dc2626' : undefined,
+                  backgroundColor: errors.name ? '#fff5f5' : undefined
+                }}
+                value={form.name}
+                onChange={e => handleInputChange('name', e.target.value)}
+              />
+              {errors.name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.name}</span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label">Phone Number</label>
-              <input type="text" className="form-input" placeholder="e.g. 08824223476" style={{ height: '42px' }}
-                value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 08824223476"
+                style={{
+                  height: '42px',
+                  borderColor: errors.phone ? '#dc2626' : undefined,
+                  backgroundColor: errors.phone ? '#fff5f5' : undefined
+                }}
+                value={form.phone}
+                onChange={e => handleInputChange('phone', e.target.value)}
+              />
+              {errors.phone && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.phone}</span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label">GSTIN / UIN</label>
-              <input type="text" className="form-input" placeholder="e.g. 08ABCDE1234F1Z5" style={{ height: '42px' }}
-                value={form.gstin} onChange={e => setForm({...form, gstin: e.target.value})} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 08ABCDE1234F1Z5"
+                style={{
+                  height: '42px',
+                  borderColor: errors.gstin ? '#dc2626' : undefined,
+                  backgroundColor: errors.gstin ? '#fff5f5' : undefined
+                }}
+                value={form.gstin}
+                onChange={e => handleInputChange('gstin', e.target.value.toUpperCase())}
+              />
+              {errors.gstin && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.gstin}</span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label">State Name</label>
-              <input type="text" className="form-input" placeholder="e.g. Rajasthan" style={{ height: '42px' }}
-                value={form.state_name} onChange={e => setForm({...form, state_name: e.target.value})} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Rajasthan"
+                style={{
+                  height: '42px',
+                  borderColor: errors.state_name ? '#dc2626' : undefined,
+                  backgroundColor: errors.state_name ? '#fff5f5' : undefined
+                }}
+                value={form.state_name}
+                onChange={e => handleInputChange('state_name', e.target.value)}
+              />
+              {errors.state_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.state_name}</span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label">Cartage GST Rate (%)</label>
-              <input type="number" step="0.01" min="0" className="form-input" placeholder="18.00" style={{ height: '42px' }}
-                value={form.cartage_gst_rate} onChange={e => setForm({...form, cartage_gst_rate: e.target.value})} />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                className="form-input"
+                placeholder="18.00"
+                style={{
+                  height: '42px',
+                  borderColor: errors.cartage_gst_rate ? '#dc2626' : undefined,
+                  backgroundColor: errors.cartage_gst_rate ? '#fff5f5' : undefined
+                }}
+                value={form.cartage_gst_rate}
+                onChange={e => handleInputChange('cartage_gst_rate', e.target.value)}
+              />
+              {errors.cartage_gst_rate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.cartage_gst_rate}</span>
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label">Cartage Ledger Name</label>
-              <input type="text" className="form-input" placeholder="PUR. CARTAGE GST @ 18% -  3 %" style={{ height: '42px' }}
-                value={form.cartage_ledger_name} onChange={e => setForm({...form, cartage_ledger_name: e.target.value})} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="PUR. CARTAGE GST @ 18% -  3 %"
+                style={{
+                  height: '42px',
+                  borderColor: errors.cartage_ledger_name ? '#dc2626' : undefined,
+                  backgroundColor: errors.cartage_ledger_name ? '#fff5f5' : undefined
+                }}
+                value={form.cartage_ledger_name}
+                onChange={e => handleInputChange('cartage_ledger_name', e.target.value)}
+              />
+              {errors.cartage_ledger_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                  <span>{errors.cartage_ledger_name}</span>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="form-group" style={{ marginBottom: '1.5rem' }}>
             <label className="form-label" style={{ fontWeight: 700 }}>Full Address</label>
-            <textarea rows={2} className="form-input" placeholder="Enter supplier factory / office address..."
-              value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+            <textarea
+              rows={2}
+              className="form-input"
+              placeholder="Enter supplier factory / office address..."
+              style={{
+                borderColor: errors.address ? '#dc2626' : undefined,
+                backgroundColor: errors.address ? '#fff5f5' : undefined
+              }}
+              value={form.address}
+              onChange={e => handleInputChange('address', e.target.value)}
+            />
+            {errors.address && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                <span>{errors.address}</span>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem' }}>

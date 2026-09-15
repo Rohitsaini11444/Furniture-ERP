@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert, FileText, Building2, Info } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Save, AlertCircle, CheckCircle, UserCheck, ShieldAlert, FileText, Building2, Info, X } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
@@ -59,9 +59,19 @@ export default function StoreDailyIssuePage() {
     remark: ''
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (toastNotification) {
+      const timer = setTimeout(() => setToastNotification(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastNotification]);
 
   const {
     setIsDirty,
@@ -195,6 +205,19 @@ export default function StoreDailyIssuePage() {
     }
   }, [formData.contractor, persons]);
 
+  const handleFieldChange = (field, val) => {
+    setIsDirty(true);
+    setFormData(prev => ({ ...prev, [field]: val }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
   const handleDateChange = (e) => {
     setIsDirty(true);
     const val = e.target.value;
@@ -203,6 +226,14 @@ export default function StoreDailyIssuePage() {
       issue_date: val,
       month_year: getMonthYearFromDate(val)
     }));
+    if (formErrors.issue_date) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.issue_date;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleUnitChange = (e) => {
@@ -211,6 +242,14 @@ export default function StoreDailyIssuePage() {
     const newUnitId = e.target.value;
     setFormData(prev => ({ ...prev, production_unit: newUnitId }));
     fetchItemsForUnit(newUnitId);
+    if (formErrors.production_unit) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.production_unit;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleContractorChange = (val) => {
@@ -225,6 +264,14 @@ export default function StoreDailyIssuePage() {
       contractor_person: '',
       contractor_person_name: cName
     }));
+    if (formErrors.contractor) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.contractor;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handlePersonSelectChange = (val) => {
@@ -247,6 +294,14 @@ export default function StoreDailyIssuePage() {
         contractor_person_name: cName
       }));
     }
+    if (formErrors.contractor_person) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.contractor_person;
+        return copy;
+      });
+    }
+    if (error) setError(null);
   };
 
   const handleItemChange = (val, selectedObj) => {
@@ -267,54 +322,124 @@ export default function StoreDailyIssuePage() {
     } else {
       setFormData(prev => ({ ...prev, item: itemId }));
     }
+    if (formErrors.item) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.item;
+        return copy;
+      });
+    }
+    if (formErrors.qty) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.qty;
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.voucher_no || !formData.voucher_no.trim()) {
+      errors.voucher_no = 'Voucher number is required.';
+    } else if (formData.voucher_no.trim().length > 100) {
+      errors.voucher_no = 'Voucher number cannot exceed 100 characters.';
+    }
+
+    if (!formData.issue_date) {
+      errors.issue_date = 'Issue date is required.';
+    }
+
+    if (!formData.production_unit) {
+      errors.production_unit = 'Please select a Factory Unit to issue material from.';
+    }
+
+    if (!formData.contractor) {
+      errors.contractor = 'Target contractor / supervisor is required.';
+    }
+
+    if (!formData.item) {
+      errors.item = 'Store Item to issue is required.';
+    }
+
+    const q = parseFloat(formData.qty);
+    if (formData.qty === '' || formData.qty === null || formData.qty === undefined || isNaN(q)) {
+      errors.qty = 'Quantity issued is required.';
+    } else if (q <= 0) {
+      errors.qty = 'Issued quantity must be greater than zero.';
+    } else if (q > 10000000) {
+      errors.qty = 'Quantity exceeds maximum limit (10,000,000).';
+    } else if (selectedItemObj) {
+      const unitBal = parseFloat(selectedItemObj.unit_balance_stock_qty !== undefined ? selectedItemObj.unit_balance_stock_qty : (selectedItemObj.balance_stock_qty || 0));
+      if (q > unitBal) {
+        errors.qty = `Insufficient store balance in this unit. Available: ${unitBal} ${selectedItemObj.unit || formData.unit}`;
+      }
+    }
+
+    if (formData.rate !== '' && formData.rate !== null && formData.rate !== undefined) {
+      const r = parseFloat(formData.rate);
+      if (isNaN(r) || r < 0) {
+        errors.rate = 'Effective rate cannot be negative.';
+      }
+    }
+
+    return errors;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstMsg = Object.values(clientErrors)[0];
+      setError(firstMsg || 'Please resolve the highlighted field errors below.');
+      setToastNotification({
+        type: 'error',
+        message: firstMsg || 'Please resolve highlighted errors before confirming.'
+      });
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
-
-    if (!formData.production_unit) {
-      setError('Please select a Factory Unit to issue material from.');
-      setSubmitting(false);
-      return;
-    }
-
-    if (!formData.item) {
-      setError('Please select a Store Item to issue.');
-      setSubmitting(false);
-      return;
-    }
+    setFormErrors({});
 
     const selectedUnitObj = units.find(u => String(u.id) === String(formData.production_unit));
-    const unitBal = parseFloat(selectedItemObj?.unit_balance_stock_qty !== undefined ? selectedItemObj.unit_balance_stock_qty : (selectedItemObj?.balance_stock_qty || 0));
-    const enteredQty = parseFloat(formData.qty || 0);
-
-    if (enteredQty <= 0) {
-      setError('Issued quantity must be greater than zero.');
-      setSubmitting(false);
-      return;
-    }
-
-    // Live Unit Stock Check
-    if (selectedItemObj && enteredQty > unitBal) {
-      setError(`Warning: Insufficient store balance for ${selectedItemObj.item_name} in ${selectedUnitObj?.name || 'selected unit'}. Available in this unit: ${unitBal} ${selectedItemObj.unit}, Required: ${formData.qty} ${formData.unit}.`);
-      setSubmitting(false);
-      return;
-    }
 
     api.post('/store/daily-issues/', formData)
       .then(() => {
         if (currentDraftId) clearDraft(currentDraftId);
         setIsDirty(false);
         setSuccessMsg(`Daily Outward Issue saved successfully! Stock balance for ${selectedUnitObj?.name || 'unit'} updated.`);
+        setToastNotification({
+          type: 'success',
+          message: 'Daily Outward Issue saved successfully!'
+        });
         setTimeout(() => navigate('/store-management'), 1200);
       })
       .catch(err => {
         console.error('Daily issue save failed:', err);
-        const resErr = err.response?.data;
-        const detailMsg = resErr?.detail || resErr?.error || (resErr?.qty ? resErr.qty[0] : null) || (resErr?.item ? resErr.item[0] : null) || (resErr?.production_unit ? resErr.production_unit[0] : null) || 'Failed to record store issue.';
-        setError(detailMsg);
+        const data = err.response?.data;
+        if (data && typeof data === 'object') {
+          const backendErrors = {};
+          Object.entries(data).forEach(([key, val]) => {
+            backendErrors[key] = Array.isArray(val) ? val.join(' ') : String(val);
+          });
+          setFormErrors(backendErrors);
+          const firstErr = Object.values(backendErrors)[0];
+          setError(firstErr || 'Failed to record store issue.');
+          setToastNotification({
+            type: 'error',
+            message: firstErr || 'Validation failed. Check highlighted fields.'
+          });
+        } else {
+          setError(err.message || 'Server error while recording outward issue.');
+          setToastNotification({
+            type: 'error',
+            message: err.message || 'Server error occurred.'
+          });
+        }
       })
       .finally(() => setSubmitting(false));
   };
@@ -428,25 +553,39 @@ export default function StoreDailyIssuePage() {
         boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         padding: '1.75rem'
       }}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
           {/* Row 1: Voucher, Dates & Factory Unit Source */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.voucher_no ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Voucher No *
               </label>
               <input
                 type="text"
                 value={formData.voucher_no}
-                onChange={(e) => setFormData({ ...formData, voucher_no: e.target.value })}
+                onChange={(e) => handleFieldChange('voucher_no', e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: formErrors.voucher_no ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.voucher_no ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.voucher_no && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.voucher_no}</span>
+                </div>
+              )}
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.issue_date ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Issue Date *
               </label>
               <input
@@ -454,12 +593,25 @@ export default function StoreDailyIssuePage() {
                 value={formData.issue_date}
                 onChange={handleDateChange}
                 required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: formErrors.issue_date ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.issue_date ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.issue_date && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.issue_date}</span>
+                </div>
+              )}
             </div>
 
             <div>
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, color: '#ea580c', marginBottom: '6px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, color: formErrors.production_unit ? '#dc2626' : '#ea580c', marginBottom: '6px' }}>
                 <span>Factory Unit / Workshop *</span>
                 <span style={{ fontSize: '0.72rem', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', padding: '1px 6px', borderRadius: '4px' }}>
                   Stock Source
@@ -473,9 +625,9 @@ export default function StoreDailyIssuePage() {
                   width: '100%',
                   padding: '0.65rem 0.85rem',
                   borderRadius: '8px',
-                  border: '2px solid #fdba74',
-                  backgroundColor: '#fffaf5',
-                  color: '#9a3412',
+                  border: formErrors.production_unit ? '2px solid #dc2626' : '2px solid #fdba74',
+                  backgroundColor: formErrors.production_unit ? '#fff5f5' : '#fffaf5',
+                  color: formErrors.production_unit ? '#dc2626' : '#9a3412',
                   fontWeight: 700,
                   boxSizing: 'border-box'
                 }}
@@ -485,6 +637,12 @@ export default function StoreDailyIssuePage() {
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
+              {formErrors.production_unit && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.production_unit}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -514,7 +672,7 @@ export default function StoreDailyIssuePage() {
           {/* Row 2: Contractor & Receiving Worker */}
           <div className="issue-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Target Contractor / Supervisor *
               </label>
               <SearchableSelect
@@ -526,11 +684,18 @@ export default function StoreDailyIssuePage() {
                 idKey="id"
                 titleKey="name"
                 pageSize={15}
+                hasError={Boolean(formErrors.contractor)}
               />
+              {formErrors.contractor && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.contractor}</span>
+                </div>
+              )}
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor_person ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Authorized Worker / Delegate (Optional)
               </label>
               <SearchableSelect
@@ -543,7 +708,14 @@ export default function StoreDailyIssuePage() {
                 titleKey="name"
                 pageSize={15}
                 disabled={!formData.contractor}
+                hasError={Boolean(formErrors.contractor_person)}
               />
+              {formErrors.contractor_person && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.contractor_person}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -568,7 +740,7 @@ export default function StoreDailyIssuePage() {
           {/* Row 3: Store Item & Live Unit Stock Badge */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: 700, color: formErrors.item ? '#dc2626' : '#334155' }}>
                 Store Item * {formData.production_unit && (
                   <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
                     (Showing items with stock received in {units.find(u => String(u.id) === String(formData.production_unit))?.name || 'selected unit'})
@@ -639,14 +811,21 @@ export default function StoreDailyIssuePage() {
                 titleKey="item_name"
                 pageSize={15}
                 disabled={loadingItems}
+                hasError={Boolean(formErrors.item)}
               />
+            )}
+            {formErrors.item && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                <AlertCircle size={13} />
+                <span>{formErrors.item}</span>
+              </div>
             )}
           </div>
 
           {/* Row 4: Quantity, Rate & Debit Status */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.qty ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Quantity Issued ({formData.unit}) * {selectedItemObj && (
                   <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.8rem' }}>
                     (Unit Stock: {selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty ?? 0} {selectedItemObj.unit})
@@ -657,15 +836,29 @@ export default function StoreDailyIssuePage() {
                 type="number"
                 step="0.01"
                 value={formData.qty}
-                onChange={(e) => setFormData({ ...formData, qty: e.target.value })}
+                onChange={(e) => handleFieldChange('qty', e.target.value)}
                 placeholder={selectedItemObj ? `Max available: ${selectedItemObj.unit_balance_stock_qty ?? selectedItemObj.balance_stock_qty ?? 0}` : "0.00"}
                 required
-                style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: formErrors.qty ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.qty ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.qty && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.qty}</span>
+                </div>
+              )}
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.rate ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                 Effective Rate (₹) *
               </label>
               <input
@@ -680,7 +873,7 @@ export default function StoreDailyIssuePage() {
                   width: '100%',
                   padding: '0.65rem 0.85rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: formErrors.rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
                   backgroundColor: '#f1f5f9',
                   color: '#475569',
                   fontWeight: 700,
@@ -688,6 +881,12 @@ export default function StoreDailyIssuePage() {
                   boxSizing: 'border-box'
                 }}
               />
+              {formErrors.rate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                  <AlertCircle size={13} />
+                  <span>{formErrors.rate}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -724,7 +923,7 @@ export default function StoreDailyIssuePage() {
             <input
               type="text"
               value={formData.remark}
-              onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+              onChange={(e) => handleFieldChange('remark', e.target.value)}
               placeholder="e.g. Issued for production batch #102 / project requirement"
               style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
             />
@@ -789,6 +988,7 @@ export default function StoreDailyIssuePage() {
                 fontWeight: 700,
                 fontSize: '0.9rem',
                 cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.7 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
@@ -811,6 +1011,37 @@ export default function StoreDailyIssuePage() {
         onDiscard={handleDiscardAndExit}
         onCancel={handleCancelExit}
       />
+
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          backgroundColor: toastNotification.type === 'error' ? '#fef2f2' : '#f0fdf4',
+          border: `1px solid ${toastNotification.type === 'error' ? '#fecaca' : '#bbf7d0'}`,
+          color: toastNotification.type === 'error' ? '#991b1b' : '#166534',
+          padding: '0.85rem 1.25rem',
+          borderRadius: '10px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.65rem',
+          zIndex: 9999,
+          maxWidth: '420px',
+          fontSize: '0.9rem'
+        }}>
+          {toastNotification.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle size={20} />}
+          <span style={{ flex: 1 }}>{toastNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

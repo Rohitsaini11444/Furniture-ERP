@@ -14,52 +14,105 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
     reason: ''
   });
 
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (isOpen && items.length > 0 && !formData.item) {
-      const first = items[0];
-      setSelectedItemObj(first);
-      setFormData(prev => ({ ...prev, item: first.id }));
+    if (isOpen) {
+      setFormErrors({});
+      setError(null);
+      if (items.length > 0 && !formData.item) {
+        const first = items[0];
+        setSelectedItemObj(first);
+        setFormData(prev => ({ ...prev, item: first.id }));
+      }
     }
   }, [isOpen, items]);
 
   if (!isOpen) return null;
 
+  const handleFieldChange = (field, val) => {
+    setFormData(prev => ({ ...prev, [field]: val }));
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const updated = { ...prev };
+        delete updated[field];
+        return updated;
+      });
+    }
+    if (error) setError(null);
+  };
+
   const handleItemChange = (val, selectedObj) => {
     const itemId = typeof val === 'object' ? val.id : val;
     const found = selectedObj || items.find(i => String(i.id) === String(itemId));
     setSelectedItemObj(found || null);
-    setFormData(prev => ({ ...prev, item: itemId }));
+    handleFieldChange('item', itemId);
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.adjustment_no?.trim()) {
+      errors.adjustment_no = 'Adjustment number is required.';
+    }
+    if (!formData.item) {
+      errors.item = 'Please select a target store item.';
+    }
+    const delta = parseFloat(formData.quantity_delta);
+    if (formData.quantity_delta === '' || formData.quantity_delta === null || isNaN(delta)) {
+      errors.quantity_delta = 'Quantity delta is required.';
+    } else if (delta === 0) {
+      errors.quantity_delta = 'Quantity delta cannot be 0. Enter negative (-) for loss/evaporation or positive (+) for audit gain.';
+    } else if (Math.abs(delta) > 10000000) {
+      errors.quantity_delta = 'Quantity variance exceeds maximum permissible limit (10,000,000).';
+    }
+    const trimmedReason = (formData.reason || '').trim();
+    if (!trimmedReason) {
+      errors.reason = 'Audit reason for variance is required.';
+    } else if (trimmedReason.length < 5) {
+      errors.reason = 'Audit reason must be at least 5 characters long.';
+    }
+    return errors;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError(null);
 
-    if (!formData.item) {
-      setError('STORE ITEM: Please select a store item.');
-      return;
-    }
-    if (!formData.quantity_delta || parseFloat(formData.quantity_delta) === 0) {
-      setError('QUANTITY DELTA: Quantity delta cannot be 0. Enter negative (-) for loss/evaporation or positive (+) for audit gain.');
-      return;
-    }
-    if (!formData.reason.trim()) {
-      setError('AUDIT NOTE: Reason for adjustment is required.');
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setFormErrors(clientErrors);
+      const firstError = Object.values(clientErrors)[0];
+      setError(firstError);
       return;
     }
 
     setSubmitting(true);
     api.post('/store/stock-adjustments/', formData)
       .then(() => {
+        setFormErrors({});
+        setError(null);
         onSuccess();
         onClose();
       })
       .catch(err => {
         console.error('Stock adjustment save error:', err);
-        setError(err.response?.data?.detail || 'Failed to submit stock variance adjustment.');
+        const serverData = err.response?.data;
+        if (serverData && typeof serverData === 'object') {
+          const newErrors = {};
+          let firstMsg = '';
+          Object.keys(serverData).forEach(k => {
+            const val = serverData[k];
+            const msg = Array.isArray(val) ? val.join(' ') : String(val);
+            newErrors[k] = msg;
+            if (!firstMsg) firstMsg = msg;
+          });
+          setFormErrors(newErrors);
+          setError(firstMsg || 'Failed to submit stock variance adjustment.');
+        } else {
+          setError(serverData?.detail || 'Failed to submit stock variance adjustment.');
+        }
       })
       .finally(() => setSubmitting(false));
   };
@@ -121,6 +174,7 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}
           >
@@ -129,7 +183,7 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+        <form noValidate onSubmit={handleSubmit} style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
           {error && (
             <div style={{
               backgroundColor: '#fef2f2',
@@ -155,10 +209,22 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
               <input
                 type="text"
                 value={formData.adjustment_no}
-                onChange={e => setFormData({ ...formData, adjustment_no: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+                onChange={e => handleFieldChange('adjustment_no', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  borderRadius: '8px',
+                  border: formErrors.adjustment_no ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.adjustment_no ? '#fff5f5' : '#ffffff',
+                  fontWeight: 700,
+                  boxSizing: 'border-box'
+                }}
               />
+              {formErrors.adjustment_no && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                  <AlertCircle size={12} /> {formErrors.adjustment_no}
+                </span>
+              )}
             </div>
 
             <div>
@@ -167,15 +233,26 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
               </label>
               <select
                 value={formData.adjustment_type}
-                onChange={e => setFormData({ ...formData, adjustment_type: e.target.value })}
-                required
-                style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                onChange={e => handleFieldChange('adjustment_type', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  borderRadius: '8px',
+                  border: formErrors.adjustment_type ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: formErrors.adjustment_type ? '#fff5f5' : '#ffffff',
+                  boxSizing: 'border-box'
+                }}
               >
                 <option value="evaporation">Liquid Evaporation / Leakage</option>
                 <option value="damage">Material Damage / Defect</option>
                 <option value="wastage">Production Process Wastage</option>
                 <option value="physical_audit">Physical Audit Count Difference</option>
               </select>
+              {formErrors.adjustment_type && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                  <AlertCircle size={12} /> {formErrors.adjustment_type}
+                </span>
+              )}
             </div>
           </div>
 
@@ -199,7 +276,13 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
               codeKey="item_code"
               titleKey="item_name"
               pageSize={15}
+              hasError={Boolean(formErrors.item)}
             />
+            {formErrors.item && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.item}
+              </span>
+            )}
           </div>
 
           <div>
@@ -210,14 +293,27 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
               type="number"
               step="0.001"
               value={formData.quantity_delta}
-              onChange={e => setFormData({ ...formData, quantity_delta: e.target.value })}
+              onChange={e => handleFieldChange('quantity_delta', e.target.value)}
               placeholder="Enter -2.5 for loss/evaporation, or +5.0 for audit gain"
-              required
-              style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 700, boxSizing: 'border-box' }}
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.75rem',
+                borderRadius: '8px',
+                border: formErrors.quantity_delta ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                backgroundColor: formErrors.quantity_delta ? '#fff5f5' : '#ffffff',
+                fontWeight: 700,
+                boxSizing: 'border-box'
+              }}
             />
-            <span style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-              Note: Negative values (-) decrease store inventory. Positive values (+) increase stock after Admin Approval.
-            </span>
+            {formErrors.quantity_delta ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.quantity_delta}
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                Note: Negative values (-) decrease store inventory. Positive values (+) increase stock after Admin Approval.
+              </span>
+            )}
           </div>
 
           <div>
@@ -226,12 +322,23 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
             </label>
             <textarea
               rows={3}
-              required
               value={formData.reason}
-              onChange={e => setFormData({ ...formData, reason: e.target.value })}
+              onChange={e => handleFieldChange('reason', e.target.value)}
               placeholder="Explain why this stock count difference or liquid evaporation occurred..."
-              style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }}
+              style={{
+                width: '100%',
+                padding: '0.6rem 0.75rem',
+                borderRadius: '8px',
+                border: formErrors.reason ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                backgroundColor: formErrors.reason ? '#fff5f5' : '#ffffff',
+                boxSizing: 'border-box'
+              }}
             />
+            {formErrors.reason && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: 600 }}>
+                <AlertCircle size={12} /> {formErrors.reason}
+              </span>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -255,6 +362,7 @@ export default function StoreStockAdjustmentModal({ isOpen, onClose, onSuccess, 
                 fontWeight: 700,
                 fontSize: '0.875rem',
                 cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.7 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',

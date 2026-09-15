@@ -5,7 +5,7 @@ import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
   CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X,
-  Home, ChevronRight
+  Home, ChevronRight, Pencil, DollarSign
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -54,6 +54,17 @@ function emptyItem() {
 function fmtINR(val) {
   if (!val && val !== 0) return '—';
   return `₹${parseFloat(val).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+}
+
+function formatDisplayDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return dateStr;
+  }
 }
 
 // ─── Supplier Form Modal (inline quick-create) ─────────────────────────────────
@@ -195,6 +206,7 @@ function POForm({ poId, onBack, onSaved }) {
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   const {
     isDirty,
@@ -305,6 +317,65 @@ function POForm({ poId, onBack, onSaved }) {
     setIsDirty(true);
     setHeader(h => ({ ...h, [key]: val }));
   };
+
+  const handleSelectHeaderPI = (val) => {
+    updateHeader('buyer_pi', val);
+    if (val) {
+      api.get(`/buyer-pis/${val}/`).then(res => {
+        setSelectedPiData(res.data);
+      }).catch(err => console.error(err));
+    } else {
+      setSelectedPiData(null);
+    }
+  };
+
+  const handleAutoFillFromPI = () => {
+    if (!selectedPiData || !selectedPiData.items || selectedPiData.items.length === 0) return;
+    setIsDirty(true);
+    const newItems = selectedPiData.items.map(it => ({
+      buyer: selectedPiData.buyer || '',
+      buyer_pi: selectedPiData.id,
+      buyer_pi_item: it.id || '',
+      description: `${it.style_no || ''} - ${it.product_name || ''}`.trim() || 'Item from PI',
+      quantity: it.units ? String(it.units) : '1',
+      unit: 'pcs',
+      rate: '',
+      amount: '',
+    }));
+    setItems(newItems);
+  };
+
+  // Handle ?pi= query param for auto-fill from Buyer PI
+  useEffect(() => {
+    if (isNew) {
+      const searchParams = new URLSearchParams(location.search);
+      const piParam = searchParams.get('pi');
+      if (piParam && !header.buyer_pi) {
+        setHeader(h => ({ ...h, buyer_pi: piParam }));
+        api.get(`/buyer-pis/${piParam}/`).then(res => {
+          setSelectedPiData(res.data);
+          if (res.data && res.data.items && res.data.items.length > 0) {
+            setItems(curr => {
+              const isOnlyEmpty = curr.length === 1 && !curr[0].description && !curr[0].quantity;
+              if (isOnlyEmpty) {
+                return res.data.items.map(it => ({
+                  buyer: res.data.buyer || '',
+                  buyer_pi: res.data.id,
+                  buyer_pi_item: it.id || '',
+                  description: `${it.style_no || ''} - ${it.product_name || ''}`.trim() || 'Item from PI',
+                  quantity: it.units ? String(it.units) : '1',
+                  unit: 'pcs',
+                  rate: '',
+                  amount: '',
+                }));
+              }
+              return curr;
+            });
+          }
+        }).catch(err => console.error(err));
+      }
+    }
+  }, [location.search, isNew]);
 
   const updateItem = (idx, key, val) => {
     if (isStoreManager) return;
@@ -450,403 +521,686 @@ function POForm({ poId, onBack, onSaved }) {
   );
 
   return (
-    <div className="new-page-form" style={{ padding: '1rem 0' }}>
+    <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
+      <style>{`
+        @media (max-width: 1024px) {
+          .po-header-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+          .po-summary-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+        @media (max-width: 640px) {
+          .po-header-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .po-summary-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .po-action-btns {
+            flex-direction: column-reverse !important;
+            width: 100% !important;
+          }
+          .po-action-btns button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+        }
+      `}</style>
+
+      {/* Header bar matching Daily Issue / Samples / BuyerPIs */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <button
+            type="button"
+            onClick={() => {
+              if (isStoreManager) {
+                onBack ? onBack() : navigate('/pos');
+              } else {
+                if (confirmExit('/pos')) onBack ? onBack() : navigate('/pos');
+              }
+            }}
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: '#ffffff',
+              color: '#334155',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="Back to Purchase Orders"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Purchase Orders
+              </span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              {isNew ? 'Create New Purchase Order' : 'View / Edit PO Details'}
+              {!isNew && header.po_number && (
+                <span style={{ backgroundColor: '#fff3e0', color: '#b45309', padding: '0.2rem 0.65rem', borderRadius: '8px', fontSize: '0.88rem', fontWeight: 700, border: '1px solid #fed7aa' }}>
+                  {header.po_number}
+                </span>
+              )}
+            </h1>
+          </div>
+        </div>
+
+        {header.buyer_pi && selectedPiData && (
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setShowBreakdownModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.6rem 1rem',
+                backgroundColor: '#fffbeb',
+                border: '1px solid #fde68a',
+                color: '#92400e',
+                borderRadius: '8px',
+                fontWeight: 650,
+                fontSize: '0.88rem',
+                cursor: 'pointer'
+              }}
+            >
+              <Eye size={16} /> View PI Allocation Breakdown ({selectedPiData.pi_no})
+            </button>
+          </div>
+        )}
+      </div>
+
       {showSupplierModal && (
         <SupplierModal onClose={() => setShowSupplierModal(false)} onSaved={handleSupplierAdded} />
       )}
 
-      <form id="po-form" onSubmit={handleSubmit}>
-        {formError && (
-          <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', color: '#991b1b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
-              <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div>
-                <strong style={{ display: 'block', fontSize: '0.95rem', marginBottom: '4px' }}>Form Validation Error:</strong>
-                <span>{formError}</span>
-              </div>
-            </div>
-            <button type="button" onClick={() => setFormError('')} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: '2px' }}>
-              <X size={18} />
-            </button>
-          </div>
-        )}
-
-        {isStoreManager && (
-          <div style={{ backgroundColor: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '0.85rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#0369a1', fontWeight: 650, fontSize: '0.9rem' }}>
-            <Eye size={18} />
-            <span>View Only Mode: As a Store Manager, you are viewing this Purchase Order in read-only mode.</span>
-          </div>
-        )}
-
-        <fieldset disabled={isStoreManager} style={{ border: 'none', padding: 0, margin: 0 }}>
-        <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
-          <div className="modal-header" style={{ padding: 0, marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-            <h2 className="pi-form-title" style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0 }}>
-              <FileText size={20} color="#8b5a2b"/>
-              {isNew ? 'Create New PO' : 'View PO Details'}
-              {!isNew && <span style={{ backgroundColor: '#fff3e0', color: '#b45309', padding: '0.2rem 0.6rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 700 }}>{header.po_number}</span>}
-            </h2>
-          </div>
-
-          {/* ── PO Header Details ── */}
-          <div className="form-section">
-            <h3 className="form-section-title">📋 PO Details</h3>
-            <div className="pi-info-grid">
-              <div className="form-group">
-                <label className="form-label">PO Number *</label>
-                <input required type="text" className="form-input" placeholder="e.g. PO-14489"
-                  value={header.po_number} onChange={e => updateHeader('po_number', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Status *</label>
-                <SearchableSelect
-                  options={[
-                    { id: 'Pending', name: 'Pending', icon: Clock },
-                    { id: 'Received', name: 'Received', icon: CheckCircle },
-                    { id: 'Cancelled', name: 'Cancelled', icon: XCircle }
-                  ]}
-                  value={header.status}
-                  onChange={val => updateHeader('status', val)}
-                  showSearch={false}
-                  clearable={false}
-                  placeholder="Select status..."
-                  titleKey="name"
-                  disabled={isStoreManager}
-                />
-              </div>
-              <div className="form-group">
-                <CustomDatePicker
-                  label="PO Date"
-                  required
-                  value={header.po_date}
-                  onChange={val => updateHeader('po_date', val)}
-                  disabled={isStoreManager}
-                />
-              </div>
-              <div className="form-group">
-                <CustomDatePicker
-                  label="PO Due Date"
-                  value={header.due_date}
-                  onChange={val => updateHeader('due_date', val)}
-                  disabled={isStoreManager}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Mode of Payment</label>
-                <input type="text" className="form-input" placeholder="e.g. Bank Transfer / Cheque"
-                  disabled={isStoreManager}
-                  value={header.mode_of_payment} onChange={e => updateHeader('mode_of_payment', e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Supervisor</label>
-                <CustomSelect
-                  value={header.supervisor}
-                  disabled={isStoreManager}
-                  onChange={val => {
-                    const selectedVal = val?.target ? val.target.value : val;
-                    updateHeader('supervisor', selectedVal);
-                  }}
-                  placeholder="-- Select Supervisor --"
-                  options={[
-                    { value: '', label: '-- Select Supervisor --' },
-                    ...supervisors.map(sup => {
-                      const nameStr = sup.full_name || (sup.first_name || sup.last_name ? `${sup.first_name || ''} ${sup.last_name || ''}`.trim() : sup.username);
-                      const batchStr = sup.batch_category ? sup.batch_category.charAt(0).toUpperCase() + sup.batch_category.slice(1) : '';
-                      const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
-                      return {
-                        value: sup.id,
-                        label: displayLabel,
-                      };
-                    })
-                  ]}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Linked Buyer PI (Optional)</label>
-                <SearchableSelect
-                  options={buyerPIs}
-                  value={header.buyer_pi}
-                  onChange={val => handleSelectHeaderPI(val)}
-                  placeholder="-- Select Buyer PI to Auto-Fill --"
-                  searchPlaceholder="Search PI Number..."
-                  codeKey="pi_no"
-                  titleKey="buyer_name"
-                  icon={FileText}
-                  disabled={isStoreManager}
-                />
-              </div>
-              <div className="form-group full-width">
-                <label className="form-label">Terms of Delivery</label>
-                <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
-                  disabled={isStoreManager}
-                  value={header.terms_of_delivery} onChange={e => updateHeader('terms_of_delivery', e.target.value)} />
-              </div>
-              <div className="form-group full-width">
-                <label className="form-label">NKU Reference Numbers</label>
-                <input type="text" className="form-input" placeholder="e.g. NKU # P0010167N1"
-                  disabled={isStoreManager}
-                  value={header.nku_refs} onChange={e => updateHeader('nku_refs', e.target.value)} />
-              </div>
-              <div className="form-group full-width">
-                <label className="form-label">Remarks</label>
-                <textarea rows={2} className="form-input" placeholder="Any special instructions..."
-                  disabled={isStoreManager}
-                  value={header.remarks} onChange={e => updateHeader('remarks', e.target.value)} />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Supplier ── */}
-          <div className="form-section">
-            <h3 className="form-section-title">Supplier (Bill From)</h3>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-              <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                <label className="form-label">Supplier *</label>
-                <SearchableSelect
-                  options={suppliers}
-                  value={header.supplier}
-                  onChange={val => updateHeader('supplier', val)}
-                  placeholder="Select Supplier..."
-                  searchPlaceholder="Search supplier..."
-                  codeKey=""
-                  titleKey="name"
-                  icon={Building2}
-                  footerIcon={Building2}
-                  footerText={(count) => ` ${count} supplier${count !== 1 ? 's' : ''} found`}
-                  disabled={isStoreManager}
-                />
-              </div>
-            </div>
-
-            {header.supplier && (() => {
-              const sup = suppliers.find(s => s.id === header.supplier);
-              if (!sup) return null;
-              return (
-                <div style={{ marginTop: '1rem', background: '#f8fafc', borderRadius: '12px', padding: '1rem', border: '1px solid #e2e8f0', display: 'flex', gap: '1rem' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                    <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block', marginBottom: '0.25rem' }}>{sup.name}</strong>
-                    {sup.address && <div>{sup.address}</div>}
-                    {sup.phone && <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.2rem' }}>📞 {sup.phone}</div>}
-                    {sup.gstin && <div style={{ marginTop: '0.2rem' }}>GSTIN: {sup.gstin}</div>}
-                    {sup.state_name && <div>State: {sup.state_name}</div>}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Supplier Transfer History Audit Trail */}
-            {header.supplier_history && header.supplier_history.length > 0 && (
-              <div style={{ marginTop: '1rem', background: '#fffbe6', borderRadius: '12px', padding: '1rem', border: '1px solid #ffe58f' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#d48806', margin: '0 0 0.5rem 0' }}>
-                  📜 Supplier Transfer History Log ({header.supplier_history.length})
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {header.supplier_history.map((hist, i) => (
-                    <div key={i} style={{ fontSize: '0.78rem', color: '#8c6b00', backgroundColor: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #ffe58f' }}>
-                      Transferred from <strong>{hist.previous_supplier_name || 'Previous Supplier'}</strong> to <strong>{hist.new_supplier_name || 'New Supplier'}</strong> by <strong>{hist.changed_by_name}</strong> on {new Date(hist.changed_at).toLocaleDateString('en-IN')}:
-                      {hist.reason && <div style={{ fontStyle: 'italic', marginTop: '2px', color: '#595959' }}>"{hist.reason}"</div>}
-                    </div>
-                  ))}
+      {/* Main Full-Width Form Card Container */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '16px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        padding: '1.75rem',
+        width: '100%',
+        boxSizing: 'border-box'
+      }}>
+        <form id="po-form" onSubmit={handleSubmit}>
+          {formError && (
+            <div style={{ backgroundColor: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem', color: '#991b1b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                <AlertCircle size={20} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.95rem', marginBottom: '4px' }}>Form Validation Error:</strong>
+                  <span>{formError}</span>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Line Items ── */}
-        <div className="pi-form-container" style={{ marginBottom: '1.5rem' }}>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <h3 className="form-section-title" style={{ margin: 0 }}>📦 Line Items</h3>
-            {!isStoreManager && (
-              <button type="button" className="btn-secondary" onClick={addItem}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
-                <Plus size={15}/> Add Item
+              <button type="button" onClick={() => setFormError('')} style={{ background: 'none', border: 'none', color: '#991b1b', cursor: 'pointer', padding: '2px' }}>
+                <X size={18} />
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  {(header.buyer_pi ? ['#','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? '' : null].filter(Boolean) : ['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? '' : null].filter(Boolean)).map(h => (
-                    <th key={h} style={{ padding: '10px 10px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>{idx + 1}</td>
-                    {!header.buyer_pi && (
-                      <>
-                        <td style={{ padding: '6px 8px' }}>
-                          <CustomSelect
-                            value={item.buyer}
-                            disabled={isStoreManager}
-                            onChange={e => {
-                              const val = e.target ? e.target.value : e;
-                              updateItem(idx, 'buyer', val);
-                            }}
-                            options={[
-                              { value: '', label: 'No buyer ref' },
-                              ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
-                            ]}
-                            placeholder="No buyer ref"
-                            style={{ minWidth: '140px' }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <CustomSelect
-                            value={item.buyer_pi}
-                            onChange={e => {
-                              const val = e.target ? e.target.value : e;
-                              updateItem(idx, 'buyer_pi', val);
-                            }}
-                            disabled={isStoreManager || !item.buyer}
-                            options={[
-                              { value: '', label: 'None' },
-                              ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
-                            ]}
-                            placeholder="None"
-                            style={{ minWidth: '130px' }}
-                          />
-                        </td>
-                      </>
-                    )}
-                    <td style={{ padding: '6px 8px' }}>
-                      <textarea rows={2} required className="form-input"
-                        disabled={isStoreManager}
-                        style={{ minWidth: '220px', fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }}
-                        placeholder="e.g. Natural Jute Fabric / 2601-068SBWWKW"
-                        value={item.description}
-                        onChange={e => updateItem(idx, 'description', e.target.value)} />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <input required type="number" step="0.01" min="0.01" max="999999" className="form-input"
-                        disabled={isStoreManager}
-                        style={{ width: '95px', fontSize: '0.82rem', padding: '6px 8px' }}
-                        placeholder="0.00" value={item.quantity}
-                        onChange={e => updateItem(idx, 'quantity', e.target.value)} />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <CustomSelect
-                        value={item.unit}
-                        disabled={isStoreManager}
-                        onChange={e => {
-                          const val = e.target ? e.target.value : e;
-                          updateItem(idx, 'unit', val);
-                        }}
-                        options={['pcs','mtr','Ft²','kg','nos','set']}
-                        style={{ minWidth: '85px' }}
-                      />
-                    </td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <input required type="number" step="0.01" min="0" max="99999999.99" className="form-input"
-                        disabled={isStoreManager}
-                        style={{ width: '105px', fontSize: '0.82rem', padding: '6px 8px' }}
-                        placeholder="0.00" value={item.rate}
-                        onChange={e => updateItem(idx, 'rate', e.target.value)} />
-                    </td>
-                    <td style={{ padding: '6px 8px', fontWeight: 600, color: '#8b5a2b', whiteSpace: 'nowrap', minWidth: '100px' }}>
-                      {item.amount ? `₹${parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
-                    </td>
-                    {!isStoreManager && (
-                      <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
-                        <button type="button" onClick={() => removeItem(idx)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: '4px' }}>
-                          <Trash2 size={16}/>
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {isStoreManager && (
+            <div style={{ backgroundColor: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '12px', padding: '0.85rem 1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#0369a1', fontWeight: 650, fontSize: '0.9rem' }}>
+              <Eye size={18} />
+              <span>View Only Mode: As a Store Manager, you are viewing this Purchase Order in read-only mode.</span>
+            </div>
+          )}
 
-          {/* Total */}
-          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-            <div style={{ background: '#fcfaf6', borderRadius: '12px', padding: '1.25rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.85rem', color: '#9a3412', marginBottom: '0.25rem', fontWeight: 600 }}>Supplier PO Total Amount</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5a2b' }}>
-                ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          <fieldset disabled={isStoreManager} style={{ border: 'none', padding: 0, margin: 0 }}>
+            {/* ── Section 1: PO Header Details ── */}
+            <div style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: '14px',
+              padding: '1.25rem',
+              backgroundColor: '#fafaf9',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.15rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FileText size={18} color="#8b5a2b" />
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                    Purchase Order Details
+                  </h3>
+                </div>
+                {!isStoreManager && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSupplierModal(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.35rem 0.75rem',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      color: '#475569',
+                      fontSize: '0.8rem',
+                      fontWeight: 650,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Plus size={14} /> Quick Add Supplier
+                  </button>
+                )}
               </div>
+
+              {/* Row 1: Primary Identifiers & Supplier (4 columns) */}
+              <div className="po-header-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>PO Number *</label>
+                  <input required type="text" className="form-input" placeholder="e.g. PO-14489"
+                    value={header.po_number} onChange={e => updateHeader('po_number', e.target.value)} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>Supplier *</label>
+                  </div>
+                  <SearchableSelect
+                    options={suppliers}
+                    value={header.supplier}
+                    onChange={val => updateHeader('supplier', val)}
+                    placeholder="Select Supplier..."
+                    searchPlaceholder="Search supplier..."
+                    codeKey=""
+                    titleKey="name"
+                    icon={Building2}
+                    footerIcon={Building2}
+                    footerText={(count) => ` ${count} supplier${count !== 1 ? 's' : ''} found`}
+                    disabled={isStoreManager}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <CustomDatePicker
+                    label="PO Date"
+                    required
+                    value={header.po_date}
+                    onChange={val => updateHeader('po_date', val)}
+                    disabled={isStoreManager}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <CustomDatePicker
+                    label="PO Due Date"
+                    value={header.due_date}
+                    onChange={val => updateHeader('due_date', val)}
+                    disabled={isStoreManager}
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Status, Payment, Supervisor, Buyer PI (4 columns) */}
+              <div className="po-header-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '1.25rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Status *</label>
+                  <SearchableSelect
+                    options={[
+                      { id: 'Pending', name: 'Pending', icon: Clock },
+                      { id: 'Received', name: 'Received', icon: CheckCircle },
+                      { id: 'Cancelled', name: 'Cancelled', icon: XCircle }
+                    ]}
+                    value={header.status}
+                    onChange={val => updateHeader('status', val)}
+                    showSearch={false}
+                    clearable={false}
+                    placeholder="Select status..."
+                    titleKey="name"
+                    disabled={isStoreManager}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Mode of Payment</label>
+                  <input type="text" className="form-input" placeholder="e.g. Bank Transfer / Cheque"
+                    disabled={isStoreManager}
+                    value={header.mode_of_payment} onChange={e => updateHeader('mode_of_payment', e.target.value)} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Supervisor</label>
+                  <CustomSelect
+                    value={header.supervisor}
+                    disabled={isStoreManager}
+                    onChange={val => {
+                      const selectedVal = val?.target ? val.target.value : val;
+                      updateHeader('supervisor', selectedVal);
+                    }}
+                    placeholder="-- Select Supervisor --"
+                    options={[
+                      { value: '', label: '-- Select Supervisor --' },
+                      ...supervisors.map(sup => {
+                        const nameStr = sup.full_name || (sup.first_name || sup.last_name ? `${sup.first_name || ''} ${sup.last_name || ''}`.trim() : sup.username);
+                        const batchStr = sup.batch_category ? sup.batch_category.charAt(0).toUpperCase() + sup.batch_category.slice(1) : '';
+                        const displayLabel = batchStr ? `${nameStr} (${batchStr})` : nameStr;
+                        return {
+                          value: sup.id,
+                          label: displayLabel,
+                        };
+                      })
+                    ]}
+                  />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>Linked Buyer PI (Optional)</label>
+                    {header.buyer_pi && selectedPiData && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBreakdownModal(true)}
+                        style={{ background: 'none', border: 'none', color: '#8b5a2b', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                      >
+                        View Breakdown
+                      </button>
+                    )}
+                  </div>
+                  <SearchableSelect
+                    options={buyerPIs}
+                    value={header.buyer_pi}
+                    onChange={val => handleSelectHeaderPI(val)}
+                    placeholder="-- Select Buyer PI to Auto-Fill --"
+                    searchPlaceholder="Search PI Number..."
+                    codeKey="pi_no"
+                    titleKey="buyer_name"
+                    icon={FileText}
+                    disabled={isStoreManager}
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Terms, Reference, Remarks (3 columns) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Terms of Delivery</label>
+                  <input type="text" className="form-input" placeholder="e.g. Ex-Factory / FOB"
+                    disabled={isStoreManager}
+                    value={header.terms_of_delivery} onChange={e => updateHeader('terms_of_delivery', e.target.value)} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>NKU / External Reference #</label>
+                  <input type="text" className="form-input" placeholder="e.g. NKU # P0010167N1"
+                    disabled={isStoreManager}
+                    value={header.nku_refs} onChange={e => updateHeader('nku_refs', e.target.value)} />
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Special Remarks</label>
+                  <input type="text" className="form-input" placeholder="Any special instructions..."
+                    disabled={isStoreManager}
+                    value={header.remarks} onChange={e => updateHeader('remarks', e.target.value)} />
+                </div>
+              </div>
+
+              {/* Supplier Info Strip if selected */}
+              {header.supplier && (() => {
+                const sup = suppliers.find(s => s.id === header.supplier);
+                if (!sup) return null;
+                return (
+                  <div style={{ marginTop: '1.15rem', background: '#ffffff', borderRadius: '10px', padding: '0.85rem 1.15rem', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Building2 size={18} color="#64748b" />
+                      </div>
+                      <div>
+                        <strong style={{ color: '#1e293b', fontSize: '0.92rem', display: 'block' }}>{sup.name}</strong>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          {sup.address || 'No street address provided'}
+                          {sup.state_name ? ` • ${sup.state_name}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', fontSize: '0.82rem', color: '#475569' }}>
+                      {sup.phone && <span>📞 {sup.phone}</span>}
+                      {sup.gstin && <span><strong>GSTIN:</strong> {sup.gstin}</span>}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Supplier Transfer History Audit Trail */}
+              {header.supplier_history && header.supplier_history.length > 0 && (
+                <div style={{ marginTop: '1rem', background: '#fffbe6', borderRadius: '12px', padding: '1rem', border: '1px solid #ffe58f' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#d48806', margin: '0 0 0.5rem 0' }}>
+                    📜 Supplier Transfer History Log ({header.supplier_history.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {header.supplier_history.map((hist, i) => (
+                      <div key={i} style={{ fontSize: '0.78rem', color: '#8c6b00', backgroundColor: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #ffe58f' }}>
+                        Transferred from <strong>{hist.previous_supplier_name || 'Previous Supplier'}</strong> to <strong>{hist.new_supplier_name || 'New Supplier'}</strong> by <strong>{hist.changed_by_name}</strong> on {new Date(hist.changed_at).toLocaleDateString('en-IN')}:
+                        {hist.reason && <div style={{ fontStyle: 'italic', marginTop: '2px', color: '#595959' }}>"{hist.reason}"</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Profitability & Financial Comparison Indicator */}
-            {totalPiSalesUsd > 0 && (
-              <div style={{
-                marginTop: '1rem',
-                borderRadius: '14px',
-                padding: '1.15rem 1.25rem',
-                border: isLoss ? '1.5px solid #fca5a5' : '1.5px solid #bbf7d0',
-                backgroundColor: isLoss ? '#fef2f2' : '#f0fdf4',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.6rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: isLoss ? '#991b1b' : '#166534', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <AlertCircle size={20} color={isLoss ? '#dc2626' : '#16a34a'} style={{ flexShrink: 0 }} />
-                    <span>{isLoss ? '⚠️ Trade Loss Alert: Supplier Cost Exceeds Buyer Revenue!' : ' Profitable Purchase Order'}</span>
-                  </div>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isLoss ? '#b91c1c' : '#15803d', background: isLoss ? '#fee2e2' : '#dcfce7', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
-                    Reference Exchange Rate: 1 USD = ₹{EXCHANGE_RATE_INR} INR
+            {/* ── Section 2: PO Line Items ── */}
+            <div style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: '14px',
+              padding: '1.25rem',
+              backgroundColor: '#fafaf9',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.15rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Package size={18} color="#8b5a2b" />
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                    Line Items
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, backgroundColor: '#f1f5f9', color: '#475569', padding: '0.15rem 0.55rem', borderRadius: '12px' }}>
+                    {items.length} {items.length === 1 ? 'Item' : 'Items'}
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginTop: '0.25rem' }}>
-                  <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Buyer PI Selling Revenue</span>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>
-                      ${totalPiSalesUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>
-                        (~₹{totalPiSalesInr.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Supplier Purchase Cost</span>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: isLoss ? '#dc2626' : '#16a34a', marginTop: '2px' }}>
-                      ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })} INR
-                    </div>
-                  </div>
-                </div>
-
-                {isLoss ? (
-                  <div style={{ fontSize: '0.84rem', color: '#7f1d1d', marginTop: '2px', fontWeight: 600, lineHeight: 1.5 }}>
-                    ⚠️ Your Purchase Cost (₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}) is higher than your Buyer PI Sales Revenue (~₹{totalPiSalesInr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}). You will incur an estimated loss of <strong style={{ textDecoration: 'underline' }}>₹{(totalAmount - totalPiSalesInr).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> on this order. Please lower unit purchase rates or check quantities!
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '0.84rem', color: '#14532d', marginTop: '2px', fontWeight: 600 }}>
-                    ✨ Estimated Profit Margin: <strong>₹{(totalPiSalesInr - totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> ({(((totalPiSalesInr - totalAmount) / totalPiSalesInr) * 100).toFixed(1)}% margin).
+                {!isStoreManager && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    {selectedPiData?.items?.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleAutoFillFromPI}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '0.45rem 0.85rem',
+                          fontSize: '0.82rem',
+                          fontWeight: 650,
+                          backgroundColor: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          color: '#065f46',
+                          borderRadius: '8px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <FileText size={14} /> Auto-Fill from Buyer PI ({selectedPiData.pi_no})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={addItem}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        padding: '0.45rem 0.95rem',
+                        fontSize: '0.85rem',
+                        borderRadius: '8px',
+                        fontWeight: 650
+                      }}
+                    >
+                      <Plus size={15}/> Add Item
+                    </button>
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Actions */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+              {/* Full-width Line Items Table */}
+              <div style={{ overflowX: 'auto', backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      {(header.buyer_pi ? ['#','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? 'Action' : null].filter(Boolean) : ['#','Buyer (Order Ref)','Buyer PI (Optional)','Description of Goods *','Quantity *','Unit','Rate (₹) *','Amount (₹)', !isStoreManager ? 'Action' : null].filter(Boolean)).map(h => (
+                        <th key={h} style={{
+                          padding: '10px 12px',
+                          textAlign: h === 'Action' ? 'center' : (h === '#' ? 'center' : (h === 'Amount (₹)' ? 'right' : 'left')),
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          color: '#475569',
+                          whiteSpace: 'nowrap',
+                          width: h === 'Action' ? '56px' : (h === '#' ? '44px' : 'auto')
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' }}>
+                        <td style={{ padding: '8px 10px', color: '#64748b', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>
+                          {idx + 1}
+                        </td>
+                        {!header.buyer_pi && (
+                          <>
+                            <td style={{ padding: '6px 8px' }}>
+                              <CustomSelect
+                                value={item.buyer}
+                                disabled={isStoreManager}
+                                onChange={e => {
+                                  const val = e.target ? e.target.value : e;
+                                  updateItem(idx, 'buyer', val);
+                                }}
+                                options={[
+                                  { value: '', label: 'No buyer ref' },
+                                  ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
+                                ]}
+                                placeholder="No buyer ref"
+                                style={{ minWidth: '140px' }}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 8px' }}>
+                              <CustomSelect
+                                value={item.buyer_pi}
+                                onChange={e => {
+                                  const val = e.target ? e.target.value : e;
+                                  updateItem(idx, 'buyer_pi', val);
+                                }}
+                                disabled={isStoreManager || !item.buyer}
+                                options={[
+                                  { value: '', label: 'None' },
+                                  ...buyerPIs.filter(p => !item.buyer || String(p.buyer) === String(item.buyer)).map(p => ({ value: p.id, label: p.pi_no }))
+                                ]}
+                                placeholder="None"
+                                style={{ minWidth: '130px' }}
+                              />
+                            </td>
+                          </>
+                        )}
+                        <td style={{ padding: '6px 8px' }}>
+                          <textarea rows={2} required className="form-input"
+                            disabled={isStoreManager}
+                            style={{ minWidth: '240px', width: '100%', fontSize: '0.82rem', padding: '6px 8px', resize: 'vertical' }}
+                            placeholder="e.g. Natural Jute Fabric / 2601-068SBWWKW"
+                            value={item.description}
+                            onChange={e => updateItem(idx, 'description', e.target.value)} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input required type="number" step="0.01" min="0.01" max="999999" className="form-input"
+                            disabled={isStoreManager}
+                            style={{ width: '95px', fontSize: '0.82rem', padding: '6px 8px' }}
+                            placeholder="0.00" value={item.quantity}
+                            onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <CustomSelect
+                            value={item.unit}
+                            disabled={isStoreManager}
+                            onChange={e => {
+                              const val = e.target ? e.target.value : e;
+                              updateItem(idx, 'unit', val);
+                            }}
+                            options={['pcs','mtr','Ft²','kg','nos','set']}
+                            style={{ minWidth: '85px' }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input required type="number" step="0.01" min="0" max="99999999.99" className="form-input"
+                            disabled={isStoreManager}
+                            style={{ width: '110px', fontSize: '0.82rem', padding: '6px 8px' }}
+                            placeholder="0.00" value={item.rate}
+                            onChange={e => updateItem(idx, 'rate', e.target.value)} />
+                        </td>
+                        <td style={{ padding: '6px 12px', fontWeight: 700, color: '#8b5a2b', whiteSpace: 'nowrap', minWidth: '110px', textAlign: 'right' }}>
+                          {item.amount ? `₹${parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        {!isStoreManager && (
+                          <td style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'center', width: '56px' }}>
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              title="Remove item"
+                              disabled={items.length <= 1}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '8px',
+                                border: '1px solid #fee2e2',
+                                backgroundColor: '#fef2f2',
+                                color: items.length <= 1 ? '#cbd5e1' : '#dc2626',
+                                cursor: items.length <= 1 ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                              onMouseEnter={e => {
+                                if (items.length > 1) {
+                                  e.currentTarget.style.backgroundColor = '#dc2626';
+                                  e.currentTarget.style.color = '#ffffff';
+                                  e.currentTarget.style.borderColor = '#dc2626';
+                                }
+                              }}
+                              onMouseLeave={e => {
+                                if (items.length > 1) {
+                                  e.currentTarget.style.backgroundColor = '#fef2f2';
+                                  e.currentTarget.style.color = '#dc2626';
+                                  e.currentTarget.style.borderColor = '#fee2e2';
+                                }
+                              }}
+                            >
+                              <Trash2 size={16}/>
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* ── Summary Metrics Strip ── */}
+              <div className="po-summary-grid" style={{
+                display: 'grid',
+                gridTemplateColumns: totalPiSalesUsd > 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+                gap: '1rem',
+                marginTop: '1.25rem'
+              }}>
+                <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Line Items</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>{items.length}</span>
+                </div>
+
+                <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Units</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a' }}>
+                    {items.reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Supplier PO Total Amount</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#8b5a2b' }}>
+                    ₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                {totalPiSalesUsd > 0 && (
+                  <div style={{
+                    backgroundColor: isLoss ? '#fef2f2' : '#f0fdf4',
+                    border: isLoss ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isLoss ? '#991b1b' : '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {isLoss ? 'Est. Trade Loss' : 'Est. Trade Margin'}
+                    </span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 800, color: isLoss ? '#dc2626' : '#16a34a' }}>
+                      {isLoss
+                        ? `-₹${(totalAmount - totalPiSalesInr).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+                        : `+₹${(totalPiSalesInr - totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Profitability / Trade Loss Notice Alert */}
+              {totalPiSalesUsd > 0 && (
+                <div style={{
+                  marginTop: '1rem',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  border: isLoss ? '1.5px solid #fca5a5' : '1.5px solid #bbf7d0',
+                  backgroundColor: isLoss ? '#fef2f2' : '#f0fdf4',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: isLoss ? '#991b1b' : '#166534', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <AlertCircle size={18} color={isLoss ? '#dc2626' : '#16a34a'} style={{ flexShrink: 0 }} />
+                      <span>{isLoss ? '⚠️ Trade Loss Alert: Supplier Cost Exceeds Buyer Revenue!' : 'Profitable Purchase Order Analysis'}</span>
+                    </div>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: isLoss ? '#b91c1c' : '#15803d', background: isLoss ? '#fee2e2' : '#dcfce7', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                      Reference Rate: 1 USD = ₹{EXCHANGE_RATE_INR} INR
+                    </span>
+                  </div>
+
+                  {isLoss ? (
+                    <div style={{ fontSize: '0.84rem', color: '#7f1d1d', fontWeight: 600, lineHeight: 1.5 }}>
+                      Your Purchase Cost (₹{totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}) is higher than your Buyer PI Sales Revenue (~₹{totalPiSalesInr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}). You will incur an estimated loss of <strong style={{ textDecoration: 'underline' }}>₹{(totalAmount - totalPiSalesInr).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> on this order.
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.84rem', color: '#14532d', fontWeight: 600 }}>
+                      Estimated Gross Margin: <strong>₹{(totalPiSalesInr - totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> ({(((totalPiSalesInr - totalAmount) / totalPiSalesInr) * 100).toFixed(1)}% margin vs linked Buyer PI revenue).
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Section 3: Bottom Action Buttons ── */}
+            <div className="po-action-btns" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.85rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
                   if (isStoreManager) {
-                    onBack();
+                    onBack ? onBack() : navigate('/pos');
                   } else {
-                    if (confirmExit('/pos')) onBack();
+                    if (confirmExit('/pos')) onBack ? onBack() : navigate('/pos');
                   }
                 }}
                 style={{ padding: '0.65rem 1.6rem', borderRadius: '10px' }}
               >
                 {isStoreManager ? 'Back to Listing' : 'Cancel'}
               </button>
+
               {!isStoreManager && (
                 <>
                   <button
@@ -864,16 +1218,22 @@ function POForm({ poId, onBack, onSaved }) {
                 </>
               )}
             </div>
-          </div>
-        </div>
-        </fieldset>
+          </fieldset>
+        </form>
+      </div>
 
-        <SupplierAllocationBreakdownModal
-          isOpen={showBreakdownModal}
-          onClose={() => setShowBreakdownModal(false)}
-          piData={selectedPiData}
-        />
-      </form>
+      <SupplierAllocationBreakdownModal
+        isOpen={showBreakdownModal}
+        onClose={() => setShowBreakdownModal(false)}
+        piData={selectedPiData}
+      />
+
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        onSave={handleSaveAndExit}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
+      />
     </div>
   );
 }
@@ -1272,64 +1632,78 @@ function POs() {
         }
       `}</style>
 
-      {/* ── Module Tabs (PO Listing & Gate Entry & Vendor Management) ── */}
-      <div className="po-tabs-container" ref={tabsContainerRef}>
-        {indicatorStyle.width > 0 && (
-          <div
-            className={`po-tab-sliding-indicator ${
-              activeTab === 'vendor-management'
-                ? 'vendor-theme'
-                : activeTab === 'gate-entry'
-                ? 'gate-theme'
-                : 'pos-theme'
-            }`}
-            style={{
-              transform: `translate3d(${indicatorStyle.left}px, ${indicatorStyle.top}px, 0)`,
-              width: `${indicatorStyle.width}px`,
-              height: `${indicatorStyle.height}px`,
-            }}
-          />
-        )}
+      {/* ── Module Tabs Navigation ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        borderBottom: '2px solid #e2e8f0',
+        marginBottom: '1.25rem',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
+        WebkitOverflowScrolling: 'touch'
+      }}>
         <button
-          ref={el => (tabRefs.current['pos'] = el)}
-          className={`po-tab-btn ${activeTab === 'pos' ? 'active-pos' : ''}`}
           onClick={() => { setActiveTab('pos'); setSearchParams({}); }}
+          style={{
+            padding: '0.65rem 1.1rem',
+            fontWeight: 800,
+            fontSize: '0.88rem',
+            color: activeTab === 'pos' ? '#8b5a2b' : '#64748b',
+            borderBottom: activeTab === 'pos' ? '3px solid #8b5a2b' : '3px solid transparent',
+            background: 'none',
+            borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '0.45rem',
+            marginBottom: '-2px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            transition: 'all 0.15s ease'
+          }}
         >
-          <div className="po-tab-icon-box" style={{
-            backgroundColor: activeTab === 'pos' ? '#0d9488' : '#f1f5f9',
-            color: activeTab === 'pos' ? '#ffffff' : '#64748b'
-          }}>
-            <FileText size={16} />
-          </div>
-          Purchase Orders Listing
+          <FileText size={17} /> Purchase Orders Listing ({pos.length})
         </button>
 
         <button
-          ref={el => (tabRefs.current['gate-entry'] = el)}
-          className={`po-tab-btn ${activeTab === 'gate-entry' ? 'active-gate' : ''}`}
           onClick={() => { setActiveTab('gate-entry'); setSearchParams({ tab: 'gate-entry' }); }}
+          style={{
+            padding: '0.65rem 1.1rem',
+            fontWeight: 800,
+            fontSize: '0.88rem',
+            color: activeTab === 'gate-entry' ? '#8b5a2b' : '#64748b',
+            borderBottom: activeTab === 'gate-entry' ? '3px solid #8b5a2b' : '3px solid transparent',
+            background: 'none',
+            borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '0.45rem',
+            marginBottom: '-2px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            transition: 'all 0.15s ease'
+          }}
         >
-          <div className="po-tab-icon-box" style={{
-            backgroundColor: activeTab === 'gate-entry' ? '#0d9488' : '#f1f5f9',
-            color: activeTab === 'gate-entry' ? '#ffffff' : '#64748b'
-          }}>
-            <ClipboardCheck size={16} />
-          </div>
-          Gate Entry & Material Receiving
+          <ClipboardCheck size={17} /> Gate Entry & Material Receiving ({pos.length})
         </button>
 
         <button
-          ref={el => (tabRefs.current['vendor-management'] = el)}
-          className={`po-tab-btn ${activeTab === 'vendor-management' ? 'active-vendor' : ''}`}
           onClick={() => { setActiveTab('vendor-management'); setSearchParams({ tab: 'vendor-management' }); }}
+          style={{
+            padding: '0.65rem 1.1rem',
+            fontWeight: 800,
+            fontSize: '0.88rem',
+            color: activeTab === 'vendor-management' ? '#8b5a2b' : '#64748b',
+            borderBottom: activeTab === 'vendor-management' ? '3px solid #8b5a2b' : '3px solid transparent',
+            background: 'none',
+            borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '0.45rem',
+            marginBottom: '-2px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            transition: 'all 0.15s ease'
+          }}
         >
-          <div className="po-tab-icon-box" style={{
-            backgroundColor: activeTab === 'vendor-management' ? '#dc2626' : '#f1f5f9',
-            color: activeTab === 'vendor-management' ? '#ffffff' : '#64748b'
-          }}>
-            <TruckIcon size={16} />
-          </div>
-          Vendor / Supplier Management
+          <TruckIcon size={17} /> Vendor / Supplier Management ({pos.length})
         </button>
       </div>
 
@@ -1340,307 +1714,273 @@ function POs() {
           <GateEntry />
         ) : (
           <>
-            {/* ── Main Page Header Banner ── */}
-            <div className="po-main-banner banner-animated">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {/* ── Main Page Header Bar ── */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1.25rem',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                 <div style={{
-                  width: '52px',
-                  height: '52px',
-                  borderRadius: '14px',
-                  backgroundColor: '#f5eee6',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  backgroundColor: '#faf5ee',
+                  border: '1px solid #f0eae1',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  color: '#8b5a2b',
                   flexShrink: 0
                 }}>
-                  <ShoppingBag size={26} color="#8b5a2b" />
+                  <ShoppingBag size={22} />
                 </div>
                 <div>
-                  <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>
+                  <h2 style={{
+                    margin: 0,
+                    fontSize: '1.55rem',
+                    fontWeight: 800,
+                    color: '#0f172a',
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.2
+                  }}>
                     Purchase Orders & Gate Entry
-                  </h1>
-                  <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.86rem', fontWeight: 450 }}>
+                  </h2>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
                     Supplier POs, material receipts, and quality check inspection
                   </p>
                 </div>
               </div>
               {!isStoreManager && (
-                <div className="po-header-actions">
-                  <button
-                    onClick={() => navigate('/pos/new')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      backgroundColor: '#8b5a2b',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '10px',
-                      padding: '0.65rem 1.35rem',
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
-                      transition: 'background-color 0.15s ease'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#754921'}
-                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#8b5a2b'}
-                  >
-                    <Plus size={18} /> Create New PO
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/pos/new')}
+                  style={{
+                    backgroundColor: '#8b5a2b',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '0.65rem 1.35rem',
+                    fontSize: '0.88rem',
+                    fontWeight: 750,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    boxShadow: '0 2px 5px rgba(139, 90, 43, 0.25)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Plus size={16} /> Create New PO
+                </button>
               )}
             </div>
 
-            {/* ── Stat Cards Grid (4 KPI Cards) ── */}
-            <div className="po-stat-grid-v2">
+            {/* ── Executive KPI Metric Cards Strip ── */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1.25rem'
+            }}>
               {/* Card 1: Total POs */}
-              <div className="po-stat-card-item stat-card-animated" style={{
-                backgroundColor: '#faf7f2',
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: '14px',
-                padding: '1.1rem 1.25rem',
-                border: '1px solid #eee7dd',
+                padding: '1rem 1.25rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: '1rem',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-                animationDelay: '100ms'
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div className="po-stat-card-icon" style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '10px',
-                  backgroundColor: '#f0e6da',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <FileText size={20} color="#8b5a2b" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    TOTAL POs
-                  </div>
-                  <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                <div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Total Purchase Orders
+                  </span>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
                     {stats.total}
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#64748b', marginLeft: '6px' }}>Orders</span>
                   </div>
-                  <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', fontWeight: 500 }}>
-                    All Purchase Orders
-                  </div>
+                </div>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#faf5ee', border: '1px solid #f0eae1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5a2b' }}>
+                  <FileText size={20} />
                 </div>
               </div>
 
-              {/* Card 2: Pending */}
-              <div className="po-stat-card-item stat-card-animated" style={{
-                backgroundColor: '#fff8ed',
+              {/* Card 2: Pending Action */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: '14px',
-                padding: '1.1rem 1.25rem',
-                border: '1px solid #fde68a',
+                padding: '1rem 1.25rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: '1rem',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-                animationDelay: '150ms'
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div className="po-stat-card-icon" style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '10px',
-                  backgroundColor: '#fef3c7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <Clock size={20} color="#d97706" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    PENDING
-                  </div>
-                  <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#d97706', marginTop: '2px', lineHeight: 1.1 }}>
+                <div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Pending Actions
+                  </span>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
                     {stats.pending}
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#b45309', marginLeft: '6px' }}>Awaiting QC</span>
                   </div>
-                  <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '4px', fontWeight: 500 }}>
-                    Awaiting Actions
-                  </div>
+                </div>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#fffbeb', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+                  <Clock size={20} />
                 </div>
               </div>
 
-              {/* Card 3: Received */}
-              <div className="po-stat-card-item stat-card-animated" style={{
-                backgroundColor: '#f0f6fe',
+              {/* Card 3: Fully Received */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: '14px',
-                padding: '1.1rem 1.25rem',
-                border: '1px solid #bfdbfe',
+                padding: '1rem 1.25rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: '1rem',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-                animationDelay: '200ms'
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div className="po-stat-card-icon" style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '10px',
-                  backgroundColor: '#dbeafe',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <Package size={20} color="#1d4ed8" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    RECEIVED
-                  </div>
-                  <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px', lineHeight: 1.1 }}>
-                    {stats.received}
-                  </div>
-                  <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#2563eb', marginTop: '4px', fontWeight: 500 }}>
+                <div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d9488', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Fully Received
+                  </span>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0d9488', marginTop: '2px' }}>
+                    {stats.received}
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#0f766e', marginLeft: '6px' }}>Completed</span>
                   </div>
+                </div>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#f0fdfa', border: '1px solid #99f6e4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d9488' }}>
+                  <Package size={20} />
                 </div>
               </div>
 
               {/* Card 4: Total Value */}
-              <div className="po-stat-card-item stat-card-animated" style={{
-                backgroundColor: '#f0fdf4',
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: '14px',
-                padding: '1.1rem 1.25rem',
-                border: '1px solid #bbf7d0',
+                padding: '1rem 1.25rem',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                 display: 'flex',
-                alignItems: 'flex-start',
-                gap: '1rem',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.01)',
-                animationDelay: '250ms'
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div className="po-stat-card-icon" style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '10px',
-                  backgroundColor: '#dcfce7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  fontSize: '1.25rem',
-                  fontWeight: 800,
-                  color: '#059669'
-                }}>
-                  ₹
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    TOTAL VALUE
-                  </div>
-                  <div className="po-stat-card-value" style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1e293b', marginTop: '2px', lineHeight: 1.1 }}>
+                <div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Total Procurement Value
+                  </span>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
                     ₹{stats.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                   </div>
-                  <div className="po-stat-card-sub" style={{ fontSize: '0.78rem', color: '#166534', marginTop: '4px', fontWeight: 500 }}>
-                    Across All POs
-                  </div>
+                </div>
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                  <DollarSign size={20} />
                 </div>
               </div>
             </div>
 
-            {/* ── Filter Bar (Desktop Web View) ── */}
-            <div className="po-filter-card desktop-only filter-bar-animated">
-              <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
-                  <Search size={16} color="#94a3b8" />
-                  <input
-                    type="text"
-                    placeholder="Search by PO number or supplier..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    style={{
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      width: '100%',
-                      fontSize: '0.88rem',
-                      color: '#1e293b'
-                    }}
-                  />
-                </div>
-
-                <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
-                  <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>STATUS:</span>
-                    <div style={{ width: '165px' }}>
-                      <StatusSelect
-                        options={PO_STATUS_OPTIONS}
-                        value={statusFilter}
-                        onChange={setStatusFilter}
-                        placeholder="All Statuses"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
-                    <div style={{ width: '165px' }}>
-                      <OrderBySelect
-                        options={ORDER_OPTIONS_DATE_PONO}
-                        value={ordering}
-                        onChange={setOrdering}
-                        width="165px"
-                      />
-                    </div>
-                  </div>
-                </div>
+            {/* ── Unified Search & Filters Card ── */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              padding: '0.85rem 1.15rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.85rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                flex: '1 1 280px',
+                maxWidth: '420px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '0 0.85rem',
+                height: '38px',
+                boxSizing: 'border-box'
+              }}>
+                <Search size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  placeholder="Search by PO number or supplier..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    outline: 'none',
+                    backgroundColor: 'transparent',
+                    fontSize: '0.86rem',
+                    color: '#1e293b'
+                  }}
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-            </div>
 
-            {/* ── Filter Bar (Mobile View Only) ── */}
-            <div className="po-filter-card mobile-only filter-bar-animated">
-              <div className="filter-bar-inner po-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                <div className="po-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: '1 1 300px', maxWidth: '420px', backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '0 0.85rem', height: '42px' }}>
-                  <Search size={16} color="#94a3b8" />
-                  <input
-                    type="text"
-                    placeholder="Search by PO number or supplier..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    style={{
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      width: '100%',
-                      fontSize: '0.88rem',
-                      color: '#1e293b'
-                    }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div style={{ minWidth: '170px' }}>
+                  <StatusSelect
+                    options={PO_STATUS_OPTIONS}
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    placeholder="All Statuses"
                   />
                 </div>
 
-                <div className="po-filters-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                  <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 auto' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>STATUS:</span>
-                    <div style={{ width: '100%', minWidth: '135px' }}>
-                      <StatusSelect
-                        options={PO_STATUS_OPTIONS}
-                        value={statusFilter}
-                        onChange={setStatusFilter}
-                        placeholder="All Statuses"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="po-filter-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 auto' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>ORDER BY:</span>
-                    <div style={{ width: '100%', minWidth: '135px' }}>
-                      <OrderBySelect
-                        options={ORDER_OPTIONS_DATE_PONO}
-                        value={ordering}
-                        onChange={setOrdering}
-                        width="100%"
-                      />
-                    </div>
-                  </div>
+                <div style={{ minWidth: '170px' }}>
+                  <OrderBySelect
+                    options={ORDER_OPTIONS_DATE_PONO}
+                    value={ordering}
+                    onChange={setOrdering}
+                    width="170px"
+                  />
                 </div>
+
+                {(searchTerm || statusFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: 'none',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '0.45rem 0.75rem',
+                      fontSize: '0.8rem',
+                      color: '#64748b',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <X size={13} /> Clear
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1658,7 +1998,7 @@ function POs() {
                       <th>ITEMS & ORDERED QTY</th>
                       <th>TOTAL AMOUNT</th>
                       <th>STATUS</th>
-                      <th>ACTIONS</th>
+                      <th style={{ textAlign: 'right', paddingRight: '1rem' }}>ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1709,55 +2049,107 @@ function POs() {
                               {p.supervisor_detail?.full_name || p.supervisor_detail?.username || p.supervisor || '—'}
                             </span>
                           </td>
-                          <td style={{ color: '#475569', fontWeight: 500 }}>{p.po_date ? new Date(p.po_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
-                          <td style={{ color: '#475569', fontWeight: 500 }}>{p.due_date ? new Date(p.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}</td>
+                          <td style={{ color: '#475569', fontWeight: 600, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>
+                            {formatDisplayDate(p.po_date)}
+                          </td>
+                          <td style={{ color: '#475569', fontWeight: 600, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>
+                            {formatDisplayDate(p.due_date)}
+                          </td>
                           <td>
-                            <span style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '999px', padding: '4px 12px', fontSize: '0.78rem', fontWeight: 600, color: '#334155' }}>
+                            <span style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '3px 8px', fontSize: '0.76rem', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap' }}>
                               {(p.items || []).length} Item{(p.items || []).length !== 1 ? 's' : ''} ({totalQty} pcs)
                             </span>
                           </td>
-                          <td style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.92rem' }}>{fmtINR(p.total_amount)}</td>
-                          <td><StatusBadge status={p.status}/></td>
-                          <td onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          <td style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.92rem', whiteSpace: 'nowrap' }}>
+                            {fmtINR(p.total_amount)}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <StatusBadge status={p.status}/>
+                          </td>
+                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '0.75rem' }}>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
                               <button
-                                className="po-action-pill-btn"
-                                style={{ backgroundColor: '#f0fdf4', border: '1px solid #a7f3d0', color: '#0d9488' }}
+                                type="button"
                                 onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '0.3rem 0.6rem',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#f0fdfa',
+                                  border: '1px solid #99f6e4',
+                                  color: '#0d9488',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer'
+                                }}
                                 title="Record Gate Entry QC Inspection"
                               >
-                                <ClipboardCheck size={13}/> Gate Entry
+                                <ClipboardCheck size={13} /> Gate Entry
                               </button>
+
                               <button
-                                className="po-action-pill-btn"
-                                style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', color: '#475569' }}
+                                type="button"
                                 onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  backgroundColor: '#ffffff',
+                                  color: '#475569',
+                                  cursor: 'pointer'
+                                }}
+                                title={isStoreManager ? 'View Purchase Order' : 'Edit Purchase Order'}
                               >
-                                <Eye size={13}/> {isStoreManager ? 'View' : 'Edit'}
+                                {isStoreManager ? <Eye size={13} /> : <Pencil size={13} />}
                               </button>
+
                               <button
-                                className="po-action-pill-btn"
-                                style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb' }}
+                                type="button"
                                 onClick={e => handleDownloadPDF(p, e)}
                                 disabled={downloading === p.id}
-                                title="Download PDF"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #bfdbfe',
+                                  backgroundColor: '#eff6ff',
+                                  color: '#2563eb',
+                                  cursor: 'pointer'
+                                }}
+                                title="Download PO PDF"
                               >
-                                <Download size={13}/> {downloading === p.id ? '…' : 'PDF'}
+                                <Download size={13} />
                               </button>
+
                               {!isStoreManager && (
                                 <button
-                                  className="po-action-pill-btn"
+                                  type="button"
+                                  onClick={e => handleCancelPO(p, e)}
+                                  disabled={p.status === 'Cancelled'}
                                   style={{
-                                    backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fff5f5',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '6px',
                                     border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
+                                    backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fef2f2',
                                     color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
                                     cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
                                   }}
-                                  onClick={e => handleCancelPO(p, e)}
-                                  disabled={p.status === 'Cancelled'}
                                   title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
                                 >
-                                  <X size={13}/> {p.status === 'Cancelled' ? 'Cancelled' : 'Cancel PO'}
+                                  <X size={13} />
                                 </button>
                               )}
                             </div>

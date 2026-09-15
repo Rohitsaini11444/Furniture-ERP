@@ -1981,10 +1981,11 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         try:
             ip = int(total_amt)
             dp = int(round((total_amt - Decimal(str(ip))) * 100))
-            ww = num2words(ip, lang='en').replace(',', '').title()
+            import num2words as n2w_module
+            ww = n2w_module.num2words(ip, lang='en').replace(',', '').title()
             if dp:
-                ww += f' And {num2words(dp, lang="en").title()} Paise'
-            words_text = f'INR {ww} Only'
+                ww += f' And {n2w_module.num2words(dp, lang="en").title()} Paise'
+            words_text = f'INR In Words : {ww} Only'
         except Exception:
             words_text = f'Rs. {float(total_amt):,.2f}'
 
@@ -2017,7 +2018,7 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         SPX     = ML + LEFT_W              # x of the vertical divider in header
 
         # ─ Items column layout (proportions must add to 1) ─
-        col_pct = [0.05, 0.56, 0.11, 0.10, 0.05, 0.13]
+        col_pct = [0.05, 0.48, 0.12, 0.11, 0.06, 0.18]
         col_w   = [CW * p for p in col_pct]
         col_x   = []
         _cx = ML
@@ -2129,8 +2130,9 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         # Draw vertical lines for specific split rows
         # Row 1 is split ~55/45
         vline(SPX + RIGHT_W * 0.55, row1_bot, HDR_TOP)
-        # Row 3 is split ~75/25
-        vline(SPX + RIGHT_W * 0.75, row3_bot, row2_bot)
+        # Row 3 is split ~55/45 (PO Due Date & Supervisor)
+        SUP_DIV_X = SPX + RIGHT_W * 0.55
+        vline(SUP_DIV_X, row3_bot, row2_bot)
 
         R_LABEL_H = 3.8 * mm
         R_VALUE_BOT = 2.0 * mm
@@ -2149,8 +2151,22 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         ds(SPX + P, row2_bot - R_LABEL_H, 'PO Due Date', 'Helvetica', 7)
         due_date_val = f"{due_date_str}, No Delay Please" if due_date_str else ""
         ds(SPX + P, row3_bot + R_VALUE_BOT, due_date_val, 'Helvetica-Bold', 9)
-        ds(SPX + RIGHT_W * 0.75 + P, row2_bot - R_LABEL_H, 'Supervisor', 'Helvetica', 7)
-        ds(SPX + RIGHT_W * 0.75 + P, row3_bot + R_VALUE_BOT, po.supervisor or '', 'Helvetica-Bold', 10)
+        ds(SUP_DIV_X + P, row2_bot - R_LABEL_H, 'Supervisor', 'Helvetica', 7)
+        
+        # Clean supervisor name without role suffix like "(supervisor)"
+        sup_name = ''
+        if po.supervisor:
+            sup_name = po.supervisor.get_full_name() or po.supervisor.username or str(po.supervisor)
+            sup_name = re.sub(r'\s*\([^)]*\)', '', sup_name).strip()
+
+        sup_max_w = (RIGHT_W * 0.45) - 2 * P
+        if sup_name:
+            sup_font_size = 9.5
+            if sw(sup_name, 'Helvetica-Bold', sup_font_size) > sup_max_w:
+                sup_font_size = 8.0
+            if sw(sup_name, 'Helvetica-Bold', sup_font_size) > sup_max_w:
+                sup_font_size = 7.0
+            ds(SUP_DIV_X + P, row3_bot + R_VALUE_BOT, sup_name, 'Helvetica-Bold', sup_font_size)
 
         # Row 4: Terms of Delivery
         ds(SPX + P, row3_bot - R_LABEL_H, 'Terms of Delivery', 'Helvetica', 7)
@@ -2177,9 +2193,12 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
         # ═══════════════════════════════════════════════════════════════════════
         box(ML, ITEM_BOT, CW, ITEM_H, lw=0.75)   # outer box
 
-        # Vertical column dividers run the full height of the table
+        # Vertical column dividers: inner columns stop at TOTAL_LINE_Y,
+        # while the Amount column divider (col_x[5]) runs all the way to ITEM_BOT
+        TOTAL_LINE_Y = ITEM_BOT + 6.0*mm
         for ci in range(1, len(col_x)):
-            vline(col_x[ci], ITEM_BOT, ITEM_TOP)
+            bot_y = ITEM_BOT if ci == 5 else TOTAL_LINE_Y
+            vline(col_x[ci], bot_y, ITEM_TOP)
 
         # Header row (bottom border is the separator)
         HDR_ROW_BOT = ITEM_TOP - ITEM_HDR_H
@@ -2239,18 +2258,17 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
             # Per
             dc(col_x[4] + col_w[4]/2, mid_y, str(item.unit), 'Helvetica', 9)
 
-            # Amount (right-aligned, bold)
+            # Amount (right-aligned, bold, 2mm padding from column edge)
             amt = float(item.amount or 0)
-            dr(ML + CW - 1.0*mm, mid_y, f'{amt:,.2f}', 'Helvetica-Bold', 9)
+            dr(ML + CW - 2.0*mm, mid_y, f'{amt:,.2f}', 'Helvetica-Bold', 9)
 
             IY = row_bot
 
         # Total row — single line at the bottom of the items box
-        TOTAL_LINE_Y = ITEM_BOT + 6.0*mm
         hline(ML, TOTAL_LINE_Y, ML + CW, lw=0.75)
-        dr(col_x[2] - 2.0*mm, ITEM_BOT + 2.0*mm, 'Total', 'Helvetica', 8)
-        dr(ML + CW - 1.0*mm, ITEM_BOT + 1.5*mm,
-           f'Rs. {float(total_amt):,.2f}', 'Helvetica-Bold', 11)
+        dr(col_x[5] - 3.0*mm, ITEM_BOT + 2.0*mm, 'Total', 'Helvetica-Bold', 9)
+        dr(ML + CW - 2.0*mm, ITEM_BOT + 1.8*mm,
+           f'Rs. {float(total_amt):,.2f}', 'Helvetica-Bold', 10)
 
         # ═══════════════════════════════════════════════════════════════════════
         # 4. AMOUNT IN WORDS

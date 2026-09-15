@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -178,16 +179,108 @@ class FinishSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
 
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Finish name is required.")
+        name = value.strip()
+
+        if len(name) < 2:
+            raise serializers.ValidationError("Finish name must be at least 2 characters long.")
+        if len(name) > 100:
+            raise serializers.ValidationError("Finish name cannot exceed 100 characters.")
+
+        alpha_count = sum(1 for c in name if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Finish name must contain at least 2 alphabetic letters.")
+
+        if not re.match(r"^[A-Za-z0-9\s&.,'\-/( )]+$", name):
+            raise serializers.ValidationError("Finish name contains invalid characters. Only letters, numbers, spaces, and standard symbols (&, ., ,, -, ', /, (, )) are allowed.")
+
+        # 1. Reject 4 or more consecutive identical characters (e.g. 'wwww', 'aaaa')
+        if re.search(r'(.)\1{3,}', name):
+            raise serializers.ValidationError("Finish name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).")
+
+        # 2. Reject unbroken tokens longer than 30 characters without spaces
+        words = name.split()
+        for word in words:
+            if len(word) > 30:
+                raise serializers.ValidationError("Finish name contains an excessively long continuous word. Please enter a valid name.")
+
+        # 3. Reject repetitive alternating pattern loops (e.g. 'e2e2e2e2')
+        if re.search(r'([A-Za-z0-9]{2,3})\1{3,}', name):
+            raise serializers.ValidationError("Finish name appears to be repetitive gibberish. Please enter a valid finish name.")
+
+        qs = Finish.objects.filter(name__iexact=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"A finish with name '{name}' already exists.")
+
+        return name
+
     def validate_finish_code(self, value):
         if not value or not value.strip():
-            return value
-        code = value.strip()
+            raise serializers.ValidationError("Finish code is required.")
+        code = value.strip().upper()
+
+        if len(code) < 2:
+            raise serializers.ValidationError("Finish code must be at least 2 characters long.")
+        if len(code) > 30:
+            raise serializers.ValidationError("Finish code cannot exceed 30 characters.")
+
+        if not re.match(r"^[A-Z0-9\-_/]+$", code):
+            raise serializers.ValidationError("Finish code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).")
+
+        if re.search(r'(.)\1{3,}', code):
+            raise serializers.ValidationError("Finish code cannot contain repetitive characters (e.g. 4 or more identical characters in a row).")
+
         qs = Finish.objects.filter(finish_code__iexact=code)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("Finish Code of this finish is already present.")
+            raise serializers.ValidationError(f"Finish Code '{code}' is already present.")
+
         return code
+
+    def validate_color(self, value):
+        if not value:
+            return None
+        color = str(value).strip()
+        if not color:
+            return None
+
+        if len(color) < 2:
+            raise serializers.ValidationError("Color must be at least 2 characters long.")
+        if len(color) > 50:
+            raise serializers.ValidationError("Color cannot exceed 50 characters.")
+
+        alpha_count = sum(1 for c in color if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Color must contain at least 2 letters.")
+
+        # Colors must be descriptive names without random numbers
+        if not re.match(r"^[A-Za-z\s\-/,'()]+$", color):
+            raise serializers.ValidationError("Color can only contain letters, spaces, and hyphens (e.g. 'Walnut', 'Smokey Grey', 'Antique White'). Digits are not allowed.")
+
+        if re.search(r'(.)\1{3,}', color):
+            raise serializers.ValidationError("Color cannot contain repetitive characters.")
+
+        return color
+
+    def validate_wood_type(self, value):
+        if not value:
+            return None
+        wood = str(value).strip()
+        if not wood:
+            return None
+
+        if len(wood) < 2 or len(wood) > 60:
+            raise serializers.ValidationError("Please enter a valid wood type.")
+
+        if not re.match(r"^[A-Za-z0-9\s\-/,'()]+$", wood):
+            raise serializers.ValidationError("Wood type contains invalid characters.")
+
+        return wood
 
 
 class FinishDropdownSerializer(serializers.ModelSerializer):
@@ -217,6 +310,97 @@ class BuyerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Buyer
         fields = '__all__'
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Buyer name is required.")
+        name = value.strip()
+
+        if len(name) < 2:
+            raise serializers.ValidationError("Buyer name must be at least 2 characters long.")
+        if len(name) > 100:
+            raise serializers.ValidationError("Buyer name cannot exceed 100 characters.")
+
+        alpha_count = sum(1 for c in name if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Buyer name must contain at least 2 alphabetic letters.")
+
+        if not re.match(r"^[A-Za-z0-9\s&.,'\-/( )]+$", name):
+            raise serializers.ValidationError("Buyer name contains invalid characters. Only letters, numbers, spaces, and standard business symbols (&, ., ,, -, ', /, (, )) are allowed.")
+
+        # 1. Reject 4 or more consecutive identical characters (e.g. 'wwww', 'aaaa')
+        if re.search(r'(.)\1{3,}', name):
+            raise serializers.ValidationError("Buyer name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).")
+
+        # 2. Reject unbroken tokens longer than 30 characters without spaces
+        words = name.split()
+        for word in words:
+            if len(word) > 30:
+                raise serializers.ValidationError("Buyer name contains an excessively long continuous word. Please enter a valid company name.")
+
+        # 3. Reject repetitive alternating pattern loops (e.g. 'w2w2w2w2' or '2e2e2e2e')
+        if re.search(r'([A-Za-z0-9]{2,3})\1{3,}', name):
+            raise serializers.ValidationError("Buyer name appears to be repetitive gibberish. Please enter a valid company name.")
+
+        qs = Buyer.objects.filter(is_deleted=False, name__iexact=name)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"A buyer with name '{name}' already exists.")
+
+        return name
+
+    def validate_code(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Buyer code is required.")
+        code = value.strip().upper()
+
+        if len(code) < 2:
+            raise serializers.ValidationError("Buyer code must be at least 2 characters long.")
+        if len(code) > 30:
+            raise serializers.ValidationError("Buyer code cannot exceed 30 characters.")
+
+        if not re.match(r"^[A-Z0-9\-_/]+$", code):
+            raise serializers.ValidationError("Buyer code can only contain letters, numbers, hyphens (-), slashes (/), and underscores (_).")
+
+        qs = Buyer.objects.filter(is_deleted=False, code__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Buyer code '{code}' is already in use.")
+
+        return code
+
+    def validate_phone(self, value):
+        if not value:
+            return None
+        phone = str(value).strip()
+        if not phone:
+            return None
+
+        if not re.match(r"^\+?[0-9\s\-()]+$", phone):
+            raise serializers.ValidationError("Phone number can only contain digits, spaces, hyphens, parentheses, and an optional leading '+'.")
+
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) < 7 or len(digits) > 15:
+            raise serializers.ValidationError("Please enter a valid phone number (7 to 15 digits, optionally prefixed with '+').")
+
+        if len(set(digits)) == 1:
+            raise serializers.ValidationError("Phone number cannot consist of identical repeating digits.")
+
+        return phone
+
+    def validate_email(self, value):
+        if not value:
+            return None
+        email = str(value).strip().lower()
+        if not email:
+            return None
+
+        if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", email):
+            raise serializers.ValidationError("Enter a valid email address.")
+
+        return email
 
 class BuyerDropdownSerializer(serializers.ModelSerializer):
     class Meta:
@@ -252,12 +436,176 @@ class SampleSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Style No. is required.")
         code = value.strip()
+
+        if len(code) < 2:
+            raise serializers.ValidationError("Style No. must be at least 2 characters long.")
+        if len(code) > 50:
+            raise serializers.ValidationError("Style No. cannot exceed 50 characters.")
+
+        if not re.match(r"^[A-Za-z0-9\-_/ ]+$", code):
+            raise serializers.ValidationError("Style No. can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).")
+
+        if re.search(r'(.)\1{3,}', code):
+            raise serializers.ValidationError("Style No. cannot contain repetitive characters (e.g. 4 or more identical characters in a row).")
+
         qs = Sample.objects.filter(style_no__iexact=code)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(f"Style No. '{code}' already exists in Samples.")
+            raise serializers.ValidationError(f"Style No. '{code}' already exists in Samples Catalog.")
         return code
+
+    def validate_product_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Product name is required.")
+        name = value.strip()
+
+        if len(name) < 2:
+            raise serializers.ValidationError("Product name must be at least 2 characters long.")
+        if len(name) > 100:
+            raise serializers.ValidationError("Product name cannot exceed 100 characters.")
+
+        alpha_count = sum(1 for c in name if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Product name must contain at least 2 alphabetic letters.")
+
+        if not re.match(r"^[A-Za-z0-9\s&.,'\-/( )]+$", name):
+            raise serializers.ValidationError("Product name contains invalid characters. Use letters, numbers, spaces, and standard symbols (&, ., ,, -, ', /, (, )).")
+
+        if re.search(r'(.)\1{3,}', name):
+            raise serializers.ValidationError("Product name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).")
+
+        words = name.split()
+        for word in words:
+            if len(word) > 30:
+                raise serializers.ValidationError("Product name contains an excessively long continuous word. Please enter a readable name.")
+
+        if re.search(r'([A-Za-z0-9]{2,3})\1{3,}', name):
+            raise serializers.ValidationError("Product name appears to be repetitive gibberish. Please enter a valid product name.")
+
+        return name
+
+    def validate_material(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Material is required.")
+        material = value.strip()
+
+        if len(material) < 2:
+            raise serializers.ValidationError("Material must be at least 2 characters long.")
+        if len(material) > 255:
+            raise serializers.ValidationError("Material cannot exceed 255 characters.")
+
+        alpha_count = sum(1 for c in material if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Material must contain at least 2 alphabetic letters.")
+
+        if re.search(r'(.)\1{3,}', material):
+            raise serializers.ValidationError("Material cannot contain repetitive characters.")
+
+        words = material.split()
+        for word in words:
+            if len(word) > 30:
+                raise serializers.ValidationError("Material contains an excessively long continuous word.")
+
+        return material
+
+    def validate_finish_color(self, value):
+        if not value:
+            return None
+        fc = str(value).strip()
+        if not fc:
+            return None
+
+        if len(fc) < 2:
+            raise serializers.ValidationError("Finish/Color must be at least 2 characters long.")
+        if len(fc) > 255:
+            raise serializers.ValidationError("Finish/Color cannot exceed 255 characters.")
+
+        alpha_count = sum(1 for c in fc if c.isalpha())
+        if alpha_count < 2:
+            raise serializers.ValidationError("Finish/Color must contain at least 2 alphabetic letters.")
+
+        if re.search(r'(.)\1{3,}', fc):
+            raise serializers.ValidationError("Finish/Color cannot contain repetitive characters.")
+
+        return fc
+
+    def validate_vendor_name(self, value):
+        if not value:
+            return None
+        vendor = str(value).strip()
+        if not vendor:
+            return None
+
+        if len(vendor) < 2:
+            raise serializers.ValidationError("Vendor name must be at least 2 characters long.")
+        if len(vendor) > 100:
+            raise serializers.ValidationError("Vendor name cannot exceed 100 characters.")
+
+        if re.search(r'(.)\1{3,}', vendor):
+            raise serializers.ValidationError("Vendor name cannot contain repetitive characters.")
+
+        words = vendor.split()
+        for word in words:
+            if len(word) > 30:
+                raise serializers.ValidationError("Vendor name contains an excessively long continuous word.")
+
+        return vendor
+
+    def validate_cbm(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            val = Decimal(str(value))
+            if val <= 0 or val > Decimal('100'):
+                raise serializers.ValidationError("CBM must be a realistic positive number between 0.0001 and 100.0000.")
+            return val
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Enter a valid decimal number for CBM.")
+
+    def validate_usd(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            val = Decimal(str(value))
+            if val < 0 or val > Decimal('999999.99'):
+                raise serializers.ValidationError("Price (USD) must be a positive number up to 999,999.99.")
+            return val
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Enter a valid price in USD.")
+
+    def validate_size_length(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            val = Decimal(str(value))
+            if val <= 0 or val > Decimal('9999.99'):
+                raise serializers.ValidationError("Length must be a realistic dimension between 0.1 and 9999.99 cm.")
+            return val
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Enter a valid dimension for Length.")
+
+    def validate_size_breadth(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            val = Decimal(str(value))
+            if val <= 0 or val > Decimal('9999.99'):
+                raise serializers.ValidationError("Breadth must be a realistic dimension between 0.1 and 9999.99 cm.")
+            return val
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Enter a valid dimension for Breadth.")
+
+    def validate_size_height(self, value):
+        if value is None or value == '':
+            return None
+        try:
+            val = Decimal(str(value))
+            if val <= 0 or val > Decimal('9999.99'):
+                raise serializers.ValidationError("Height must be a realistic dimension between 0.1 and 9999.99 cm.")
+            return val
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Enter a valid dimension for Height.")
 
 
 class BuyerCodeSerializer(serializers.ModelSerializer):
@@ -328,10 +676,211 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
     finishing_images = BuyerMasterFinishingImageSerializer(many=True, read_only=True)
     packaging_image_url = serializers.SerializerMethodField()
 
+    units = serializers.IntegerField(
+        min_value=0,
+        default=1,
+        error_messages={
+            'min_value': 'Units cannot be negative.',
+            'invalid': 'Units must be a valid whole number.'
+        }
+    )
+    price_usd = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Price (USD) cannot exceed 12 digits in total (up to 10 integer digits and 2 decimals).',
+            'max_whole_digits': 'Price (USD) cannot exceed 10 digits before decimal.',
+            'max_decimal_places': 'Price (USD) cannot have more than 2 decimal places.',
+            'min_value': 'Price (USD) cannot be negative.',
+            'invalid': 'Enter a valid price.'
+        }
+    )
+    cbm = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        min_value=Decimal('0.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'CBM cannot exceed 10 digits in total (up to 6 integer digits and 4 decimals).',
+            'max_whole_digits': 'CBM cannot exceed 6 digits before decimal.',
+            'max_decimal_places': 'CBM cannot have more than 4 decimal places.',
+            'min_value': 'CBM cannot be negative.',
+            'invalid': 'Enter a valid CBM value.'
+        }
+    )
+    total_cbm = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        min_value=Decimal('0.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Total CBM cannot exceed 12 digits in total.',
+            'min_value': 'Total CBM cannot be negative.'
+        }
+    )
+    total_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Total Amount cannot exceed 14 digits in total.',
+            'min_value': 'Total Amount cannot be negative.'
+        }
+    )
+    size_length = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Length cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Length cannot exceed 8 digits before decimal.',
+            'min_value': 'Length cannot be negative.'
+        }
+    )
+    size_breadth = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Breadth cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Breadth cannot exceed 8 digits before decimal.',
+            'min_value': 'Breadth cannot be negative.'
+        }
+    )
+    size_height = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Height cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Height cannot exceed 8 digits before decimal.',
+            'min_value': 'Height cannot be negative.'
+        }
+    )
+    box_length = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Box Length cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Box Length cannot exceed 8 digits before decimal.',
+            'min_value': 'Box Length cannot be negative.'
+        }
+    )
+    box_breadth = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Box Breadth cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Box Breadth cannot exceed 8 digits before decimal.',
+            'min_value': 'Box Breadth cannot be negative.'
+        }
+    )
+    box_height = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Box Height cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Box Height cannot exceed 8 digits before decimal.',
+            'min_value': 'Box Height cannot be negative.'
+        }
+    )
+    vendor_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Vendor Price cannot exceed 12 digits in total.',
+            'min_value': 'Vendor Price cannot be negative.'
+        }
+    )
+    costing = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Costing cannot exceed 12 digits in total.',
+            'min_value': 'Costing cannot be negative.'
+        }
+    )
+    purchase_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Purchase Price cannot exceed 12 digits in total.',
+            'min_value': 'Purchase Price cannot be negative.'
+        }
+    )
+    net_weight = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Net Weight cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Net Weight cannot exceed 8 digits before decimal.',
+            'min_value': 'Net Weight cannot be negative.'
+        }
+    )
+    gross_weight = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Gross Weight cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Gross Weight cannot exceed 8 digits before decimal.',
+            'min_value': 'Gross Weight cannot be negative.'
+        }
+    )
 
     class Meta:
         model = BuyerMaster
         fields = '__all__'
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        numeric_fields = [
+            'price_usd', 'units', 'cbm', 'total_cbm', 'total_amount',
+            'size_length', 'size_breadth', 'size_height',
+            'box_length', 'box_breadth', 'box_height',
+            'vendor_price', 'costing', 'purchase_price',
+            'net_weight', 'gross_weight', 'sample'
+        ]
+        for field in numeric_fields:
+            if field in data and (data[field] == '' or data[field] is None):
+                data[field] = None
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         style_no = attrs.get('style_no')
@@ -342,21 +891,36 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
         if not buyer and self.instance:
             buyer = self.instance.buyer
 
-        if style_no:
-            if not style_no.strip():
-                raise serializers.ValidationError({"style_no": "Style No is required."})
-            code = style_no.strip()
-            attrs['style_no'] = code
+        if not style_no or not str(style_no).strip():
+            raise serializers.ValidationError({"style_no": "Style No is required."})
+        code = str(style_no).strip()
+        if len(code) > 100:
+            raise serializers.ValidationError({"style_no": "Style No cannot exceed 100 characters."})
+        attrs['style_no'] = code
+
+        buyer_code = attrs.get('buyer_code')
+        if buyer_code is not None:
+            if not str(buyer_code).strip():
+                raise serializers.ValidationError({"buyer_code": "Buyer Code is required."})
+            if len(str(buyer_code).strip()) > 50:
+                raise serializers.ValidationError({"buyer_code": "Buyer Code cannot exceed 50 characters."})
+
+        product_name = attrs.get('product_name')
+        if product_name is not None:
+            if not str(product_name).strip():
+                raise serializers.ValidationError({"product_name": "Product Name is required."})
+            if len(str(product_name).strip()) > 100:
+                raise serializers.ValidationError({"product_name": "Product Name cannot exceed 100 characters."})
             
-            if buyer:
-                qs = BuyerMaster.objects.filter(buyer=buyer, style_no__iexact=code)
-                if self.instance:
-                    qs = qs.exclude(pk=self.instance.pk)
-                if qs.exists():
-                    buyer_name = getattr(buyer, 'name', 'this Buyer')
-                    raise serializers.ValidationError({
-                        "style_no": f"Style No '{code}' already exists for {buyer_name} in Buyer Master."
-                    })
+        if buyer:
+            qs = BuyerMaster.objects.filter(buyer=buyer, style_no__iexact=code)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                buyer_name = getattr(buyer, 'name', 'this Buyer')
+                raise serializers.ValidationError({
+                    "style_no": f"Style No '{code}' already exists for {buyer_name} in Buyer Master."
+                })
 
         return attrs
 
@@ -390,6 +954,113 @@ class SupplierSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = '__all__'
         read_only_fields = ['id', 'created_at']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Supplier Name is required.")
+        val = value.strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("Supplier Name must be at least 2 characters.")
+        if len(val) > 200:
+            raise serializers.ValidationError("Supplier Name cannot exceed 200 characters.")
+        if re.search(r'(.)\1{3,}', val):
+            raise serializers.ValidationError("Supplier Name contains excessive repetitive characters.")
+        if any(len(w) > 30 for w in val.split()):
+            raise serializers.ValidationError("Supplier Name contains an excessively long continuous word.")
+        letters = re.findall(r'[A-Za-z]', val)
+        if len(letters) < 2:
+            raise serializers.ValidationError("Supplier Name must contain at least 2 alphabetic characters.")
+        if not re.match(r"^[A-Za-z0-9\s.,&'\-()/@#]+$", val):
+            raise serializers.ValidationError("Supplier Name contains invalid characters.")
+        
+        instance = self.instance
+        qs = Supplier.objects.filter(name__iexact=val)
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Supplier '{val}' already exists.")
+        return val
+
+    def validate_phone(self, value):
+        if not value or not str(value).strip():
+            return ""
+        val = str(value).strip()
+        if len(val) > 50:
+            raise serializers.ValidationError("Phone number cannot exceed 50 characters.")
+        if not re.match(r'^\+?[0-9\s\-()]{7,20}$', val):
+            raise serializers.ValidationError("Please enter a valid phone number (digits, optional '+', hyphens).")
+        digits = re.sub(r'\D', '', val)
+        if len(digits) < 7:
+            raise serializers.ValidationError("Phone number must contain at least 7 digits.")
+        if re.match(r'^(\d)\1+$', digits):
+            raise serializers.ValidationError("Phone number cannot consist of identical repeating digits.")
+        return val
+
+    def validate_gstin(self, value):
+        if not value or not str(value).strip():
+            return ""
+        val = str(value).strip().upper()
+        if len(val) > 50:
+            raise serializers.ValidationError("GSTIN cannot exceed 50 characters.")
+        gstin_regex = r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$'
+        if not re.match(gstin_regex, val):
+            if not re.match(r'^[A-Z0-9]{15}$', val):
+                raise serializers.ValidationError("GSTIN must be a valid 15-character format (e.g. 08ABCDE1234F1Z5).")
+        return val
+
+    def validate_state_name(self, value):
+        if not value or not str(value).strip():
+            return ""
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("State Name must be at least 2 characters.")
+        if len(val) > 100:
+            raise serializers.ValidationError("State Name cannot exceed 100 characters.")
+        if not re.match(r'^[A-Za-z\s.\-]+$', val):
+            raise serializers.ValidationError("State Name can only contain letters, spaces, and hyphens.")
+        if re.search(r'(.)\1{3,}', val):
+            raise serializers.ValidationError("State Name contains excessive repetitive characters.")
+        return val
+
+    def validate_cartage_gst_rate(self, value):
+        if value is None or value == '':
+            return Decimal('18.00')
+        try:
+            val = Decimal(str(value))
+        except Exception:
+            raise serializers.ValidationError("Cartage GST Rate must be a valid number.")
+        if val < 0:
+            raise serializers.ValidationError("Cartage GST Rate cannot be negative.")
+        if val > Decimal('100.00'):
+            raise serializers.ValidationError("Cartage GST Rate cannot exceed 100.00%.")
+        digits_str = str(val).replace('-', '').replace('.', '')
+        if len(digits_str) > 5:
+            raise serializers.ValidationError("Ensure that there are no more than 5 digits in total.")
+        return val
+
+    def validate_cartage_ledger_name(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Cartage Ledger Name is required.")
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("Cartage Ledger Name must be at least 2 characters.")
+        if len(val) > 200:
+            raise serializers.ValidationError("Cartage Ledger Name cannot exceed 200 characters.")
+        if re.search(r'(.)\1{3,}', val):
+            raise serializers.ValidationError("Cartage Ledger Name contains excessive repetitive characters.")
+        if any(len(w) > 40 for w in val.split()):
+            raise serializers.ValidationError("Cartage Ledger Name contains an excessively long continuous word.")
+        return val
+
+    def validate_address(self, value):
+        if not value or not str(value).strip():
+            return ""
+        val = str(value).strip()
+        if len(val) > 500:
+            raise serializers.ValidationError("Address cannot exceed 500 characters.")
+        if any(len(w) > 40 for w in val.split()):
+            raise serializers.ValidationError("Address contains an excessively long continuous word.")
+        return val
 
 
 class SupplierPOItemDefectSerializer(serializers.ModelSerializer):
@@ -721,10 +1392,116 @@ class ProductionJobSerializer(serializers.ModelSerializer):
 # ─── Performa Invoice Serializers ─────────────────────────────────────────────
 
 class PerformaInvoiceItemSerializer(serializers.ModelSerializer):
+    qty = serializers.IntegerField(
+        min_value=1,
+        default=1,
+        error_messages={
+            'min_value': 'Quantity must be at least 1.',
+            'invalid': 'Enter a valid whole number for quantity.'
+        }
+    )
+    dimension_w = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Width cannot exceed 10 digits in total.',
+            'min_value': 'Width cannot be negative.'
+        }
+    )
+    dimension_d = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Depth cannot exceed 10 digits in total.',
+            'min_value': 'Depth cannot be negative.'
+        }
+    )
+    dimension_h = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Height cannot exceed 10 digits in total.',
+            'min_value': 'Height cannot be negative.'
+        }
+    )
+    volume_per_pc = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        min_value=Decimal('0.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Volume per pc cannot exceed 10 digits in total.',
+            'min_value': 'Volume per pc cannot be negative.'
+        }
+    )
+    total_volume = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        min_value=Decimal('0.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Total volume cannot exceed 12 digits in total.',
+            'min_value': 'Total volume cannot be negative.'
+        }
+    )
+    rate_usd = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Rate cannot exceed 12 digits in total.',
+            'min_value': 'Rate cannot be negative.'
+        }
+    )
+    amount_usd = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Amount cannot exceed 14 digits in total.',
+            'min_value': 'Amount cannot be negative.'
+        }
+    )
+
     class Meta:
         model = PerformaInvoiceItem
         fields = '__all__'
         read_only_fields = ['id', 'pi']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        numeric_fields = ['qty', 'dimension_w', 'dimension_d', 'dimension_h', 'volume_per_pc', 'total_volume', 'rate_usd', 'amount_usd']
+        for field in numeric_fields:
+            if field in data and (data[field] == '' or data[field] is None):
+                data[field] = None
+        if 'style_no' in data and isinstance(data['style_no'], str):
+            data['style_no'] = data['style_no'].strip()
+        return super().to_internal_value(data)
+
+    def validate_style_no(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Style No. is required.")
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("Style No. must be at least 2 characters.")
+        if len(val) > 100:
+            raise serializers.ValidationError("Style No. cannot exceed 100 characters.")
+        return val
 
 
 class PerformaInvoiceSerializer(serializers.ModelSerializer):
@@ -735,6 +1512,36 @@ class PerformaInvoiceSerializer(serializers.ModelSerializer):
         model = PerformaInvoice
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        date_fields = ['pi_date', 'buyer_order_date']
+        for f in date_fields:
+            if f in data and (data[f] == '' or data[f] is None):
+                data[f] = None
+        if 'pi_no' in data and isinstance(data['pi_no'], str):
+            data['pi_no'] = data['pi_no'].strip()
+        return super().to_internal_value(data)
+
+    def validate_pi_no(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("PI No. is required.")
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("PI No. must be at least 2 characters.")
+        if len(val) > 100:
+            raise serializers.ValidationError("PI No. cannot exceed 100 characters.")
+        qs = PerformaInvoice.objects.filter(pi_no__iexact=val)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Performa Invoice '{val}' already exists.")
+        return val
+
+    def validate_items(self, value):
+        if not value or len(value) == 0:
+            raise serializers.ValidationError("At least one line item is required in a Performa Invoice.")
+        return value
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
@@ -761,16 +1568,246 @@ class PerformaInvoiceSerializer(serializers.ModelSerializer):
 # ─── Buyer PI (Pre-PO Performa Invoice) Serializers ───────────────────────────
 
 class BuyerPIItemSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
     buyer_master_detail = BuyerMasterSerializer(source='buyer_master', read_only=True)
     image_url = serializers.SerializerMethodField()
     allocated_quantity = serializers.SerializerMethodField()
     remaining_quantity = serializers.SerializerMethodField()
     allocation_status = serializers.SerializerMethodField()
 
+    units = serializers.IntegerField(
+        min_value=1,
+        max_value=999999,
+        error_messages={
+            'min_value': 'Units must be at least 1.',
+            'max_value': 'Units cannot exceed 999,999.',
+            'invalid': 'Enter a valid whole number for units.'
+        }
+    )
+    price_usd = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        max_value=Decimal('999999.99'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Price (USD) cannot exceed 12 digits in total (up to 10 integer digits and 2 decimals).',
+            'max_whole_digits': 'Price (USD) cannot exceed 10 digits before decimal.',
+            'max_decimal_places': 'Price (USD) cannot have more than 2 decimal places.',
+            'min_value': 'Price (USD) cannot be negative.',
+            'max_value': 'Price (USD) cannot exceed $999,999.99.',
+            'invalid': 'Enter a valid price.'
+        }
+    )
+    cbm = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        min_value=Decimal('0.0001'),
+        max_value=Decimal('100.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'CBM cannot exceed 10 digits in total (up to 6 integer digits and 4 decimals).',
+            'max_whole_digits': 'CBM cannot exceed 6 digits before decimal.',
+            'max_decimal_places': 'CBM cannot have more than 4 decimal places.',
+            'min_value': 'CBM must be greater than 0.',
+            'max_value': 'CBM cannot exceed 100 m³.',
+            'invalid': 'Enter a valid CBM value.'
+        }
+    )
+    size_length = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        max_value=Decimal('9999.99'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Length cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Length cannot exceed 8 digits before decimal.',
+            'min_value': 'Length must be greater than 0.',
+            'max_value': 'Length cannot exceed 9999.99 cm.',
+            'invalid': 'Enter a valid length.'
+        }
+    )
+    size_breadth = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        max_value=Decimal('9999.99'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Breadth cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Breadth cannot exceed 8 digits before decimal.',
+            'min_value': 'Breadth must be greater than 0.',
+            'max_value': 'Breadth cannot exceed 9999.99 cm.',
+            'invalid': 'Enter a valid breadth.'
+        }
+    )
+    size_height = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal('0.01'),
+        max_value=Decimal('9999.99'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Height cannot exceed 10 digits in total.',
+            'max_whole_digits': 'Height cannot exceed 8 digits before decimal.',
+            'min_value': 'Height must be greater than 0.',
+            'max_value': 'Height cannot exceed 9999.99 cm.',
+            'invalid': 'Enter a valid height.'
+        }
+    )
+    total_cbm = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        min_value=Decimal('0.0000'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Total CBM cannot exceed 12 digits in total.',
+            'min_value': 'Total CBM cannot be negative.',
+            'invalid': 'Enter a valid Total CBM.'
+        }
+    )
+    total_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Total Amount cannot exceed 14 digits in total.',
+            'min_value': 'Total Amount cannot be negative.',
+            'invalid': 'Enter a valid Total Amount.'
+        }
+    )
+
     class Meta:
         model = BuyerPIItem
         fields = '__all__'
-        read_only_fields = ['id', 'buyer_pi']
+        read_only_fields = ['buyer_pi']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        numeric_fields = [
+            'units', 'price_usd', 'cbm', 'size_length', 'size_breadth', 'size_height',
+            'total_cbm', 'total_amount', 'buyer_master'
+        ]
+        for field in numeric_fields:
+            if field in data and (data[field] == '' or data[field] is None):
+                data[field] = None
+
+        str_fields = ['barcode', 'buyer_no', 'style_no', 'product_name', 'material', 'finish_color', 'remarks']
+        for field in str_fields:
+            if field in data and isinstance(data[field], str):
+                data[field] = data[field].strip()
+
+        return super().to_internal_value(data)
+
+    def validate_style_no(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Style No. is required.")
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("Style No. must be at least 2 characters.")
+        if len(val) > 100:
+            raise serializers.ValidationError("Style No. cannot exceed 100 characters.")
+        if re.search(r'([^\d])\1{4,}', val):
+            raise serializers.ValidationError("Style No. cannot contain excessive repetitive characters.")
+        if not re.match(r"^[A-Za-z0-9\-_/ #.()]+$", val):
+            raise serializers.ValidationError("Style No. contains invalid characters.")
+        return val
+
+    def validate_units(self, value):
+        if value is None:
+            raise serializers.ValidationError("Units quantity is required.")
+        if value < 1:
+            raise serializers.ValidationError("Units must be at least 1.")
+        if value > 999999:
+            raise serializers.ValidationError("Units cannot exceed 999,999.")
+        return value
+
+    def validate_price_usd(self, value):
+        if value is not None and value != '':
+            val = Decimal(str(value))
+            if val < Decimal('0.00'):
+                raise serializers.ValidationError("Price (USD) cannot be negative.")
+            if val > Decimal('999999.99'):
+                raise serializers.ValidationError("Price (USD) must be a realistic amount up to $999,999.99.")
+            digits_str = str(val).replace('.', '')
+            if len(digits_str) > 12:
+                raise serializers.ValidationError("Price (USD) cannot exceed 12 digits in total.")
+            return val
+        return None
+
+    def validate_cbm(self, value):
+        if value is not None and value != '':
+            val = Decimal(str(value))
+            if val <= Decimal('0.0000'):
+                raise serializers.ValidationError("CBM must be greater than 0.")
+            if val > Decimal('100.0000'):
+                raise serializers.ValidationError("CBM must be between 0.0001 and 100.0000 m³.")
+            digits_str = str(val).replace('.', '')
+            if len(digits_str) > 10:
+                raise serializers.ValidationError("CBM cannot exceed 10 digits in total.")
+            return val
+        return None
+
+    def validate_size_length(self, value):
+        return self._validate_dim('Length', value)
+
+    def validate_size_breadth(self, value):
+        return self._validate_dim('Breadth', value)
+
+    def validate_size_height(self, value):
+        return self._validate_dim('Height', value)
+
+    def _validate_dim(self, label, value):
+        if value is not None and value != '':
+            val = Decimal(str(value))
+            if val <= Decimal('0.0'):
+                raise serializers.ValidationError(f"Size {label} must be greater than 0.")
+            if val < Decimal('0.01') or val > Decimal('9999.99'):
+                raise serializers.ValidationError(f"Size {label} must be between 0.01 and 9999.99 cm.")
+            digits_str = str(val).replace('.', '')
+            if len(digits_str) > 10:
+                raise serializers.ValidationError(f"{label} cannot exceed 10 digits in total.")
+            return val
+        return None
+
+    def validate_product_name(self, value):
+        if value:
+            val = value.strip()
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Product name contains excessive repetitive characters.")
+            if any(len(w) > 35 for w in val.split()):
+                raise serializers.ValidationError("Product name contains an excessively long continuous word.")
+            return val
+        return value
+
+    def validate_material(self, value):
+        if value:
+            val = value.strip()
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Material contains excessive repetitive characters.")
+            if any(len(w) > 35 for w in val.split()):
+                raise serializers.ValidationError("Material contains an excessively long continuous word.")
+            return val
+        return value
+
+    def validate_finish_color(self, value):
+        if value:
+            val = value.strip()
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Finish contains excessive repetitive characters.")
+            if any(len(w) > 35 for w in val.split()):
+                raise serializers.ValidationError("Finish contains an excessively long continuous word.")
+            return val
+        return value
 
     def get_image_url(self, obj):
         request = self.context.get('request')
@@ -789,7 +1826,6 @@ class BuyerPIItemSerializer(serializers.ModelSerializer):
             allocations = obj.po_allocations.exclude(supplier_po__status='Cancelled')
             return float(allocations.aggregate(s=Sum('quantity'))['s'] or 0)
 
-        # Match by buyer_pi_item FK OR by supplier_po.buyer_pi + style_no
         qs = SupplierPOItem.objects.filter(
             Q(buyer_pi_item=obj) |
             (Q(buyer_pi=obj.buyer_pi) & Q(description__icontains=obj.style_no)) |
@@ -829,6 +1865,107 @@ class BuyerPISerializer(serializers.ModelSerializer):
         model = BuyerPI
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        date_fields = ['pi_date', 'ex_factory_date']
+        for f in date_fields:
+            if f in data and (data[f] == '' or data[f] is None):
+                data[f] = None
+        str_fields = ['pi_no', 'payment_terms', 'delivered_to_name', 'delivered_to_company', 'delivered_to_address', 'remarks']
+        for field in str_fields:
+            if field in data and isinstance(data[field], str):
+                data[field] = data[field].strip()
+        return super().to_internal_value(data)
+
+    def validate_items(self, value):
+        if not value or len(value) == 0:
+            raise serializers.ValidationError("At least one line item is required in a Performa Invoice.")
+        return value
+
+    def validate_pi_no(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("PI Ref / PO # is required.")
+        val = str(value).strip()
+        if len(val) < 2:
+            raise serializers.ValidationError("PI Ref / PO # must be at least 2 characters.")
+        if len(val) > 100:
+            raise serializers.ValidationError("PI Ref / PO # cannot exceed 100 characters.")
+        if re.search(r'([^\d])\1{4,}', val):
+            raise serializers.ValidationError("PI Ref / PO # cannot contain excessive repetitive characters.")
+        if not re.match(r"^[A-Za-z0-9\-_/ #.()]+$", val):
+            raise serializers.ValidationError("PI Ref / PO # contains invalid characters.")
+        instance = self.instance
+        qs = BuyerPI.objects.filter(pi_no__iexact=val)
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f"Performa Invoice '{val}' already exists.")
+        return val
+
+    def validate(self, attrs):
+        pi_date = attrs.get('pi_date')
+        ex_factory_date = attrs.get('ex_factory_date')
+        if not pi_date and self.instance:
+            pi_date = self.instance.pi_date
+        if not ex_factory_date and self.instance:
+            ex_factory_date = self.instance.ex_factory_date
+
+        if pi_date and ex_factory_date and ex_factory_date < pi_date:
+            raise serializers.ValidationError({
+                'ex_factory_date': "Ex-Factory Date cannot be earlier than PI Date."
+            })
+        return attrs
+
+    def validate_payment_terms(self, value):
+        if value:
+            val = value.strip()
+            if len(val) > 200:
+                raise serializers.ValidationError("Payment terms cannot exceed 200 characters.")
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Payment terms contains excessive repetitive characters.")
+            return val
+        return value
+
+    def validate_delivered_to_name(self, value):
+        if value:
+            val = value.strip()
+            if len(val) > 200:
+                raise serializers.ValidationError("Contact person name cannot exceed 200 characters.")
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Contact person name contains excessive repetitive characters.")
+            return val
+        return value
+
+    def validate_delivered_to_company(self, value):
+        if value:
+            val = value.strip()
+            if len(val) > 200:
+                raise serializers.ValidationError("Company name cannot exceed 200 characters.")
+            if re.search(r'([^\d])\1{4,}', val):
+                raise serializers.ValidationError("Company name contains excessive repetitive characters.")
+            return val
+        return value
+
+    def validate_delivered_to_address(self, value):
+        if value:
+            val = value.strip()
+            if len(val) > 1000:
+                raise serializers.ValidationError("Address cannot exceed 1000 characters.")
+            if any(len(w) > 40 for w in val.split()):
+                raise serializers.ValidationError("Address contains an excessively long continuous word.")
+            return val
+        return value
+
+    def validate_remarks(self, value):
+        if value:
+            val = value.strip()
+            if len(val) > 1000:
+                raise serializers.ValidationError("Remarks cannot exceed 1000 characters.")
+            if any(len(w) > 40 for w in val.split()):
+                raise serializers.ValidationError("Remarks contains an excessively long continuous word.")
+            return val
+        return value
 
     def get_total_usd(self, obj):
         return sum(float(item.total_amount or 0) for item in obj.items.all())
@@ -891,6 +2028,7 @@ class BuyerPISerializer(serializers.ModelSerializer):
         pi = BuyerPI.objects.create(**validated_data)
         for item_data in items_data:
             item_data.pop('buyer_pi', None)
+            item_data.pop('id', None)
             BuyerPIItem.objects.create(buyer_pi=pi, **item_data)
         return pi
 
@@ -901,10 +2039,23 @@ class BuyerPISerializer(serializers.ModelSerializer):
         instance.save()
 
         if items_data is not None:
-            instance.items.all().delete()
+            existing_items = {str(item.id): item for item in instance.items.all()}
+            keep_item_ids = set()
             for item_data in items_data:
                 item_data.pop('buyer_pi', None)
-                BuyerPIItem.objects.create(buyer_pi=instance, **item_data)
+                item_id = item_data.pop('id', None)
+                if item_id and str(item_id) in existing_items:
+                    item_obj = existing_items[str(item_id)]
+                    for k, v in item_data.items():
+                        setattr(item_obj, k, v)
+                    item_obj.save()
+                    keep_item_ids.add(str(item_id))
+                else:
+                    new_item = BuyerPIItem.objects.create(buyer_pi=instance, **item_data)
+                    keep_item_ids.add(str(new_item.id))
+            for old_id, old_item in existing_items.items():
+                if old_id not in keep_item_ids:
+                    old_item.delete()
         return instance
 
 class BuyerPIItemSummarySerializer(serializers.ModelSerializer):
@@ -1183,10 +2334,67 @@ class StockItemSerializer(serializers.ModelSerializer):
     sample_id_str = serializers.CharField(source='sample.sample_id', read_only=True)
     po_number_str = serializers.CharField(source='po_item.supplier_po.po_number', read_only=True)
 
+    quantity = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        error_messages={
+            'max_digits': 'Stock quantity cannot exceed 12 digits in total (up to 10 integer digits and 2 decimal places).',
+            'max_whole_digits': 'Stock quantity cannot exceed 10 digits before the decimal point (max 9,999,999,999.99).',
+            'max_decimal_places': 'Stock quantity cannot have more than 2 decimal places.',
+            'min_value': 'Stock quantity cannot be negative.',
+            'invalid': 'Please enter a valid numeric quantity.'
+        }
+    )
+    unit_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'Unit price cannot exceed 12 digits in total (up to 10 integer digits and 2 decimal places).',
+            'max_whole_digits': 'Unit price cannot exceed 10 digits before the decimal point (max 9,999,999,999.99).',
+            'max_decimal_places': 'Unit price cannot have more than 2 decimal places.',
+            'min_value': 'Unit price cannot be negative.',
+            'invalid': 'Please enter a valid numeric unit price.'
+        }
+    )
+
     class Meta:
         model = StockItem
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        if 'unit_price' in data and (data['unit_price'] == '' or data['unit_price'] is None):
+            data['unit_price'] = None
+        return super().to_internal_value(data)
+
+    def validate_style_no(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Style No. is required and cannot be empty.")
+        val = str(value).strip()
+        if len(val) > 100:
+            raise serializers.ValidationError("Style No. cannot exceed 100 characters.")
+        return val
+
+    def validate_item_name(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Item / Product Name is required and cannot be empty.")
+        val = str(value).strip()
+        if len(val) > 255:
+            raise serializers.ValidationError("Item / Product Name cannot exceed 255 characters.")
+        return val
+
+    def validate_unit(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError("Unit is required (e.g. pcs, set, kg).")
+        val = str(value).strip()
+        if len(val) > 30:
+            raise serializers.ValidationError("Unit cannot exceed 30 characters.")
+        return val
 
 
 class GateInwardReceiptSerializer(serializers.ModelSerializer):
@@ -1280,6 +2488,19 @@ class StoreItemCategorySerializer(serializers.ModelSerializer):
         model = StoreItemCategory
         fields = '__all__'
 
+    def validate_name(self, value):
+        val = (value or "").strip()
+        if not val:
+            raise serializers.ValidationError("Category name cannot be empty.")
+        if len(val) > 100:
+            raise serializers.ValidationError("Category name cannot exceed 100 characters.")
+        qs = StoreItemCategory.objects.filter(name__iexact=val)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+        if qs.exists():
+            raise serializers.ValidationError(f"A category with name '{val}' already exists.")
+        return val
+
 
 class StoreItemRateHistorySerializer(serializers.ModelSerializer):
     updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
@@ -1298,9 +2519,67 @@ class StoreItemSerializer(serializers.ModelSerializer):
     total_stock_value = serializers.ReadOnlyField()
     rate_history = StoreItemRateHistorySerializer(many=True, read_only=True)
 
+    base_rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False, default=Decimal('0.00'),
+        error_messages={'min_value': 'Base rate cannot be negative.', 'max_digits': 'Base rate cannot exceed 12 digits.'}
+    )
+    current_rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False, default=Decimal('0.00'),
+        error_messages={'min_value': 'Current rate cannot be negative.', 'max_digits': 'Current rate cannot exceed 12 digits.'}
+    )
+    reorder_level = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False, default=Decimal('10.00'),
+        error_messages={'min_value': 'Reorder level cannot be negative.', 'max_digits': 'Reorder level cannot exceed 12 digits.'}
+    )
+    weight = serializers.DecimalField(
+        max_digits=10, decimal_places=3, min_value=Decimal('0.000'), required=False, allow_null=True,
+        error_messages={'min_value': 'Weight cannot be negative.', 'max_digits': 'Weight cannot exceed 10 digits.'}
+    )
+
     class Meta:
         model = StoreItem
         fields = '__all__'
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            for field in ['base_rate', 'current_rate', 'weight', 'reorder_level', 'category']:
+                if data.get(field) == '':
+                    data[field] = None
+            if data.get('base_rate') is None:
+                data['base_rate'] = '0.00'
+            if data.get('current_rate') is None:
+                data['current_rate'] = data.get('base_rate', '0.00')
+            if data.get('reorder_level') is None:
+                data['reorder_level'] = '10.00'
+            if isinstance(data.get('item_code'), str):
+                data['item_code'] = data['item_code'].strip()
+            if isinstance(data.get('item_name'), str):
+                data['item_name'] = data['item_name'].strip()
+        return super().to_internal_value(data)
+
+    def validate_item_code(self, value):
+        val = (value or "").strip()
+        if not val:
+            raise serializers.ValidationError("Item code is required.")
+        if len(val) > 50:
+            raise serializers.ValidationError("Item code cannot exceed 50 characters.")
+        if re.search(r'([^\d])\1{4,}', val, re.IGNORECASE):
+            raise serializers.ValidationError("Item code contains repetitive spam characters.")
+        qs = StoreItem.objects.filter(item_code__iexact=val)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+        if qs.exists():
+            raise serializers.ValidationError(f"Item code '{val}' is already in use by another store item.")
+        return val
+
+    def validate_item_name(self, value):
+        val = (value or "").strip()
+        if not val:
+            raise serializers.ValidationError("Item name is required.")
+        if len(val) > 200:
+            raise serializers.ValidationError("Item name cannot exceed 200 characters.")
+        return val
 
     def get_unit_balance_stock_qty(self, obj):
         req = self.context.get('request')
@@ -1347,6 +2626,15 @@ class StoreMaterialInSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.item_name', read_only=True)
     production_unit_name = serializers.SerializerMethodField()
 
+    qty = serializers.DecimalField(
+        max_digits=12, decimal_places=3, min_value=Decimal('0.001'),
+        error_messages={'min_value': 'Received quantity must be greater than 0.', 'max_digits': 'Quantity exceeds maximum allowable digits (12).'}
+    )
+    bill_rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'),
+        error_messages={'min_value': 'Bill rate cannot be negative.', 'max_digits': 'Bill rate exceeds maximum allowable digits (12).'}
+    )
+
     class Meta:
         model = StoreMaterialIn
         fields = '__all__'
@@ -1361,22 +2649,27 @@ class StoreMaterialInSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict):
             data = data.copy()
-            if data.get('po') == '':
-                data['po'] = None
-            if data.get('production_unit') == '':
-                data['production_unit'] = None
-            if data.get('received_by') == '':
-                data['received_by'] = None
+            for key in ['po', 'production_unit', 'received_by', 'qty', 'bill_rate']:
+                if data.get(key) == '':
+                    data[key] = None
         return super().to_internal_value(data)
 
     def validate(self, attrs):
-        qty = attrs.get('qty')
-        bill_rate = attrs.get('bill_rate')
+        if not attrs.get('supplier') and not (self.instance and self.instance.supplier):
+            raise serializers.ValidationError({"supplier": ["Supplier is required."]})
+        if not attrs.get('item') and not (self.instance and self.instance.item):
+            raise serializers.ValidationError({"item": ["Store item is required."]})
+        if not attrs.get('production_unit') and not (self.instance and self.instance.production_unit):
+            raise serializers.ValidationError({"production_unit": ["Factory / Production Unit is required."]})
+        bill_no = (attrs.get('bill_no') or "").strip()
+        if not bill_no and not (self.instance and self.instance.bill_no):
+            raise serializers.ValidationError({"bill_no": ["Supplier bill / invoice number is required."]})
+        elif len(bill_no) > 100:
+            raise serializers.ValidationError({"bill_no": ["Supplier bill number cannot exceed 100 characters."]})
 
-        if qty is not None and qty <= Decimal('0.00'):
-            raise serializers.ValidationError({"qty": ["Received quantity must be greater than 0."]})
-        if bill_rate is not None and bill_rate < Decimal('0.00'):
-            raise serializers.ValidationError({"bill_rate": ["Bill rate cannot be negative."]})
+        qty = attrs.get('qty')
+        if qty is not None and qty > Decimal('10000000'):
+            raise serializers.ValidationError({"qty": ["Quantity exceeds maximum threshold (10,000,000)."]})
         return super().validate(attrs)
 
 
@@ -1385,6 +2678,15 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
     item_code = serializers.CharField(source='item.item_code', read_only=True)
     item_name = serializers.CharField(source='item.item_name', read_only=True)
     production_unit_name = serializers.SerializerMethodField()
+
+    qty = serializers.DecimalField(
+        max_digits=12, decimal_places=3, min_value=Decimal('0.001'),
+        error_messages={'min_value': 'Issued quantity must be greater than 0.', 'max_digits': 'Quantity exceeds maximum allowable digits (12).'}
+    )
+    rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'),
+        error_messages={'min_value': 'Issue rate cannot be negative.', 'max_digits': 'Rate exceeds maximum allowable digits (12).'}
+    )
 
     class Meta:
         model = StoreDailyIssue
@@ -1397,29 +2699,26 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict):
             data = data.copy()
-            if data.get('contractor_person') == '':
-                data['contractor_person'] = None
-            if data.get('production_unit') == '':
-                data['production_unit'] = None
-            if data.get('issued_by') == '':
-                data['issued_by'] = None
+            for key in ['contractor_person', 'production_unit', 'issued_by', 'qty', 'rate']:
+                if data.get(key) == '':
+                    data[key] = None
         return super().to_internal_value(data)
 
     def validate(self, attrs):
-        qty = attrs.get('qty')
-        rate = attrs.get('rate')
-        item = attrs.get('item') or (self.instance.item if self.instance else None)
-        production_unit = attrs.get('production_unit') or (self.instance.production_unit if self.instance else None)
+        contractor = attrs.get('contractor') or (self.instance.contractor if self.instance else None)
+        if not contractor:
+            raise serializers.ValidationError({"contractor": ["Contractor / Supervisor is required."]})
 
+        production_unit = attrs.get('production_unit') or (self.instance.production_unit if self.instance else None)
         if not production_unit:
             raise serializers.ValidationError({"production_unit": ["Factory Unit / Production Unit is required to issue store items."]})
 
-        if qty is not None and qty <= Decimal('0.00'):
-            raise serializers.ValidationError({"qty": ["Issued quantity must be greater than 0."]})
-        if rate is not None and rate < Decimal('0.00'):
-            raise serializers.ValidationError({"rate": ["Issue rate cannot be negative."]})
+        item = attrs.get('item') or (self.instance.item if self.instance else None)
+        if not item:
+            raise serializers.ValidationError({"item": ["Store item is required."]})
 
-        if item and production_unit:
+        qty = attrs.get('qty')
+        if item and production_unit and qty is not None:
             # Check 1: Was this item ever received (Material In) in this production unit?
             if not item.has_material_in_for_unit(production_unit.id):
                 raise serializers.ValidationError({
@@ -1431,7 +2730,7 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
             if self.instance and self.instance.item == item and self.instance.production_unit == production_unit:
                 avail_stock += self.instance.qty
 
-            if qty is not None and qty > avail_stock:
+            if qty > avail_stock:
                 raise serializers.ValidationError({
                     "qty": [f"Insufficient store balance for '{item.item_name}' in {production_unit.name}. Available in {production_unit.name}: {avail_stock} {item.unit}, Requested: {qty} {item.unit}."]
                 })
@@ -1450,6 +2749,15 @@ class StoreMaterialReturnSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.item_name', read_only=True)
     production_unit_name = serializers.SerializerMethodField()
 
+    qty = serializers.DecimalField(
+        max_digits=12, decimal_places=3, min_value=Decimal('0.001'),
+        error_messages={'min_value': 'Returned quantity must be greater than 0.', 'max_digits': 'Quantity exceeds maximum allowable digits (12).'}
+    )
+    rate = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'),
+        error_messages={'min_value': 'Return rate cannot be negative.', 'max_digits': 'Rate exceeds maximum allowable digits (12).'}
+    )
+
     class Meta:
         model = StoreMaterialReturn
         fields = '__all__'
@@ -1461,20 +2769,18 @@ class StoreMaterialReturnSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if isinstance(data, dict):
             data = data.copy()
-            if data.get('production_unit') == '':
-                data['production_unit'] = None
-            if data.get('returned_by') == '':
-                data['returned_by'] = None
+            for key in ['production_unit', 'returned_by', 'qty', 'rate']:
+                if data.get(key) == '':
+                    data[key] = None
         return super().to_internal_value(data)
 
     def validate(self, attrs):
-        qty = attrs.get('qty')
-        rate = attrs.get('rate')
-
-        if qty is not None and qty <= Decimal('0.00'):
-            raise serializers.ValidationError({"qty": ["Returned quantity must be greater than 0."]})
-        if rate is not None and rate < Decimal('0.00'):
-            raise serializers.ValidationError({"rate": ["Return rate cannot be negative."]})
+        if not attrs.get('contractor') and not (self.instance and self.instance.contractor):
+            raise serializers.ValidationError({"contractor": ["Contractor returning material is required."]})
+        if not attrs.get('item') and not (self.instance and self.instance.item):
+            raise serializers.ValidationError({"item": ["Store item is required."]})
+        if not attrs.get('production_unit') and not (self.instance and self.instance.production_unit):
+            raise serializers.ValidationError({"production_unit": ["Factory / Production Unit is required."]})
         return super().validate(attrs)
 
     def get_contractor_name(self, obj):
@@ -1495,6 +2801,25 @@ class StoreRequisitionSerializer(serializers.ModelSerializer):
         model = StoreRequisition
         fields = '__all__'
         read_only_fields = ['id', 'requested_by', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            for key in ['production_unit', 'requested_qty']:
+                if data.get(key) == '':
+                    data[key] = None
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if not attrs.get('item') and not (self.instance and self.instance.item):
+            raise serializers.ValidationError({"item": ["Store item is required."]})
+        qty = attrs.get('requested_qty')
+        if qty is not None:
+            if qty <= Decimal('0.00'):
+                raise serializers.ValidationError({"requested_qty": ["Requested quantity must be greater than zero."]})
+            if qty > Decimal('9999999.999'):
+                raise serializers.ValidationError({"requested_qty": ["Requested quantity cannot exceed 9,999,999."]})
+        return super().validate(attrs)
 
     def get_production_unit_name(self, obj):
         return obj.production_unit.name if obj.production_unit else ""
@@ -1521,6 +2846,27 @@ class StoreStockAdjustmentSerializer(serializers.ModelSerializer):
         model = StoreStockAdjustment
         fields = '__all__'
         read_only_fields = ['id', 'logged_by', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+            for key in ['quantity_delta']:
+                if data.get(key) == '':
+                    data[key] = None
+        return super().to_internal_value(data)
+
+    def validate(self, attrs):
+        if not attrs.get('item') and not (self.instance and self.instance.item):
+            raise serializers.ValidationError({"item": ["Store item is required."]})
+        delta = attrs.get('quantity_delta')
+        if delta is not None and delta == Decimal('0.00'):
+            raise serializers.ValidationError({"quantity_delta": ["Stock variance delta cannot be zero."]})
+        reason = (attrs.get('reason') or "").strip()
+        if not reason:
+            raise serializers.ValidationError({"reason": ["Audit reason for adjustment is required."]})
+        elif len(reason) < 5:
+            raise serializers.ValidationError({"reason": ["Audit reason must be at least 5 characters."]})
+        return super().validate(attrs)
 
     def get_logged_by_name(self, obj):
         if obj.logged_by:

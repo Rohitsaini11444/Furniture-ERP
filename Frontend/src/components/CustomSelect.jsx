@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 
 /**
  * CustomSelect - Reusable luxury brown ERP dropdown matching the design in Image 1.
- * Replaces native HTML <select> elements across the app.
+ * Upgraded with React Portal rendering so dropdown menus never get trapped or clipped
+ * inside scrollable table containers or overflow hidden parent elements.
  *
  * Supports options via:
  * 1. options prop: [{ value, label }] or ["Option 1", "Option 2"]
@@ -20,20 +22,54 @@ export function CustomSelect({
   disabled = false
 }) {
   const [open, setOpen] = useState(false);
+  const [menuCoords, setMenuCoords] = useState(null);
   const containerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
 
-  // Close dropdown on outside click
+  // Measure trigger element and compute viewport coordinates
+  const updateCoords = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const menuMaxHeight = 240;
+    const openUpward = spaceBelow < menuMaxHeight && rect.top > menuMaxHeight;
+
+    setMenuCoords({
+      top: openUpward ? rect.top - 4 : rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      openUpward
+    });
+  }, []);
+
+  // Sync coordinates and handle click outside & scroll/resize tracking
   useEffect(() => {
+    if (!open) return;
+    updateCoords();
+
     const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      const clickedTrigger = triggerRef.current && triggerRef.current.contains(e.target);
+      const clickedMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!clickedTrigger && !clickedMenu) {
         setOpen(false);
       }
     };
-    if (open) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+
+    const handleScrollOrResize = () => {
+      updateCoords();
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+    };
+  }, [open, updateCoords]);
 
   // Extract options array from options prop OR React children
   let normalizedOptions = [];
@@ -101,9 +137,15 @@ export function CustomSelect({
     >
       {/* ── Trigger Box ── */}
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
-        onClick={() => !disabled && setOpen(prev => !prev)}
+        onClick={() => {
+          if (!disabled) {
+            if (!open) updateCoords();
+            setOpen(prev => !prev);
+          }
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -150,23 +192,25 @@ export function CustomSelect({
         />
       </button>
 
-      {/* ── Dropdown Overlay Card ── */}
-      {open && (
+      {/* ── Portal-Rendered Dropdown Overlay Card (Floats over all tables & containers) ── */}
+      {open && menuCoords && createPortal(
         <div
+          ref={menuRef}
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 5px)',
-            left: 0,
-            width: '100%',
+            position: 'fixed',
+            top: menuCoords.openUpward ? 'auto' : `${menuCoords.top}px`,
+            bottom: menuCoords.openUpward ? `${window.innerHeight - menuCoords.top}px` : 'auto',
+            left: `${menuCoords.left}px`,
+            width: `${menuCoords.width}px`,
             boxSizing: 'border-box',
-            zIndex: 99999,
+            zIndex: 9999999,
             backgroundColor: '#ffffff',
             borderRadius: '12px',
             border: '1px solid #e2e8f0',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)',
             maxHeight: '240px',
             overflowY: 'auto',
-            animation: 'fadeSlideDown 0.15s ease',
+            animation: menuCoords.openUpward ? 'fadeSlideUp 0.15s ease' : 'fadeSlideDown 0.15s ease',
             scrollbarWidth: 'thin',
             scrollbarColor: '#d6c7b2 transparent'
           }}
@@ -243,7 +287,8 @@ export function CustomSelect({
               );
             })
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
