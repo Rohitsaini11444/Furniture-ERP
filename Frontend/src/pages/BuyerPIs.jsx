@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2, AlertCircle, CheckCircle, X, Pencil, DollarSign, Package } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2, AlertCircle, CheckCircle, X, Pencil, DollarSign, Package, FileEdit } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import SearchableSelect from '../components/SearchableSelect';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
@@ -11,6 +11,7 @@ import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBr
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
+import { useDrafts } from '../context/DraftsContext';
 
 
 
@@ -89,6 +90,23 @@ function BuyerPIs() {
   });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { drafts, deleteDraft } = useDrafts();
+
+  // Order & Draft Options
+  const orderOptions = useMemo(() => {
+    const draftCount = drafts.filter(d => d.formType === 'pi').length;
+    return [
+      ...ORDER_OPTIONS_DATE_PINO,
+      {
+        value: 'draft',
+        label: 'Drafts',
+        badge: draftCount > 0 ? draftCount : null,
+        icon: FileEdit,
+        isDividerBefore: true
+      }
+    ];
+  }, [drafts]);
 
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyer_pis', id, currentPage);
   
@@ -196,6 +214,62 @@ function BuyerPIs() {
   }, [searchTerm]);
 
   const fetchPIs = useCallback(() => {
+    if (ordering === 'draft') {
+      setLoading(true);
+      const currentDrafts = drafts.filter(d => d.formType === 'pi');
+      const mapped = currentDrafts.map(d => {
+        const fd = d.data || {};
+        const buyerId = fd.buyer;
+        const buyerObj = buyers.find(b => String(b.id) === String(buyerId));
+        const items = Array.isArray(fd.items) ? fd.items : [];
+        const totalUnits = items.reduce((acc, it) => acc + (parseInt(it.units, 10) || 0), 0);
+        const totalAmt = items.reduce((acc, it) => acc + (parseFloat(it.total_amount) || 0), 0);
+
+        return {
+          id: d.id,
+          pi_no: fd.pi_no || 'Draft PI',
+          pi_date: fd.pi_date || (d.updatedAt ? d.updatedAt.split('T')[0] : ''),
+          buyer: buyerId,
+          buyer_detail: buyerObj || (buyerId ? { name: String(buyerId) } : null),
+          delivered_to_name: fd.delivered_to_name || '',
+          delivered_to_company: fd.delivered_to_company || '',
+          delivered_to_address: fd.delivered_to_address || '',
+          ex_factory_date: fd.ex_factory_date || '',
+          items: items,
+          total_units: totalUnits,
+          total_amount: totalAmt,
+          allocated_units: 0,
+          remaining_units: totalUnits,
+          supplier_allocations: [],
+          isDraft: true,
+          rawDraft: d,
+          updatedAt: d.updatedAt
+        };
+      });
+
+      let resList = mapped;
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        resList = resList.filter(p =>
+          (p.pi_no && p.pi_no.toLowerCase().includes(q)) ||
+          (p.buyer_detail?.name && p.buyer_detail.name.toLowerCase().includes(q)) ||
+          (p.delivered_to_company && p.delivered_to_company.toLowerCase().includes(q)) ||
+          (p.delivered_to_name && p.delivered_to_name.toLowerCase().includes(q))
+        );
+      }
+      if (filterBuyerId) {
+        resList = resList.filter(p => String(p.buyer) === String(filterBuyerId));
+      }
+
+      resList.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+      setTotalPages(Math.max(1, Math.ceil(resList.length / 50)));
+      const paginated = resList.slice((currentPage - 1) * 50, currentPage * 50);
+      setPis(paginated);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const params = { page: currentPage, page_size: 50, ordering: ordering };
     if (debouncedSearch) {
@@ -207,7 +281,8 @@ function BuyerPIs() {
     api.get('/buyer-pis/', { params })
       .then(res => {
         const data = res.data.results || res.data || [];
-        setPis(data);
+        const mapped = data.map(item => ({ ...item, isDraft: false }));
+        setPis(mapped);
         if (res.data.count !== undefined) {
           setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
@@ -216,7 +291,7 @@ function BuyerPIs() {
       })
       .catch(err => console.error('Failed to fetch Buyer PIs', err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, debouncedSearch, filterBuyerId]);
+  }, [currentPage, ordering, debouncedSearch, filterBuyerId, drafts, buyers]);
 
   const fetchBuyers = () => {
     api.get('/buyers/', { params: { nopage: true } })
@@ -246,6 +321,12 @@ function BuyerPIs() {
     }
     setCurrentPage(1);
   }, [debouncedSearch, filterBuyerId, filterAllocationStatus, ordering]);
+
+  useEffect(() => {
+    if (ordering === 'draft') {
+      setPiSubTab('directory');
+    }
+  }, [ordering]);
 
   useEffect(() => {
     fetchPIs();
@@ -716,6 +797,10 @@ function BuyerPIs() {
 
   const filteredPIs = pis.filter(p => {
     if (filterAllocationStatus && filterAllocationStatus !== 'ALL') {
+      if (p.isDraft) {
+        if (filterAllocationStatus !== 'UNALLOCATED') return false;
+        return true;
+      }
       const pItems = p.items || [];
       const pUnits = p.total_units !== undefined ? p.total_units : pItems.reduce((acc, it) => acc + (parseInt(it.units) || 0), 0);
       const pAlloc = p.allocated_units !== undefined ? p.allocated_units : 0;
@@ -2031,7 +2116,7 @@ function BuyerPIs() {
 
               <div style={{ minWidth: '170px', flex: '1 1 170px' }}>
                 <OrderBySelect
-                  options={ORDER_OPTIONS_DATE_PINO}
+                  options={orderOptions}
                   value={ordering}
                   onChange={setOrdering}
                 />
@@ -2092,7 +2177,7 @@ function BuyerPIs() {
                 flexShrink: 0
               }}
             >
-              <FileSpreadsheet size={18} />Performa Invoices Directory ({filteredPIs.length})
+              <FileSpreadsheet size={18} />{ordering === 'draft' ? `Draft Invoices Directory (${filteredPIs.length})` : `Performa Invoices Directory (${filteredPIs.length})`}
             </button>
             <button
               onClick={() => setPiSubTab('allocation_tracker')}
@@ -2116,6 +2201,13 @@ function BuyerPIs() {
           </div>
 
           {piSubTab === 'allocation_tracker' ? (
+            ordering === 'draft' ? (
+              <div style={{ textAlign: 'center', padding: '3.5rem 1.5rem', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', color: '#64748b' }}>
+                <FileEdit size={38} color="#d97706" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                <h3 style={{ margin: '0 0 0.5rem', color: '#1e293b', fontSize: '1.05rem', fontWeight: 700 }}>Drafts cannot be allocated to POs</h3>
+                <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b' }}>Save your draft Performa Invoice before allocating items to Purchase Orders or Suppliers.</p>
+              </div>
+            ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               {filteredPIs.map(p => {
                 const pItems = p.items || [];
@@ -2506,6 +2598,7 @@ function BuyerPIs() {
                 );
               })}
             </div>
+            )
           ) : (
             <>
               <div className="desktop-only" style={{
@@ -2529,6 +2622,7 @@ function BuyerPIs() {
                           />
                         </th>
                         <th style={{ padding: '12px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>PI / PO Ref #</th>
+                        <th style={{ padding: '12px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Status</th>
                         <th style={{ padding: '12px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>PI Date</th>
                         <th style={{ padding: '12px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Buyer</th>
                         <th style={{ padding: '12px 12px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Delivered To</th>
@@ -2553,7 +2647,15 @@ function BuyerPIs() {
                           <tr
                             key={p.id}
                             ref={isRecentlyVisited ? setHighlightRef : null}
-                            onClick={() => navigate(`/performa-invoices/${p.id}`)}
+                            onClick={() => {
+                              if (p.isDraft) {
+                                navigate('/performa-invoices/new', {
+                                  state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                                });
+                              } else {
+                                navigate(`/performa-invoices/${p.id}`);
+                              }
+                            }}
                             style={{
                               cursor: 'pointer',
                               backgroundColor: selectedRowIds.has(p.id) ? '#dcfce7' : undefined,
@@ -2561,7 +2663,7 @@ function BuyerPIs() {
                               transition: 'background-color 0.15s ease',
                             }}
                             className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
-                            title="Click to view/edit detail"
+                            title={p.isDraft ? "Click to resume draft" : "Click to view/edit detail"}
                           >
                             <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: '10px 10px' }}>
                               <input
@@ -2573,9 +2675,48 @@ function BuyerPIs() {
                             </td>
                             <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                                <FileText size={16} color="#8b5a2b" style={{ flexShrink: 0 }} />
-                                <strong style={{ color: '#0f172a', fontSize: '0.88rem' }}>{p.pi_no}</strong>
+                                {p.isDraft ? (
+                                  <FileEdit size={16} color="#d97706" style={{ flexShrink: 0 }} />
+                                ) : (
+                                  <FileText size={16} color="#8b5a2b" style={{ flexShrink: 0 }} />
+                                )}
+                                <strong style={{ color: p.isDraft ? '#b45309' : '#0f172a', fontSize: '0.88rem' }}>{p.pi_no}</strong>
                               </div>
+                            </td>
+                            <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                              {p.isDraft ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '3px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.73rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#fef3c7',
+                                  color: '#92400e',
+                                  border: '1px solid #fde68a'
+                                }}>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                                  Draft
+                                </span>
+                              ) : (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '3px 10px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.73rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#ecfdf5',
+                                  color: '#065f46',
+                                  border: '1px solid #a7f3d0'
+                                }}>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                                  Saved
+                                </span>
+                              )}
                             </td>
                             <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
                               {formatDisplayDate(p.pi_date)}
@@ -2622,8 +2763,23 @@ function BuyerPIs() {
                                 ${pAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </strong>
                             </td>
-                            <td onClick={e => { e.stopPropagation(); setBreakdownModalPi(p); }} style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                              {pRem <= 0 && pUnits > 0 ? (
+                            <td onClick={e => { if (!p.isDraft) { e.stopPropagation(); setBreakdownModalPi(p); } }} style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              {p.isDraft ? (
+                                <span style={{
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  color: '#94a3b8',
+                                  backgroundColor: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  Draft (Unsaved)
+                                </span>
+                              ) : pRem <= 0 && pUnits > 0 ? (
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#dc2626', backgroundColor: '#fef2f2', border: '1px solid #fecaca', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Click to view supplier breakdown">
                                   🔒 Fully Allocated ({pUnits} pcs)
                                 </span>
@@ -2638,96 +2794,155 @@ function BuyerPIs() {
                               )}
                             </td>
                             <td onClick={e => e.stopPropagation()} style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); navigate(`/pos/new?pi=${p.id}`); }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                    padding: '0.3rem 0.6rem',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 700,
-                                    backgroundColor: '#f0fdfa',
-                                    border: '1px solid #99f6e4',
-                                    color: '#0d9488',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer'
-                                  }}
-                                  title="Create PO from this PI"
-                                >
-                                  <ShoppingBag size={13} /> +PO
-                                </button>
+                              {p.isDraft ? (
+                                <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate('/performa-invoices/new', {
+                                        state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                                      });
+                                    }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '0.3rem 0.65rem',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 700,
+                                      backgroundColor: '#fef3c7',
+                                      border: '1px solid #fde68a',
+                                      color: '#92400e',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Resume Draft"
+                                  >
+                                    <FileEdit size={13} /> Resume
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleDownloadExcel(p.id, p.pi_no); }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '28px',
-                                    height: '28px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #bbf7d0',
-                                    backgroundColor: '#f0fdf4',
-                                    color: '#16a34a',
-                                    cursor: 'pointer'
-                                  }}
-                                  title="Download PI Excel"
-                                >
-                                  <Download size={13} />
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (window.confirm(`Discard draft for "${p.pi_no || 'Performa Invoice'}"?`)) {
+                                        deleteDraft(p.id);
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #fecaca',
+                                      backgroundColor: '#fef2f2',
+                                      color: '#dc2626',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Discard Draft"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/pos/new?pi=${p.id}`); }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      padding: '0.3rem 0.6rem',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 700,
+                                      backgroundColor: '#f0fdfa',
+                                      border: '1px solid #99f6e4',
+                                      color: '#0d9488',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Create PO from this PI"
+                                  >
+                                    <ShoppingBag size={13} /> +PO
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); navigate(`/performa-invoices/${p.id}`); }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '28px',
-                                    height: '28px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #cbd5e1',
-                                    backgroundColor: '#ffffff',
-                                    color: '#475569',
-                                    cursor: 'pointer'
-                                  }}
-                                  title="Edit Performa Invoice"
-                                >
-                                  <Pencil size={13} />
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadExcel(p.id, p.pi_no); }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #bbf7d0',
+                                      backgroundColor: '#f0fdf4',
+                                      color: '#16a34a',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Download PI Excel"
+                                  >
+                                    <Download size={13} />
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.pi_no); }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    width: '28px',
-                                    height: '28px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #fecaca',
-                                    backgroundColor: '#fef2f2',
-                                    color: '#dc2626',
-                                    cursor: 'pointer'
-                                  }}
-                                  title="Delete Performa Invoice"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/performa-invoices/${p.id}`); }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      backgroundColor: '#ffffff',
+                                      color: '#475569',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Edit Performa Invoice"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.pi_no); }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #fecaca',
+                                      backgroundColor: '#fef2f2',
+                                      color: '#dc2626',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Delete Performa Invoice"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );
                       })}
                       {filteredPIs.length === 0 && (
                         <tr>
-                          <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                            {loading ? 'Loading Performa Invoices...' : 'No Performa Invoices found matching your criteria.'}
+                          <td colSpan="12" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                            {loading
+                              ? 'Loading Performa Invoices...'
+                              : ordering === 'draft'
+                                ? 'No draft performa invoices found. When you save a PI as draft, it will appear here.'
+                                : 'No Performa Invoices found matching your criteria.'}
                           </td>
                         </tr>
                       )}
@@ -2748,16 +2963,43 @@ function BuyerPIs() {
                   className={`mobile-card ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                   key={p.id} 
                   ref={isRecentlyVisited ? setHighlightRef : null}
-                  onClick={() => navigate(`/performa-invoices/${p.id}`)}
+                  onClick={() => {
+                    if (p.isDraft) {
+                      navigate('/performa-invoices/new', {
+                        state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                      });
+                    } else {
+                      navigate(`/performa-invoices/${p.id}`);
+                    }
+                  }}
                   style={{ backgroundColor: selectedRowIds.has(p.id) ? '#f0fdf4' : undefined }}
                 >
-                  <div className="mobile-card-img" style={{ backgroundColor: '#f5efe6', color: '#8b5a2b', borderRadius: '12px', width: '56px', height: '56px' }}>
-                    <FileText size={24} />
+                  <div className="mobile-card-img" style={{
+                    backgroundColor: p.isDraft ? '#fef3c7' : '#f5efe6',
+                    color: p.isDraft ? '#d97706' : '#8b5a2b',
+                    borderRadius: '12px',
+                    width: '56px',
+                    height: '56px'
+                  }}>
+                    {p.isDraft ? <FileEdit size={24} /> : <FileText size={24} />}
                   </div>
                   
                   <div className="mobile-card-content" style={{ paddingLeft: '0.5rem' }}>
-                    <div className="mobile-card-title">
-                      {p.pi_no}
+                    <div className="mobile-card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>{p.pi_no}</span>
+                      {p.isDraft && (
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e',
+                          border: '1px solid #fde68a'
+                        }}>
+                          Draft
+                        </span>
+                      )}
                     </div>
                     <div className="mobile-card-subtitle" style={{ marginTop: '0.25rem', color: 'var(--text-main)' }}>
                       {p.buyer_detail?.name || 'Unknown Buyer'}
@@ -2775,7 +3017,11 @@ function BuyerPIs() {
             })}
             {filteredPIs.length === 0 && (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                {loading ? 'Loading Performa Invoices...' : 'No Performa Invoices found.'}
+                {loading
+                  ? 'Loading Performa Invoices...'
+                  : ordering === 'draft'
+                    ? 'No draft performa invoices found. When you save a PI as draft, it will appear here.'
+                    : 'No Performa Invoices found.'}
               </div>
             )}
           </div>

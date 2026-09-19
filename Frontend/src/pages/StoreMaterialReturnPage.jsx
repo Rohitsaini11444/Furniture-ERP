@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Undo2, Save, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Undo2, Save, AlertCircle, CheckCircle, X, FileText } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import UnsavedChangesModal from '../components/UnsavedChangesModal';
 
 export default function StoreMaterialReturnPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [items, setItems] = useState([]);
   const [contractors, setContractors] = useState([]);
@@ -44,6 +47,43 @@ export default function StoreMaterialReturnPage() {
     production_unit: '',
     remark: ''
   });
+
+  const {
+    isDirty,
+    setIsDirty,
+    showExitModal,
+    confirmExit,
+    handleSaveDraft,
+    handleDiscardAndExit,
+    handleCancelExit,
+    currentDraftId,
+    setCurrentDraftId,
+    clearDraft
+  } = useUnsavedChanges({
+    formType: 'store_return',
+    formLabel: 'Store Material Return',
+    getFormTitle: (data) => `Material Return - Voucher ${data?.voucher_no || 'New'}`,
+    getFormData: () => formData,
+    targetPath: '/store-management/material-return',
+    onSaveForm: async () => {
+      const formEl = document.getElementById('store-material-return-form');
+      if (formEl) {
+        formEl.requestSubmit();
+        return true;
+      }
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (location.state?.draftData) {
+      setFormData(location.state.draftData);
+      setIsDirty(true);
+      if (location.state.draftId) {
+        setCurrentDraftId(location.state.draftId);
+      }
+    }
+  }, [location.state]);
 
   const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +140,7 @@ export default function StoreMaterialReturnPage() {
 
   const handleFieldChange = (field, val) => {
     setFormData(prev => ({ ...prev, [field]: val }));
+    setIsDirty(true);
     if (formErrors[field]) {
       setFormErrors(prev => {
         const copy = { ...prev };
@@ -118,6 +159,7 @@ export default function StoreMaterialReturnPage() {
       return_date: val,
       month_year: computedMonthYear
     }));
+    setIsDirty(true);
     if (formErrors.return_date) {
       setFormErrors(prev => {
         const copy = { ...prev };
@@ -144,6 +186,7 @@ export default function StoreMaterialReturnPage() {
     } else {
       setFormData(prev => ({ ...prev, item: itemId }));
     }
+    setIsDirty(true);
     if (formErrors.item) {
       setFormErrors(prev => {
         const copy = { ...prev };
@@ -213,6 +256,7 @@ export default function StoreMaterialReturnPage() {
 
     api.post('/store/material-returns/', formData)
       .then(() => {
+        clearDraft();
         setSuccessMsg('Store Material Return recorded successfully! Inventory stock credited.');
         setToastNotification({
           type: 'success',
@@ -277,7 +321,9 @@ export default function StoreMaterialReturnPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <button
             type="button"
-            onClick={() => navigate('/store-management')}
+            onClick={() => {
+              if (confirmExit('/store-management')) navigate('/store-management');
+            }}
             style={{
               width: '38px',
               height: '38px',
@@ -354,7 +400,7 @@ export default function StoreMaterialReturnPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           padding: '1.75rem'
         }}>
-          <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <form id="store-material-return-form" onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             {/* Row 1: Voucher & Dates */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
@@ -636,7 +682,9 @@ export default function StoreMaterialReturnPage() {
             }}>
               <button
                 type="button"
-                onClick={() => navigate('/store-management')}
+                onClick={() => {
+                  if (confirmExit('/store-management')) navigate('/store-management');
+                }}
                 style={{
                   padding: '0.65rem 1.25rem',
                   borderRadius: '8px',
@@ -649,6 +697,25 @@ export default function StoreMaterialReturnPage() {
                 }}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveDraft()}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f8fafc',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                <FileText size={16} /> Save as Draft
               </button>
               <button
                 type="submit"
@@ -677,6 +744,14 @@ export default function StoreMaterialReturnPage() {
           </form>
         </div>
       )}
+
+      <UnsavedChangesModal
+        isOpen={showExitModal}
+        formLabel="Store Material Return"
+        onSaveDraft={handleSaveDraft}
+        onDiscard={handleDiscardAndExit}
+        onCancel={handleCancelExit}
+      />
 
       {/* Floating Toast Notification */}
       {toastNotification && (

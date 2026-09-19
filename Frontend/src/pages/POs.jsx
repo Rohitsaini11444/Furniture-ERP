@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import {
   ArrowLeft, Plus, Trash2, Search, Download, FileText,
   ChevronDown, Package, Building2, Calendar, MoreVertical,
   CheckCircle, Clock, XCircle, TruckIcon, Eye, ClipboardCheck, ShoppingBag, AlertCircle, X,
-  Home, ChevronRight, Pencil, DollarSign
+  Home, ChevronRight, Pencil, DollarSign, FileEdit
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -21,6 +21,7 @@ import SupplierAllocationBreakdownModal from '../components/SupplierAllocationBr
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
+import { useDrafts } from '../context/DraftsContext';
 
 
 // ─── Status badge helpers ──────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ const STATUS_STYLES = {
   'Partial Received': { bg: '#fff7ed', color: '#ea580c', icon: <Clock size={12}/> },
   Received:           { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
   Cancelled:          { bg: '#fee2e2', color: '#dc2626', icon: <XCircle size={12}/> },
+  Draft:              { bg: '#fef3c7', color: '#92400e', icon: <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} /> },
 };
 
 function StatusBadge({ status }) {
@@ -1300,9 +1302,93 @@ function POs() {
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
 
+  const { drafts, deleteDraft } = useDrafts();
+  const [suppliers, setSuppliers] = useState([]);
+  const [supervisors, setSupervisors] = useState([]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      api.get('/suppliers/', { params: { nopage: true } }),
+      api.get('/users/', { params: { role: 'supervisor' } })
+    ]).then(([sRes, uRes]) => {
+      if (sRes.status === 'fulfilled') setSuppliers(sRes.value.data.results || sRes.value.data || []);
+      if (uRes.status === 'fulfilled') setSupervisors(uRes.value.data.results || uRes.value.data || []);
+    });
+  }, []);
+
+  const orderOptions = useMemo(() => {
+    const draftCount = drafts.filter(d => d.formType === 'po').length;
+    return [
+      ...ORDER_OPTIONS_DATE_PONO,
+      {
+        value: 'draft',
+        label: 'Drafts',
+        badge: draftCount > 0 ? draftCount : null,
+        icon: FileEdit,
+        isDividerBefore: true
+      }
+    ];
+  }, [drafts]);
+
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('pos', id, currentPage);
 
   const fetchPOs = useCallback(() => {
+    if (ordering === 'draft') {
+      setLoading(true);
+      const currentDrafts = drafts.filter(d => d.formType === 'po');
+      const mapped = currentDrafts.map(d => {
+        const dd = d.data || {};
+        const header = dd.header || {};
+        const items = dd.items || [];
+        const supplierId = header.supplier;
+        const suppObj = (suppliers || []).find(s => String(s.id) === String(supplierId));
+        const superObj = (supervisors || []).find(u => String(u.id) === String(header.supervisor));
+        const totalQty = items.reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0);
+        const totalAmt = items.reduce((acc, it) => acc + ((parseFloat(it.quantity) || 0) * (parseFloat(it.rate) || 0)), 0);
+
+        return {
+          id: d.id,
+          po_number: header.po_number || 'Draft PO',
+          supplier: supplierId,
+          supplier_detail: suppObj || (supplierId ? { name: String(supplierId) } : null),
+          supervisor: header.supervisor || '',
+          supervisor_detail: superObj || null,
+          po_date: header.po_date || (d.updatedAt ? d.updatedAt.split('T')[0] : ''),
+          due_date: header.due_date || '',
+          items: items,
+          total_ordered_qty: totalQty,
+          total_amount: totalAmt,
+          status: 'Draft',
+          isDraft: true,
+          rawDraft: d,
+          updatedAt: d.updatedAt
+        };
+      });
+
+      let resList = mapped;
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        resList = resList.filter(p =>
+          (p.po_number && p.po_number.toLowerCase().includes(q)) ||
+          (p.supplier_detail?.name && p.supplier_detail.name.toLowerCase().includes(q)) ||
+          (p.supervisor_detail?.full_name && p.supervisor_detail.full_name.toLowerCase().includes(q))
+        );
+      }
+      if (statusFilter && statusFilter !== 'ALL') {
+        if (statusFilter !== 'Draft') {
+          resList = [];
+        }
+      }
+
+      resList.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+      setTotalPages(Math.max(1, Math.ceil(resList.length / 50)));
+      const paginated = resList.slice((currentPage - 1) * 50, currentPage * 50);
+      setPos(paginated);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const params = { page: currentPage, page_size: 50, ordering: ordering };
     if (debouncedSearch) params.search = debouncedSearch;
@@ -1311,7 +1397,8 @@ function POs() {
     api.get('/supplier-pos/', { params })
       .then(res => {
         const data = res.data.results || res.data || [];
-        setPos(data);
+        const mapped = data.map(item => ({ ...item, isDraft: false }));
+        setPos(mapped);
         if (res.data.count !== undefined) {
           setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
@@ -1320,7 +1407,7 @@ function POs() {
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, debouncedSearch, statusFilter]);
+  }, [currentPage, ordering, debouncedSearch, statusFilter, drafts, suppliers, supervisors]);
 
   useEffect(() => { if (!id) fetchPOs(); }, [id, fetchPOs]);
 
@@ -1951,7 +2038,7 @@ function POs() {
 
                 <div style={{ minWidth: '170px' }}>
                   <OrderBySelect
-                    options={ORDER_OPTIONS_DATE_PONO}
+                    options={orderOptions}
                     value={ordering}
                     onChange={setOrdering}
                     width="170px"
@@ -2007,10 +2094,12 @@ function POs() {
                     ) : filteredPOs.length === 0 ? (
                       <tr>
                         <td colSpan={9} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
-                          <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+                          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{ordering === 'draft' ? '📝' : '📋'}</div>
+                          <div style={{ fontWeight: 600 }}>{ordering === 'draft' ? 'No draft Purchase Orders found' : 'No Purchase Orders found'}</div>
                           <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
-                            {searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.'}
+                            {ordering === 'draft'
+                              ? 'When you save a PO as draft, it will appear here.'
+                              : (searchTerm || statusFilter ? 'Try adjusting your filters.' : 'Create your first PO to get started.')}
                           </div>
                         </td>
                       </tr>
@@ -2021,21 +2110,38 @@ function POs() {
                         <tr
                           key={p.id}
                           ref={isRecentlyVisited ? setHighlightRef : null}
-                          onClick={() => navigate(`/pos/${p.id}`)}
+                          onClick={() => {
+                            if (p.isDraft) {
+                              navigate('/pos/new', {
+                                state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                              });
+                            } else {
+                              navigate(`/pos/${p.id}`);
+                            }
+                          }}
                           style={{
                             cursor: 'pointer',
                             transition: 'background 0.15s',
                             animationDelay: `${Math.min(idx * 30, 300)}ms`
                           }}
                           className={`table-row-stagger smooth-fade-in ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
-                          title="Click to view/edit"
+                          title={p.isDraft ? "Click to resume draft" : "Click to view/edit"}
                         >
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                              <div style={{ width: 34, height: 34, borderRadius: '10px', background: '#f5eee6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <FileText size={16} color="#8b5a2b"/>
+                              <div style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: '10px',
+                                background: p.isDraft ? '#fef3c7' : '#f5eee6',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                {p.isDraft ? <FileEdit size={16} color="#d97706"/> : <FileText size={16} color="#8b5a2b"/>}
                               </div>
-                              <strong style={{ fontSize: '0.9rem', color: '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
+                              <strong style={{ fontSize: '0.9rem', color: p.isDraft ? '#b45309' : '#1e293b', fontWeight: 700 }}>{p.po_number}</strong>
                             </div>
                           </td>
                           <td>
@@ -2067,74 +2173,42 @@ function POs() {
                             <StatusBadge status={p.status}/>
                           </td>
                           <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap', paddingRight: '0.75rem' }}>
-                            <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
-                              <button
-                                type="button"
-                                onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  padding: '0.3rem 0.6rem',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                  backgroundColor: '#f0fdfa',
-                                  border: '1px solid #99f6e4',
-                                  color: '#0d9488',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer'
-                                }}
-                                title="Record Gate Entry QC Inspection"
-                              >
-                                <ClipboardCheck size={13} /> Gate Entry
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '28px',
-                                  height: '28px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #cbd5e1',
-                                  backgroundColor: '#ffffff',
-                                  color: '#475569',
-                                  cursor: 'pointer'
-                                }}
-                                title={isStoreManager ? 'View Purchase Order' : 'Edit Purchase Order'}
-                              >
-                                {isStoreManager ? <Eye size={13} /> : <Pencil size={13} />}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={e => handleDownloadPDF(p, e)}
-                                disabled={downloading === p.id}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '28px',
-                                  height: '28px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #bfdbfe',
-                                  backgroundColor: '#eff6ff',
-                                  color: '#2563eb',
-                                  cursor: 'pointer'
-                                }}
-                                title="Download PO PDF"
-                              >
-                                <Download size={13} />
-                              </button>
-
-                              {!isStoreManager && (
+                            {p.isDraft ? (
+                              <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
                                 <button
                                   type="button"
-                                  onClick={e => handleCancelPO(p, e)}
-                                  disabled={p.status === 'Cancelled'}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/pos/new', {
+                                      state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                                    });
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '0.3rem 0.65rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    backgroundColor: '#fef3c7',
+                                    border: '1px solid #fde68a',
+                                    color: '#92400e',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Resume Draft"
+                                >
+                                  <FileEdit size={13} /> Resume
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`Discard draft for "${p.po_number || 'Purchase Order'}"?`)) {
+                                      deleteDraft(p.id);
+                                    }
+                                  }}
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -2142,17 +2216,104 @@ function POs() {
                                     width: '28px',
                                     height: '28px',
                                     borderRadius: '6px',
-                                    border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
-                                    backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fef2f2',
-                                    color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
-                                    cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
+                                    border: '1px solid #fecaca',
+                                    backgroundColor: '#fef2f2',
+                                    color: '#dc2626',
+                                    cursor: 'pointer'
                                   }}
-                                  title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
+                                  title="Discard Draft"
                                 >
-                                  <X size={13} />
+                                  <Trash2 size={13} />
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'inline-flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    padding: '0.3rem 0.6rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    backgroundColor: '#f0fdfa',
+                                    border: '1px solid #99f6e4',
+                                    color: '#0d9488',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Record Gate Entry QC Inspection"
+                                >
+                                  <ClipboardCheck size={13} /> Gate Entry
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); navigate(`/pos/${p.id}`); }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: '#ffffff',
+                                    color: '#475569',
+                                    cursor: 'pointer'
+                                  }}
+                                  title={isStoreManager ? 'View Purchase Order' : 'Edit Purchase Order'}
+                                >
+                                  {isStoreManager ? <Eye size={13} /> : <Pencil size={13} />}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={e => handleDownloadPDF(p, e)}
+                                  disabled={downloading === p.id}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #bfdbfe',
+                                    backgroundColor: '#eff6ff',
+                                    color: '#2563eb',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Download PO PDF"
+                                >
+                                  <Download size={13} />
+                                </button>
+
+                                {!isStoreManager && (
+                                  <button
+                                    type="button"
+                                    onClick={e => handleCancelPO(p, e)}
+                                    disabled={p.status === 'Cancelled'}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: p.status === 'Cancelled' ? '1px solid #e2e8f0' : '1px solid #fecaca',
+                                      backgroundColor: p.status === 'Cancelled' ? '#f8fafc' : '#fef2f2',
+                                      color: p.status === 'Cancelled' ? '#94a3b8' : '#dc2626',
+                                      cursor: p.status === 'Cancelled' ? 'not-allowed' : 'pointer'
+                                    }}
+                                    title={p.status === 'Cancelled' ? 'PO is already cancelled' : 'Cancel Purchase Order'}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -2238,8 +2399,11 @@ function POs() {
                 <CardSkeleton count={4} />
               ) : filteredPOs.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📋</div>
-                  <div style={{ fontWeight: 600 }}>No Purchase Orders found</div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>{ordering === 'draft' ? '📝' : '📋'}</div>
+                  <div style={{ fontWeight: 600 }}>{ordering === 'draft' ? 'No draft Purchase Orders found' : 'No Purchase Orders found'}</div>
+                  <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                    {ordering === 'draft' ? 'When you save a PO as draft, it will appear here.' : 'Create your first PO to get started.'}
+                  </div>
                 </div>
               ) : filteredPOs.map((p, idx) => {
                 const isRecentlyVisited = String(p.id) === String(lastVisitedId);
@@ -2248,7 +2412,15 @@ function POs() {
                     className={`po-mobile-card table-row-stagger ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                     key={p.id}
                     ref={isRecentlyVisited ? setHighlightRef : null}
-                    onClick={() => navigate(`/pos/${p.id}`)}
+                    onClick={() => {
+                      if (p.isDraft) {
+                        navigate('/pos/new', {
+                          state: { draftId: p.rawDraft.id, draftData: p.rawDraft.data }
+                        });
+                      } else {
+                        navigate(`/pos/${p.id}`);
+                      }
+                    }}
                     style={{
                       cursor: 'pointer',
                       display: 'flex',
@@ -2259,12 +2431,36 @@ function POs() {
                   >
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                        <div style={{ width: '56px', height: '56px', borderRadius: '12px', background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <FileText size={24} color="#8b5a2b"/>
+                        <div style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '12px',
+                          background: p.isDraft ? '#fef3c7' : '#f5ede3',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {p.isDraft ? <FileEdit size={24} color="#d97706"/> : <FileText size={24} color="#8b5a2b"/>}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.05rem', marginBottom: '0.2rem' }}>
-                            {p.po_number}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                            <span style={{ fontWeight: 800, color: p.isDraft ? '#b45309' : '#1e293b', fontSize: '1.05rem' }}>
+                              {p.po_number}
+                            </span>
+                            {p.isDraft && (
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                backgroundColor: '#fef3c7',
+                                color: '#92400e',
+                                border: '1px solid #fde68a'
+                              }}>
+                                Draft
+                              </span>
+                            )}
                           </div>
                           <div style={{ color: '#334155', fontSize: '0.9rem' }}>{p.supplier_detail?.name || '—'}</div>
                           <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '0.1rem' }}>{p.supplier_detail?.state_name || '—'}</div>

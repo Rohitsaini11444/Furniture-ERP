@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2, FileText } from 'lucide-react';
+import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2, FileText, FileEdit } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
+import { useDrafts } from '../context/DraftsContext';
 
 
 
@@ -155,6 +156,7 @@ function Samples() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
+  const { drafts, deleteDraft } = useDrafts();
 
   const [samples, setSamples] = useState([]);
   const [buyers, setBuyers] = useState([]);
@@ -230,6 +232,21 @@ function Samples() {
   });
   const [totalPages, setTotalPages] = useState(1);
   const [ordering, setOrdering] = useState('-created_at');
+
+  // Order & Draft Options
+  const orderOptions = useMemo(() => {
+    const draftCount = drafts.filter(d => d.formType === 'sample').length;
+    return [
+      ...ORDER_OPTIONS_DATE_PRODUCT,
+      {
+        value: 'draft',
+        label: 'Drafts',
+        badge: draftCount > 0 ? draftCount : null,
+        icon: FileEdit,
+        isDividerBefore: true
+      }
+    ];
+  }, [drafts]);
 
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('samples', id, currentPage);
 
@@ -314,6 +331,73 @@ function Samples() {
   }, [filterSearch]);
 
   const fetchSamples = useCallback(() => {
+    if (ordering === 'draft') {
+      setLoading(true);
+      const currentDrafts = drafts.filter(d => d.formType === 'sample');
+      const mapped = currentDrafts.map(d => {
+        const fd = d.data?.formData || {};
+        const mats = d.data?.materialsList || [];
+        const fins = d.data?.finishesList || [];
+        const buyerId = fd.buyer;
+        const buyerObj = buyers.find(b => String(b.id) === String(buyerId));
+
+        const lenInch = fd.size_length ? (parseFloat(fd.size_length) / 2.54).toFixed(2) : '';
+        const brdInch = fd.size_breadth ? (parseFloat(fd.size_breadth) / 2.54).toFixed(2) : '';
+        const hgtInch = fd.size_height ? (parseFloat(fd.size_height) / 2.54).toFixed(2) : '';
+
+        return {
+          id: d.id,
+          sample_id: fd.sample_id || 'Draft',
+          style_no: fd.style_no || 'Draft',
+          product_name: fd.product_name || 'Draft Sample',
+          buyer: buyerId,
+          buyer_detail: buyerObj || (buyerId ? { name: String(buyerId) } : null),
+          material: mats.filter(Boolean).join('/') || fd.material || '',
+          finish_color: fins.filter(Boolean).join('/') || fd.finish_color || '',
+          cbm: fd.cbm || '',
+          usd: fd.usd || '',
+          vendor_name: fd.vendor_name || '',
+          size_length: fd.size_length || '',
+          size_breadth: fd.size_breadth || '',
+          size_height: fd.size_height || '',
+          size_length_inch: lenInch,
+          size_breadth_inch: brdInch,
+          size_height_inch: hgtInch,
+          images: [],
+          isDraft: true,
+          rawDraft: d,
+          updatedAt: d.updatedAt
+        };
+      });
+
+      let resList = mapped;
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        resList = resList.filter(s =>
+          (s.style_no && s.style_no.toLowerCase().includes(q)) ||
+          (s.product_name && s.product_name.toLowerCase().includes(q)) ||
+          (s.vendor_name && s.vendor_name.toLowerCase().includes(q)) ||
+          (s.sample_id && s.sample_id.toLowerCase().includes(q))
+        );
+      }
+      if (filterBuyer) {
+        resList = resList.filter(s => String(s.buyer) === String(filterBuyer));
+      }
+      if (filterMaterial) {
+        const m = filterMaterial.toLowerCase();
+        resList = resList.filter(s => s.material && s.material.toLowerCase().includes(m));
+      }
+
+      resList.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+      setSamples(resList);
+      const paginated = resList.slice((currentPage - 1) * 50, currentPage * 50);
+      setFiltered(paginated);
+      setTotalPages(Math.max(1, Math.ceil(resList.length / 50)));
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const params = { page: currentPage, page_size: 50, ordering: ordering };
     if (debouncedSearch) params.search = debouncedSearch;
@@ -322,8 +406,9 @@ function Samples() {
     api.get('/samples/', { params })
       .then(res => {
         const data = res.data.results || res.data || [];
-        setSamples(data);
-        setFiltered(data);
+        const mapped = data.map(item => ({ ...item, isDraft: false }));
+        setSamples(mapped);
+        setFiltered(mapped);
         if (res.data.count !== undefined) {
           setTotalPages(Math.ceil(res.data.count / 50) || 1);
         } else {
@@ -332,7 +417,7 @@ function Samples() {
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [debouncedSearch, filterBuyer, filterMaterial, currentPage, ordering]);
+  }, [debouncedSearch, filterBuyer, filterMaterial, currentPage, ordering, drafts, buyers]);
 
   useEffect(() => {
     fetchBuyers();
@@ -373,6 +458,12 @@ function Samples() {
 
   const handleBulkDeleteSamples = async () => {
     if (selectedRowIds.size === 0) return;
+    if (ordering === 'draft') {
+      selectedRowIds.forEach(draftId => deleteDraft(draftId));
+      setShowBulkDeleteConfirm(false);
+      exitSelectionMode();
+      return;
+    }
     setDeletingSelected(true);
     try {
       await api.post('/samples/bulk-delete/', { sample_ids: Array.from(selectedRowIds) });
@@ -388,6 +479,10 @@ function Samples() {
   };
 
   const handleExportSelectedExcel = async () => {
+    if (ordering === 'draft') {
+      alert('Excel export is not supported for drafts.');
+      return;
+    }
     setExportingExcel(true);
     try {
       const payload = {
@@ -1839,7 +1934,7 @@ function Samples() {
               
               <div className="samples-orderby-wrap" style={{ marginLeft: 'auto', flexShrink: 0 }}>
                 <OrderBySelect
-                  options={ORDER_OPTIONS_DATE_PRODUCT}
+                  options={orderOptions}
                   value={ordering}
                   onChange={setOrdering}
                   width="200px"
@@ -1866,6 +1961,7 @@ function Samples() {
                   <th>Images</th>
                   <th>Style No.</th>
                   <th>Product Name</th>
+                  <th>Status</th>
                   <th>Buyer</th>
                   <th>Material</th>
                   <th>Finish/Color</th>
@@ -1874,15 +1970,18 @@ function Samples() {
                   <th>Vendor</th>
                   <th>Size (cm)</th>
                   <th>Size (in)</th>
+                  {ordering === 'draft' && <th style={{ width: '80px', textAlign: 'center' }}>Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={12} hasImage={true} />
+                  <TableSkeleton rows={8} cols={ordering === 'draft' ? 13 : 12} hasImage={true} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan="12" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-                      No samples found.
+                    <td colSpan={ordering === 'draft' ? 13 : 12} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                      {ordering === 'draft'
+                        ? 'No draft samples found. When you save a sample as draft, it will appear here.'
+                        : 'No samples found.'}
                     </td>
                   </tr>
                 ) : (
@@ -1892,7 +1991,15 @@ function Samples() {
                       <tr
                         key={s.id}
                         ref={isRecentlyVisited ? setHighlightRef : null}
-                        onClick={() => selectionMode ? toggleSelectRow(s.id) : openEditModal(s)}
+                        onClick={() => {
+                          if (selectionMode) {
+                            toggleSelectRow(s.id);
+                          } else if (s.isDraft) {
+                            navigate('/samples/new', { state: { draftId: s.rawDraft.id, draftData: s.rawDraft.data } });
+                          } else {
+                            openEditModal(s);
+                          }
+                        }}
                         style={{
                           cursor: 'pointer',
                           backgroundColor: selectedRowIds.has(s.id) ? '#eff6ff' : undefined,
@@ -1934,9 +2041,44 @@ function Samples() {
                           <strong>{s.style_no || s.id}</strong>
                         </td>
                         <td><strong>{s.product_name}</strong></td>
+                        <td>
+                          {s.isDraft ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.73rem',
+                              fontWeight: 700,
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fde68a'
+                            }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                              Draft
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.73rem',
+                              fontWeight: 700,
+                              backgroundColor: '#ecfdf5',
+                              color: '#065f46',
+                              border: '1px solid #a7f3d0'
+                            }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                              Saved
+                            </span>
+                          )}
+                        </td>
                         <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                        <td>{s.finish_color}</td>
+                        <td>{s.finish_color || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
@@ -1952,6 +2094,35 @@ function Samples() {
                             : <span style={{color:'var(--text-muted)'}}>—</span>
                           }
                         </td>
+                        {ordering === 'draft' && (
+                          <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              title="Discard Draft"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Discard draft for "${s.product_name || s.style_no}"?`)) {
+                                  deleteDraft(s.id);
+                                }
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '5px 8px',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -1966,7 +2137,9 @@ function Samples() {
               <CardSkeleton count={5} />
             ) : filtered.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                No samples found.
+                {ordering === 'draft'
+                  ? 'No draft samples found. When you save a sample as draft, it will appear here.'
+                  : 'No samples found.'}
               </div>
             ) : (
               filtered.map(s => {
@@ -1976,7 +2149,15 @@ function Samples() {
                     className={`mobile-card smooth-fade-in ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                     key={s.id} 
                     ref={isRecentlyVisited ? setHighlightRef : null}
-                    onClick={() => openEditModal(s)}
+                    onClick={() => {
+                      if (selectionMode) {
+                        toggleSelectRow(s.id);
+                      } else if (s.isDraft) {
+                        navigate('/samples/new', { state: { draftId: s.rawDraft.id, draftData: s.rawDraft.data } });
+                      } else {
+                        openEditModal(s);
+                      }
+                    }}
                     style={{ backgroundColor: selectedRowIds.has(s.id) ? '#f0fdf4' : undefined }}
                   >
                     <div onClick={e => e.stopPropagation()} className="mobile-card-checkbox">
@@ -1997,11 +2178,67 @@ function Samples() {
                     </div>
                     
                     <div className="mobile-card-content">
-                      <div className="mobile-card-title">
-                        {s.sample_id}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                        <span className="mobile-card-title">{s.sample_id}</span>
+                        {s.isDraft ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '2px 7px',
+                            borderRadius: '10px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e',
+                            border: '1px solid #fde68a'
+                          }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                            Draft
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '2px 7px',
+                            borderRadius: '10px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            backgroundColor: '#ecfdf5',
+                            color: '#065f46',
+                            border: '1px solid #a7f3d0'
+                          }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                            Saved
+                          </span>
+                        )}
                       </div>
-                      <div className="mobile-card-subtitle">{s.style_no || 'No Style No'}</div>
+                      <div className="mobile-card-subtitle">{s.style_no || 'No Style No'} — {s.product_name}</div>
                     </div>
+
+                    {s.isDraft && (
+                      <div
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (window.confirm(`Discard draft for "${s.product_name || s.style_no}"?`)) {
+                            deleteDraft(s.id);
+                          }
+                        }}
+                        style={{
+                          padding: '6px',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: '4px'
+                        }}
+                        title="Discard Draft"
+                      >
+                        <Trash2 size={18} />
+                      </div>
+                    )}
 
                     <div className="mobile-card-arrow">
                       <ChevronRight size={20} color="#94a3b8" />

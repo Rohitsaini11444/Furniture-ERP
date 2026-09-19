@@ -65,6 +65,21 @@ export function OrderBySelect({ options = [], value, onChange, width = '200px', 
           {selected?.label || 'Select...'}
         </span>
 
+        {selected?.badge != null && (
+          <span style={{
+            backgroundColor: '#fef3c7',
+            color: '#92400e',
+            borderRadius: '10px',
+            padding: '1px 7px',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            marginRight: '2px',
+            flexShrink: 0
+          }}>
+            {selected.badge}
+          </span>
+        )}
+
         {/* Chevron */}
         <ChevronDown
           size={16}
@@ -95,6 +110,9 @@ export function OrderBySelect({ options = [], value, onChange, width = '200px', 
             const isSelected = opt.value === value;
             return (
               <React.Fragment key={opt.value}>
+                {opt.isDividerBefore && (
+                  <div style={{ height: '1px', backgroundColor: '#e2d7c7', margin: '0.35rem 1rem' }} />
+                )}
                 <button
                   type="button"
                   onClick={() => { onChange(opt.value); setOpen(false); }}
@@ -122,12 +140,27 @@ export function OrderBySelect({ options = [], value, onChange, width = '200px', 
                     {opt.label}
                   </span>
 
+                  {/* Badge */}
+                  {opt.badge != null && (
+                    <span style={{
+                      backgroundColor: isSelected ? '#8b5a2b' : '#fef3c7',
+                      color: isSelected ? '#ffffff' : '#92400e',
+                      borderRadius: '10px',
+                      padding: '1px 7px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      marginRight: isSelected ? '6px' : '0'
+                    }}>
+                      {opt.badge}
+                    </span>
+                  )}
+
                   {/* Checkmark */}
                   {isSelected && <Check size={16} color="#8b5a2b" strokeWidth={2.5} />}
                 </button>
 
                 {/* Divider between items (not after last) */}
-                {idx < options.length - 1 && (
+                {idx < options.length - 1 && !options[idx + 1]?.isDividerBefore && (
                   <div style={{ height: '1px', backgroundColor: '#f1ece5', margin: '0 1rem' }} />
                 )}
               </React.Fragment>

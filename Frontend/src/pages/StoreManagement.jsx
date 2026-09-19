@@ -4,11 +4,13 @@ import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
-  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X
+  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X, FileEdit
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { useDrafts } from '../context/DraftsContext';
 import Pagination from '../components/Pagination';
+import OrderBySelect from '../components/OrderBySelect';
 import { TableSkeleton, CardSkeleton, StatCardsSkeleton } from '../components/TableSkeleton';
 
 import StoreRateComparisonModal from '../components/StoreRateComparisonModal';
@@ -101,6 +103,14 @@ export default function StoreManagement() {
   const [selectedContractorFilter, setSelectedContractorFilter] = useState('');
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('Jul-26');
+
+  const { drafts, deleteDraft } = useDrafts();
+
+  // Ordering states for tabs
+  const [orderItemMaster, setOrderItemMaster] = useState('item_code');
+  const [orderMaterialIn, setOrderMaterialIn] = useState('-inward_date');
+  const [orderDailyIssue, setOrderDailyIssue] = useState('-id');
+  const [orderMaterialReturns, setOrderMaterialReturns] = useState('-id');
 
   // Total count states for Server-Side Pagination
   const [itemMasterTotalCount, setItemMasterTotalCount] = useState(0);
@@ -507,6 +517,14 @@ export default function StoreManagement() {
   // Trigger server-side fetch for other tabs when activeTab, page, search, or filters change
   useEffect(() => {
     if (activeTab !== 'stock-summary') {
+      if (
+        (activeTab === 'item-master' && orderItemMaster === 'draft') ||
+        (activeTab === 'material-in' && orderMaterialIn === 'draft') ||
+        (activeTab === 'daily-issue' && orderDailyIssue === 'draft') ||
+        (activeTab === 'material-returns' && orderMaterialReturns === 'draft')
+      ) {
+        return;
+      }
       const timer = setTimeout(() => {
         let currentPage = 1;
         if (activeTab === 'item-master') currentPage = pageItemMaster;
@@ -537,7 +555,11 @@ export default function StoreManagement() {
     pageRequisitions,
     pageAdjustments,
     pageContractors,
-    pageBilling
+    pageBilling,
+    orderItemMaster,
+    orderMaterialIn,
+    orderDailyIssue,
+    orderMaterialReturns
   ]);
 
   // Handle auto-opening item detail modal when navigated from top Navbar Search
@@ -565,6 +587,53 @@ export default function StoreManagement() {
     setPageBilling(1);
   }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter]);
 
+  // Drafts per module
+  const itemMasterDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_item'), [drafts]);
+  const materialInDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_in'), [drafts]);
+  const dailyIssueDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_issue'), [drafts]);
+  const materialReturnDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_return'), [drafts]);
+
+  // Order options with draft badge
+  const itemMasterOrderOptions = [
+    { value: 'item_code', label: 'Item Code (A-Z)' },
+    { value: '-item_code', label: 'Item Code (Z-A)' },
+    { value: 'item_name', label: 'Item Name (A-Z)' },
+    { value: '-id', label: 'Recently Created' },
+    { value: 'draft', label: 'Drafts', badge: itemMasterDrafts.length, icon: FileEdit, isDividerBefore: true },
+  ];
+
+  const materialInOrderOptions = [
+    { value: '-inward_date', label: 'Newest Date' },
+    { value: 'inward_date', label: 'Oldest Date' },
+    { value: '-id', label: 'Recently Created' },
+    { value: 'draft', label: 'Drafts', badge: materialInDrafts.length, icon: FileEdit, isDividerBefore: true },
+  ];
+
+  const dailyIssueOrderOptions = [
+    { value: '-id', label: 'Recently Created' },
+    { value: 'id', label: 'Oldest Created' },
+    { value: 'draft', label: 'Drafts', badge: dailyIssueDrafts.length, icon: FileEdit, isDividerBefore: true },
+  ];
+
+  const materialReturnOrderOptions = [
+    { value: '-id', label: 'Recently Created' },
+    { value: '-return_date', label: 'Newest Date' },
+    { value: 'draft', label: 'Drafts', badge: materialReturnDrafts.length, icon: FileEdit, isDividerBefore: true },
+  ];
+
+  useEffect(() => {
+    if (orderItemMaster === 'draft') setPageItemMaster(1);
+  }, [orderItemMaster]);
+  useEffect(() => {
+    if (orderMaterialIn === 'draft') setPageMaterialIn(1);
+  }, [orderMaterialIn]);
+  useEffect(() => {
+    if (orderDailyIssue === 'draft') setPageDailyIssue(1);
+  }, [orderDailyIssue]);
+  useEffect(() => {
+    if (orderMaterialReturns === 'draft') setPageMaterialReturns(1);
+  }, [orderMaterialReturns]);
+
   // Server-side paginated items directly from API responses
   const paginatedStockItems = stockSummaryData?.items || [];
   const paginatedItemMaster = itemsList;
@@ -575,6 +644,141 @@ export default function StoreManagement() {
   const paginatedMaterialReturns = materialReturnsList;
   const paginatedRequisitions = requisitionsList;
   const paginatedAdjustments = stockAdjustmentsList;
+
+  // Display lists: when in draft mode, show mapped drafts
+  const displayItemMaster = React.useMemo(() => {
+    if (orderItemMaster === 'draft') {
+      const q = searchQuery.toLowerCase().trim();
+      return itemMasterDrafts
+        .filter(d => {
+          if (!q) return true;
+          const code = String(d.data?.item_code || '').toLowerCase();
+          const name = String(d.data?.item_name || '').toLowerCase();
+          return code.includes(q) || name.includes(q);
+        })
+        .map(d => ({
+          id: d.id,
+          isDraft: true,
+          draftData: d.data,
+          item_code: d.data?.item_code || 'DRAFT',
+          item_name: d.data?.item_name || 'Draft Store Item',
+          category_name: categories.find(c => String(c.id) === String(d.data?.category))?.name || 'Uncategorized',
+          unit: d.data?.unit || 'pcs',
+          base_rate: d.data?.base_rate || d.data?.current_rate || 0,
+          current_rate: d.data?.current_rate || d.data?.base_rate || 0,
+          default_status: d.data?.default_status || 'charge',
+        }));
+    }
+    return paginatedItemMaster;
+  }, [orderItemMaster, itemMasterDrafts, searchQuery, categories, paginatedItemMaster]);
+
+  const displayMaterialIn = React.useMemo(() => {
+    if (orderMaterialIn === 'draft') {
+      const q = searchQuery.toLowerCase().trim();
+      return materialInDrafts
+        .filter(d => {
+          if (!q) return true;
+          const bill = String(d.data?.bill_no || d.data?.voucher_no || '').toLowerCase();
+          return bill.includes(q);
+        })
+        .map(d => {
+          const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
+          const suppObj = suppliers.find(s => String(s.id) === String(d.data?.supplier));
+          const qty = parseFloat(d.data?.qty || 0);
+          const rate = parseFloat(d.data?.bill_rate || 0);
+          return {
+            id: d.id,
+            isDraft: true,
+            draftData: d.data,
+            month_year: d.data?.month_year || 'Draft',
+            inward_date: d.data?.inward_date || (d.savedAt ? new Date(d.savedAt).toISOString().split('T')[0] : 'Draft'),
+            bill_no: d.data?.bill_no || d.data?.voucher_no || 'DRAFT',
+            supplier_name: suppObj?.name || (typeof d.data?.supplier === 'object' ? d.data?.supplier?.name : '') || 'Unspecified',
+            item_code: itemObj?.item_code || '—',
+            item_name: itemObj?.item_name || (typeof d.data?.item === 'object' ? d.data?.item?.item_name : '') || 'Draft Item',
+            qty: d.data?.qty || 0,
+            unit: d.data?.unit || itemObj?.unit || 'pcs',
+            bill_rate: d.data?.bill_rate || 0,
+            total_amount: !isNaN(qty) && !isNaN(rate) ? (qty * rate) : 0,
+          };
+        });
+    }
+    return paginatedMaterialIn;
+  }, [orderMaterialIn, materialInDrafts, searchQuery, itemsList, suppliers, paginatedMaterialIn]);
+
+  const displayDailyIssues = React.useMemo(() => {
+    if (orderDailyIssue === 'draft') {
+      const q = searchQuery.toLowerCase().trim();
+      return dailyIssueDrafts
+        .filter(d => {
+          if (!q) return true;
+          const vch = String(d.data?.voucher_no || '').toLowerCase();
+          return vch.includes(q);
+        })
+        .map(d => {
+          const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
+          const contrObj = contractors.find(c => String(c.id) === String(d.data?.contractor));
+          const personObj = contractorPersons.find(p => String(p.id) === String(d.data?.contractor_person));
+          const unitObj = productionUnits.find(u => String(u.id) === String(d.data?.production_unit));
+          const qty = parseFloat(d.data?.qty || 0);
+          const rate = parseFloat(d.data?.rate || 0);
+          const totalVal = !isNaN(qty) && !isNaN(rate) ? (qty * rate) : 0;
+          const isCharge = (d.data?.status || 'charge') === 'charge';
+          return {
+            id: d.id,
+            isDraft: true,
+            draftData: d.data,
+            voucher_no: d.data?.voucher_no || 'DRAFT',
+            contractor_name: contrObj?.full_name || contrObj?.username || 'Contractor',
+            contractor_person_name: personObj?.name || 'Self',
+            item_name: itemObj?.item_name || 'Draft Item',
+            qty: d.data?.qty || 0,
+            unit: d.data?.unit || itemObj?.unit || 'pcs',
+            rate: d.data?.rate || 0,
+            status: d.data?.status || 'charge',
+            chargeable_total: isCharge ? totalVal : 0,
+            non_chargeable_total: !isCharge ? totalVal : 0,
+            production_unit_name: unitObj?.name || '-',
+          };
+        });
+    }
+    return paginatedDailyIssues;
+  }, [orderDailyIssue, dailyIssueDrafts, searchQuery, itemsList, contractors, contractorPersons, productionUnits, paginatedDailyIssues]);
+
+  const displayMaterialReturns = React.useMemo(() => {
+    if (orderMaterialReturns === 'draft') {
+      const q = searchQuery.toLowerCase().trim();
+      return materialReturnDrafts
+        .filter(d => {
+          if (!q) return true;
+          const vch = String(d.data?.voucher_no || '').toLowerCase();
+          return vch.includes(q);
+        })
+        .map(d => {
+          const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
+          const contrObj = contractors.find(c => String(c.id) === String(d.data?.contractor));
+          const qty = parseFloat(d.data?.qty || 0);
+          const rate = parseFloat(d.data?.rate || 0);
+          const totalVal = !isNaN(qty) && !isNaN(rate) ? (qty * rate) : 0;
+          return {
+            id: d.id,
+            isDraft: true,
+            draftData: d.data,
+            voucher_no: d.data?.voucher_no || 'DRAFT',
+            return_date: d.data?.return_date || (d.savedAt ? new Date(d.savedAt).toISOString().split('T')[0] : 'Draft'),
+            contractor_name: contrObj?.full_name || contrObj?.username || 'Contractor',
+            item_code: itemObj?.item_code || '—',
+            item_name: itemObj?.item_name || 'Draft Item',
+            qty: d.data?.qty || 0,
+            unit: d.data?.unit || itemObj?.unit || 'pcs',
+            rate: d.data?.rate || 0,
+            total_amount: totalVal,
+            status: d.data?.status || 'charge',
+          };
+        });
+    }
+    return paginatedMaterialReturns;
+  }, [orderMaterialReturns, materialReturnDrafts, searchQuery, itemsList, contractors, paginatedMaterialReturns]);
 
   return (
     <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
@@ -1839,6 +2043,11 @@ export default function StoreManagement() {
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
               </div>
+              <OrderBySelect
+                value={orderItemMaster}
+                onChange={(val) => setOrderItemMaster(val)}
+                options={itemMasterOrderOptions}
+              />
               <button
                 onClick={() => setIsCategoryModalOpen(true)}
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #d6c7b2', backgroundColor: '#faf6f0', color: '#8b5a2b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -1871,12 +2080,25 @@ export default function StoreManagement() {
               <tbody>
                 {loading ? (
                   <TableSkeleton rows={8} cols={8} />
-                ) :
-                  paginatedItemMaster.map((item, idx) => (
+                ) : displayItemMaster.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      {orderItemMaster === 'draft' ? 'No item master drafts saved.' : 'No store items found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayItemMaster.map((item, idx) => (
                   <tr
                     key={idx}
-                    onClick={() => { setSelectedDetailItem(item); setIsDetailModalOpen(true); }}
-                    title="Click to view full details and image"
+                    onClick={() => {
+                      if (item.isDraft) {
+                        navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
+                      } else {
+                        setSelectedDetailItem(item);
+                        setIsDetailModalOpen(true);
+                      }
+                    }}
+                    title={item.isDraft ? "Click to resume draft" : "Click to view full details and image"}
                     style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                   >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
@@ -1888,63 +2110,129 @@ export default function StoreManagement() {
                       ₹ {parseFloat(item.current_rate || item.base_rate).toFixed(2)}
                     </td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        backgroundColor: item.default_status === 'charge' ? '#fff7ed' : '#f0fdf4',
-                        color: item.default_status === 'charge' ? '#c2410c' : '#16a34a'
-                      }}>
-                        {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
-                      </span>
+                      {item.isDraft ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e'
+                        }}>
+                          • Draft
+                        </span>
+                      ) : (
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: item.default_status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                          color: item.default_status === 'charge' ? '#c2410c' : '#16a34a'
+                        }}>
+                          {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
-                          title="View Rate Comparison & Revise Rate"
-                          style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <TrendingUp size={14} /> Compare Rate
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
-                          title="Edit Item Master"
-                          style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer' }}
-                        >
-                          <Edit size={14} />
-                        </button>
-                      </div>
+                      {item.isDraft ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
+                            }}
+                            title="Resume Editing Draft"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <FileEdit size={13} color="#d97706" /> Resume
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Are you sure you want to discard this draft?')) {
+                                deleteDraft(item.id);
+                              }
+                            }}
+                            title="Discard Draft"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                          >
+                            <Trash2 size={13} /> Discard
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
+                            title="View Rate Comparison & Revise Rate"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <TrendingUp size={14} /> Compare Rate
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
+                            title="Edit Item Master"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer' }}
+                          >
+                            <Edit size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Item Master Card List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
-            {paginatedItemMaster.map((item, idx) => (
+            {displayItemMaster.map((item, idx) => (
               <div
                 key={idx}
-                onClick={() => { setSelectedDetailItem(item); setIsDetailModalOpen(true); }}
+                onClick={() => {
+                  if (item.isDraft) {
+                    navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
+                  } else {
+                    setSelectedDetailItem(item);
+                    setIsDetailModalOpen(true);
+                  }
+                }}
                 className="store-mobile-card"
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#8b5a2b', backgroundColor: '#faf6f0', padding: '3px 8px', borderRadius: '8px', border: '1px solid #e7e5e4' }}>
                     {item.item_code}
                   </span>
-                  <span style={{
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    padding: '3px 8px',
-                    borderRadius: '10px',
-                    backgroundColor: item.default_status === 'charge' ? '#fff7ed' : '#f0fdf4',
-                    color: item.default_status === 'charge' ? '#c2410c' : '#16a34a'
-                  }}>
-                    {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
-                  </span>
+                  {item.isDraft ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: '10px',
+                      backgroundColor: '#fef3c7',
+                      color: '#92400e'
+                    }}>
+                      • Draft
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: '10px',
+                      backgroundColor: item.default_status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                      color: item.default_status === 'charge' ? '#c2410c' : '#16a34a'
+                    }}>
+                      {item.default_status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                    </span>
+                  )}
                 </div>
 
                 <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
@@ -1966,18 +2254,45 @@ export default function StoreManagement() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
-                    style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-                  >
-                    <TrendingUp size={14} /> Compare Rate
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
-                    style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <Edit size={14} /> Edit
-                  </button>
+                  {item.isDraft ? (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
+                        }}
+                        style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <FileEdit size={14} color="#d97706" /> Resume
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Are you sure you want to discard this draft?')) {
+                            deleteDraft(item.id);
+                          }
+                        }}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Trash2 size={14} /> Discard
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedItemForRate(item); setIsRateModalOpen(true); }}
+                        style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bae6fd', backgroundColor: '#f0f9ff', color: '#0284c7', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <TrendingUp size={14} /> Compare Rate
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedItemForEdit(item); setIsItemModalOpen(true); }}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Edit size={14} /> Edit
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -1986,7 +2301,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageItemMaster}
-              totalPages={Math.ceil(itemMasterTotalCount / ITEMS_PER_PAGE) || 1}
+              totalPages={orderItemMaster === 'draft' ? (Math.ceil(displayItemMaster.length / ITEMS_PER_PAGE) || 1) : (Math.ceil(itemMasterTotalCount / ITEMS_PER_PAGE) || 1)}
               onPageChange={setPageItemMaster}
             />
           </div>
@@ -2011,6 +2326,11 @@ export default function StoreManagement() {
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
               </div>
+              <OrderBySelect
+                value={orderMaterialIn}
+                onChange={(val) => setOrderMaterialIn(val)}
+                options={materialInOrderOptions}
+              />
               <button
                 onClick={() => navigate('/store-management/material-in')}
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#16a34a', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -2034,17 +2354,38 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Unit</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Bill Rate (₹)</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Amount (₹)</th>
-                  {user?.role === 'admin' && (
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Admin Controls</th>
+                  {orderMaterialIn === 'draft' ? (
+                    <>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Status</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Actions</th>
+                    </>
+                  ) : (
+                    user?.role === 'admin' && (
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#166534' }}>Admin Controls</th>
+                    )
                   )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={user?.role === 'admin' ? 11 : 10} />
-                ) :
-                  paginatedMaterialIn.map((row, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <TableSkeleton rows={8} cols={orderMaterialIn === 'draft' ? 12 : (user?.role === 'admin' ? 11 : 10)} />
+                ) : displayMaterialIn.length === 0 ? (
+                  <tr>
+                    <td colSpan={orderMaterialIn === 'draft' ? 12 : (user?.role === 'admin' ? 11 : 10)} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      {orderMaterialIn === 'draft' ? 'No material inward drafts saved.' : 'No material inward records found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayMaterialIn.map((row, idx) => (
+                  <tr
+                    key={idx}
+                    onClick={() => {
+                      if (row.isDraft) {
+                        navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
+                      }
+                    }}
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: row.isDraft ? 'pointer' : 'default' }}
+                  >
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.month_year || 'Jul-26'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>{row.inward_date}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.bill_no}</td>
@@ -2057,30 +2398,84 @@ export default function StoreManagement() {
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
                       ₹ {parseFloat(row.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </td>
-                    {user?.role === 'admin' && (
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
-                          title="Void / Delete Inward Voucher (Admin Audit Trail)"
-                          style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Trash2 size={13} /> Void
-                        </button>
-                      </td>
+                    {orderMaterialIn === 'draft' ? (
+                      <>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e'
+                          }}>
+                            • Draft
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
+                              }}
+                              title="Resume Editing Draft"
+                              style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <FileEdit size={13} color="#d97706" /> Resume
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Are you sure you want to discard this draft?')) {
+                                  deleteDraft(row.id);
+                                }
+                              }}
+                              title="Discard Draft"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                            >
+                              <Trash2 size={13} /> Discard
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      user?.role === 'admin' && (
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
+                            title="Void / Delete Inward Voucher (Admin Audit Trail)"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Trash2 size={13} /> Void
+                          </button>
+                        </td>
+                      )
                     )}
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Material In Card List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
-            {paginatedMaterialIn.map((row, idx) => (
-              <div key={idx} className="store-mobile-card">
+            {displayMaterialIn.map((row, idx) => (
+              <div
+                key={idx}
+                onClick={() => {
+                  if (row.isDraft) {
+                    navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
+                  }
+                }}
+                className="store-mobile-card"
+              >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#166534', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>
-                    Bill #{row.bill_no}
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: row.isDraft ? '#92400e' : '#166534', backgroundColor: row.isDraft ? '#fef3c7' : '#dcfce7', padding: '2px 8px', borderRadius: '6px' }}>
+                    {row.isDraft ? '• Draft' : `Bill #${row.bill_no}`}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
                     {row.inward_date}
@@ -2107,15 +2502,40 @@ export default function StoreManagement() {
                   </div>
                 </div>
 
-                {user?.role === 'admin' && (
-                  <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                {row.isDraft ? (
+                  <div style={{ marginTop: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
-                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
+                      }}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                     >
-                      <Trash2 size={13} /> Void Voucher
+                      <FileEdit size={14} color="#d97706" /> Resume
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Are you sure you want to discard this draft?')) {
+                          deleteDraft(row.id);
+                        }
+                      }}
+                      style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Trash2 size={14} /> Discard
                     </button>
                   </div>
+                ) : (
+                  user?.role === 'admin' && (
+                    <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleVoidVoucher('/store/material-in/', row.id, row.bill_no || row.id)}
+                        style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Trash2 size={13} /> Void Voucher
+                      </button>
+                    </div>
+                  )
                 )}
               </div>
             ))}
@@ -2124,7 +2544,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageMaterialIn}
-              totalPages={Math.ceil(materialInTotalCount / ITEMS_PER_PAGE) || 1}
+              totalPages={orderMaterialIn === 'draft' ? (Math.ceil(displayMaterialIn.length / ITEMS_PER_PAGE) || 1) : (Math.ceil(materialInTotalCount / ITEMS_PER_PAGE) || 1)}
               onPageChange={setPageMaterialIn}
             />
           </div>
@@ -2149,6 +2569,11 @@ export default function StoreManagement() {
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
               </div>
+              <OrderBySelect
+                value={orderDailyIssue}
+                onChange={(val) => setOrderDailyIssue(val)}
+                options={dailyIssueOrderOptions}
+              />
               <button
                 onClick={() => navigate('/store-management/daily-issue')}
                 style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -2173,17 +2598,35 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#9a3412' }}>Chargeable Total</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#9a3412' }}>Non-Chargeable Total</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#9a3412' }}>Unit #</th>
-                  {user?.role === 'admin' && (
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#9a3412' }}>Admin Controls</th>
+                  {orderDailyIssue === 'draft' ? (
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#9a3412' }}>Actions</th>
+                  ) : (
+                    user?.role === 'admin' && (
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#9a3412' }}>Admin Controls</th>
+                    )
                   )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={user?.role === 'admin' ? 12 : 11} />
-                ) :
-                  paginatedDailyIssues.map((row, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <TableSkeleton rows={8} cols={orderDailyIssue === 'draft' ? 12 : (user?.role === 'admin' ? 12 : 11)} />
+                ) : displayDailyIssues.length === 0 ? (
+                  <tr>
+                    <td colSpan={orderDailyIssue === 'draft' ? 12 : (user?.role === 'admin' ? 12 : 11)} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      {orderDailyIssue === 'draft' ? 'No daily issue drafts saved.' : 'No daily store issue records found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayDailyIssues.map((row, idx) => (
+                  <tr
+                    key={idx}
+                    onClick={() => {
+                      if (row.isDraft) {
+                        navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
+                      }
+                    }}
+                    style={{ borderBottom: '1px solid #f1f5f9', cursor: row.isDraft ? 'pointer' : 'default' }}
+                  >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.voucher_no}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{row.contractor_name}</td>
                     <td style={{ padding: '0.85rem 1rem', color: '#1e293b' }}>{row.contractor_person_name || 'Self'}</td>
@@ -2192,16 +2635,32 @@ export default function StoreManagement() {
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#64748b' }}>{row.unit}</td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>₹ {parseFloat(row.rate).toFixed(2)}</td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        backgroundColor: row.status === 'charge' ? '#fff7ed' : '#f0fdf4',
-                        color: row.status === 'charge' ? '#c2410c' : '#16a34a'
-                      }}>
-                        {row.status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
-                      </span>
+                      {row.isDraft ? (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: '#fef3c7',
+                          color: '#92400e'
+                        }}>
+                          • Draft
+                        </span>
+                      ) : (
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: row.status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                          color: row.status === 'charge' ? '#c2410c' : '#16a34a'
+                        }}>
+                          {row.status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#c2410c' }}>
                       {parseFloat(row.chargeable_total) > 0 ? `₹ ${parseFloat(row.chargeable_total).toFixed(2)}` : '-'}
@@ -2210,41 +2669,94 @@ export default function StoreManagement() {
                       {parseFloat(row.non_chargeable_total) > 0 ? `₹ ${parseFloat(row.non_chargeable_total).toFixed(2)}` : '-'}
                     </td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.production_unit_name || '-'}</td>
-                    {user?.role === 'admin' && (
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
-                          title="Void / Delete Daily Issue Voucher (Admin Audit Trail)"
-                          style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <Trash2 size={13} /> Void
-                        </button>
+                    {orderDailyIssue === 'draft' ? (
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
+                            }}
+                            title="Resume Editing Draft"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <FileEdit size={13} color="#d97706" /> Resume
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Are you sure you want to discard this draft?')) {
+                                deleteDraft(row.id);
+                              }
+                            }}
+                            title="Discard Draft"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                          >
+                            <Trash2 size={13} /> Discard
+                          </button>
+                        </div>
                       </td>
+                    ) : (
+                      user?.role === 'admin' && (
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
+                            title="Void / Delete Daily Issue Voucher (Admin Audit Trail)"
+                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Trash2 size={13} /> Void
+                          </button>
+                        </td>
+                      )
                     )}
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Daily Issue Card List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
-            {paginatedDailyIssues.map((row, idx) => (
-              <div key={idx} className="store-mobile-card">
+            {displayDailyIssues.map((row, idx) => (
+              <div
+                key={idx}
+                onClick={() => {
+                  if (row.isDraft) {
+                    navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
+                  }
+                }}
+                className="store-mobile-card"
+              >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#9a3412', backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '6px' }}>
-                    Voucher #{row.voucher_no}
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: row.isDraft ? '#92400e' : '#9a3412', backgroundColor: row.isDraft ? '#fef3c7' : '#ffedd5', padding: '2px 8px', borderRadius: '6px' }}>
+                    {row.isDraft ? '• Draft' : `Voucher #${row.voucher_no}`}
                   </span>
-                  <span style={{
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    backgroundColor: row.status === 'charge' ? '#fff7ed' : '#f0fdf4',
-                    color: row.status === 'charge' ? '#c2410c' : '#16a34a'
-                  }}>
-                    {row.status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
-                  </span>
+                  {row.isDraft ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      backgroundColor: '#fef3c7',
+                      color: '#92400e'
+                    }}>
+                      • Draft
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      backgroundColor: row.status === 'charge' ? '#fff7ed' : '#f0fdf4',
+                      color: row.status === 'charge' ? '#c2410c' : '#16a34a'
+                    }}>
+                      {row.status === 'charge' ? 'Chargeable' : 'Non-Chargeable'}
+                    </span>
+                  )}
                 </div>
 
                 <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.2rem' }}>
@@ -2271,15 +2783,40 @@ export default function StoreManagement() {
                   </div>
                 </div>
 
-                {user?.role === 'admin' && (
-                  <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                {row.isDraft ? (
+                  <div style={{ marginTop: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
                     <button
-                      onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
-                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
+                      }}
+                      style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                     >
-                      <Trash2 size={13} /> Void Voucher
+                      <FileEdit size={14} color="#d97706" /> Resume
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Are you sure you want to discard this draft?')) {
+                          deleteDraft(row.id);
+                        }
+                      }}
+                      style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Trash2 size={14} /> Discard
                     </button>
                   </div>
+                ) : (
+                  user?.role === 'admin' && (
+                    <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+                      <button
+                        onClick={() => handleVoidVoucher('/store/daily-issues/', row.id, row.voucher_no)}
+                        style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Trash2 size={13} /> Void Voucher
+                      </button>
+                    </div>
+                  )
                 )}
               </div>
             ))}
@@ -2288,7 +2825,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageDailyIssue}
-              totalPages={Math.ceil(dailyIssuesTotalCount / ITEMS_PER_PAGE) || 1}
+              totalPages={orderDailyIssue === 'draft' ? (Math.ceil(displayDailyIssues.length / ITEMS_PER_PAGE) || 1) : (Math.ceil(dailyIssuesTotalCount / ITEMS_PER_PAGE) || 1)}
               onPageChange={setPageDailyIssue}
             />
           </div>
@@ -2318,8 +2855,13 @@ export default function StoreManagement() {
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
               </div>
+              <OrderBySelect
+                value={orderMaterialReturns}
+                onChange={(val) => setOrderMaterialReturns(val)}
+                options={materialReturnOrderOptions}
+              />
               <button
-                onClick={() => setIsMaterialReturnModalOpen(true)}
+                onClick={() => navigate('/store-management/material-return')}
                 style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <RotateCcw size={16} /> Record Material Return
@@ -2339,23 +2881,35 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Rate (₹)</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Total Value</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Credit Status</th>
-                  {user?.role === 'admin' && (
+                  {orderMaterialReturns === 'draft' ? (
                     <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Actions</th>
+                  ) : (
+                    user?.role === 'admin' && (
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Actions</th>
+                    )
                   )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={6} cols={user?.role === 'admin' ? 9 : 8} />
-                ) : materialReturnsList.length === 0 ? (
+                  <TableSkeleton rows={6} cols={orderMaterialReturns === 'draft' ? 9 : (user?.role === 'admin' ? 9 : 8)} />
+                ) : displayMaterialReturns.length === 0 ? (
                   <tr>
-                    <td colSpan={user?.role === 'admin' ? 9 : 8} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
-                      No material return vouchers recorded yet.
+                    <td colSpan={orderMaterialReturns === 'draft' ? 9 : (user?.role === 'admin' ? 9 : 8)} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                      {orderMaterialReturns === 'draft' ? 'No material return drafts saved.' : 'No material return vouchers recorded yet.'}
                     </td>
                   </tr>
                 ) : (
-                  paginatedMaterialReturns.map((ret, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  displayMaterialReturns.map((ret, idx) => (
+                    <tr
+                      key={idx}
+                      onClick={() => {
+                        if (ret.isDraft) {
+                          navigate('/store-management/material-return', { state: { draftData: ret.draftData, draftId: ret.id } });
+                        }
+                      }}
+                      style={{ borderBottom: '1px solid #f1f5f9', cursor: ret.isDraft ? 'pointer' : 'default' }}
+                    >
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#b45309' }}>{ret.voucher_no}</td>
                       <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{ret.return_date}</td>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>{ret.contractor_name || 'Self'}</td>
@@ -2370,27 +2924,72 @@ export default function StoreManagement() {
                         ₹ {parseFloat(ret.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '0.25rem 0.65rem',
-                          borderRadius: '12px',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          backgroundColor: ret.status === 'charge' ? '#dcfce7' : '#f1f5f9',
-                          color: ret.status === 'charge' ? '#15803d' : '#64748b'
-                        }}>
-                          {ret.status === 'charge' ? 'Charge Credit' : 'Non-Charge'}
-                        </span>
+                        {ret.isDraft ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '12px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            backgroundColor: '#fef3c7',
+                            color: '#92400e'
+                          }}>
+                            • Draft
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '12px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            backgroundColor: ret.status === 'charge' ? '#dcfce7' : '#f1f5f9',
+                            color: ret.status === 'charge' ? '#15803d' : '#64748b'
+                          }}>
+                            {ret.status === 'charge' ? 'Charge Credit' : 'Non-Charge'}
+                          </span>
+                        )}
                       </td>
-                      {user?.role === 'admin' && (
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                          <button
-                            onClick={() => handleVoidVoucher('/store/material-returns/', ret.id, ret.voucher_no)}
-                            title="Void / Delete Return Voucher (Admin Audit Trail)"
-                            style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <Trash2 size={13} /> Void
-                          </button>
+                      {orderMaterialReturns === 'draft' ? (
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/store-management/material-return', { state: { draftData: ret.draftData, draftId: ret.id } });
+                              }}
+                              title="Resume Editing Draft"
+                              style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <FileEdit size={13} color="#d97706" /> Resume
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm('Are you sure you want to discard this draft?')) {
+                                  deleteDraft(ret.id);
+                                }
+                              }}
+                              title="Discard Draft"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
+                            >
+                              <Trash2 size={13} /> Discard
+                            </button>
+                          </div>
                         </td>
+                      ) : (
+                        user?.role === 'admin' && (
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleVoidVoucher('/store/material-returns/', ret.id, ret.voucher_no)}
+                              title="Void / Delete Return Voucher (Admin Audit Trail)"
+                              style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <Trash2 size={13} /> Void
+                            </button>
+                          </td>
+                        )
                       )}
                     </tr>
                   ))
@@ -2402,7 +3001,7 @@ export default function StoreManagement() {
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageMaterialReturns}
-              totalPages={Math.ceil(materialReturnsTotalCount / ITEMS_PER_PAGE) || 1}
+              totalPages={orderMaterialReturns === 'draft' ? (Math.ceil(displayMaterialReturns.length / ITEMS_PER_PAGE) || 1) : (Math.ceil(materialReturnsTotalCount / ITEMS_PER_PAGE) || 1)}
               onPageChange={setPageMaterialReturns}
             />
           </div>

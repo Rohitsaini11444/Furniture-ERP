@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2 } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2, FileEdit } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import SearchableSelect from '../components/SearchableSelect';
@@ -12,6 +12,7 @@ import CustomSelect from '../components/CustomSelect';
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
+import { useDrafts } from '../context/DraftsContext';
 
 
 
@@ -194,6 +195,22 @@ function BuyerMasters() {
     return 1;
   });
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { drafts, deleteDraft } = useDrafts();
+
+  const orderOptions = useMemo(() => {
+    const draftCount = drafts.filter(d => d.formType === 'buyer_master').length;
+    return [
+      ...ORDER_OPTIONS_DATE_PRODUCT,
+      {
+        value: 'draft',
+        label: 'Drafts',
+        badge: draftCount > 0 ? draftCount : null,
+        icon: FileEdit,
+        isDividerBefore: true
+      }
+    ];
+  }, [drafts]);
 
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyer_masters', id || paramBuyerId, currentPage);
 
@@ -1070,6 +1087,31 @@ function BuyerMasters() {
 
   // Group Buyer Master records by Buyer for 1 Buyer = 1 Listing Row pattern
   const groupedMasters = React.useMemo(() => {
+    if (ordering === 'draft') {
+      const currentDrafts = drafts.filter(d => d.formType === 'buyer_master');
+      return currentDrafts.map(d => {
+        const queue = d.data?.styleQueue || [];
+        const buyerId = d.data?.globalBuyerId;
+        const bObj = (buyers || []).find(b => String(b.id) === String(buyerId));
+        const totalUnits = queue.reduce((acc, it) => acc + (parseInt(it.formData?.units) || 0), 0);
+        const totalAmount = queue.reduce((acc, it) => acc + (parseFloat(it.formData?.total_amount) || 0), 0);
+
+        return {
+          id: d.id,
+          buyerId: buyerId || d.id,
+          buyerName: bObj?.name || d.data?.buyerName || 'Draft Buyer Master',
+          buyerCode: bObj?.code || '',
+          styles: queue.map(q => q.formData || {}),
+          totalStyles: queue.length,
+          totalUnits,
+          totalAmount,
+          lastUpdated: d.updatedAt || new Date().toISOString(),
+          isDraft: true,
+          rawDraft: d,
+        };
+      });
+    }
+
     const map = {};
     (buyerMasters || []).forEach(bm => {
       if (!bm) return;
@@ -1085,6 +1127,7 @@ function BuyerMasters() {
           totalUnits: 0,
           totalAmount: 0,
           lastUpdated: bm.created_at || new Date().toISOString(),
+          isDraft: false,
         };
       }
       map[bId].styles.push(bm);
@@ -1096,7 +1139,7 @@ function BuyerMasters() {
       }
     });
     return Object.values(map);
-  }, [buyerMasters, buyers]);
+  }, [buyerMasters, buyers, ordering, drafts]);
 
   const filteredGroupedMasters = React.useMemo(() => {
     if (!groupedMasters) return [];
@@ -2640,7 +2683,7 @@ function BuyerMasters() {
               <div className="bm-order" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <span className="filter-label" style={{ fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', fontSize: '0.78rem' }}>ORDER BY:</span>
                 <OrderBySelect
-                  options={ORDER_OPTIONS_DATE_PRODUCT}
+                  options={orderOptions}
                   value={ordering}
                   onChange={setOrdering}
                 />
@@ -2654,6 +2697,7 @@ function BuyerMasters() {
               <thead>
                 <tr>
                   <th>Buyer Master</th>
+                  <th>Status</th>
                   <th>Styles Registered</th>
                   <th>Total Units</th>
                   <th>Total Value ($)</th>
@@ -2663,11 +2707,13 @@ function BuyerMasters() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={6} cols={6} hasImage={false} />
+                  <TableSkeleton rows={6} cols={7} hasImage={false} />
                 ) : filteredGroupedMasters.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-                      No Buyer Master records found.
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                      {ordering === 'draft'
+                        ? 'No draft Buyer Master records found. When you save a Buyer Master as draft, it will appear here.'
+                        : 'No Buyer Master records found.'}
                     </td>
                   </tr>
                 ) : (
@@ -2677,16 +2723,62 @@ function BuyerMasters() {
                       <tr
                         key={group.buyerId}
                         ref={isRecentlyVisited ? setHighlightRef : null}
-                        onClick={() => openGroupedEdit(group)}
+                        onClick={() => {
+                          if (group.isDraft) {
+                            navigate('/buyer-masters/new', {
+                              state: { draftId: group.rawDraft.id, draftData: group.rawDraft.data }
+                            });
+                          } else {
+                            openGroupedEdit(group);
+                          }
+                        }}
                         style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
                         className={`table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
-                        title="Click to view/edit multi-style buyer master"
+                        title={group.isDraft ? "Click to resume draft" : "Click to view/edit multi-style buyer master"}
                       >
                         <td>
-                          <strong style={{ fontSize: '0.95rem' }}>{group.buyerName}</strong>
-                          {group.buyerCode && (
-                            <span className="navbar-role-badge admin-badge" style={{ marginLeft: '0.5rem', fontSize: '0.72rem' }}>
-                              {group.buyerCode}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {group.isDraft && <FileEdit size={16} color="#d97706" style={{ flexShrink: 0 }} />}
+                            <strong style={{ fontSize: '0.95rem', color: group.isDraft ? '#b45309' : undefined }}>{group.buyerName}</strong>
+                            {group.buyerCode && (
+                              <span className="navbar-role-badge admin-badge" style={{ fontSize: '0.72rem' }}>
+                                {group.buyerCode}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          {group.isDraft ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.73rem',
+                              fontWeight: 700,
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fde68a'
+                            }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                              Draft
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.73rem',
+                              fontWeight: 700,
+                              backgroundColor: '#ecfdf5',
+                              color: '#065f46',
+                              border: '1px solid #a7f3d0'
+                            }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                              Saved
                             </span>
                           )}
                         </td>
@@ -2695,58 +2787,96 @@ function BuyerMasters() {
                             {group.totalStyles} Style{group.totalStyles > 1 ? 's' : ''}
                           </span>
                         </td>
-                      <td>{group.totalUnits} Units</td>
-                      <td>
-                        <strong style={{ color: '#16a34a' }}>
-                          ${group.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </strong>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                          {new Date(group.lastUpdated).toLocaleDateString()}
-                        </span>
-                      </td>
-                      <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center' }}>
-                          {/* Excel Export Icon button */}
-                          <button
-                            type="button"
-                            className="btn-secondary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExportModalGroup(group);
-                            }}
-                            title="Export Excel for this Buyer"
-                            style={{ padding: '0.35rem 0.65rem', color: '#16a34a', borderColor: '#86efac', backgroundColor: '#f0fdf4', cursor: 'pointer' }}
-                          >
-                            <FileSpreadsheet size={16} color="#16a34a" />
-                          </button>
+                        <td>{group.totalUnits} Units</td>
+                        <td>
+                          <strong style={{ color: '#16a34a' }}>
+                            ${group.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </strong>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                            {new Date(group.lastUpdated).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td onClick={e => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                          {group.isDraft ? (
+                            <div style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => navigate('/buyer-masters/new', {
+                                  state: { draftId: group.rawDraft.id, draftData: group.rawDraft.data }
+                                })}
+                                className="btn-secondary"
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  fontSize: '0.82rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#fef3c7',
+                                  borderColor: '#fde68a',
+                                  color: '#92400e',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <FileEdit size={13} /> Resume
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Discard draft for "${group.buyerName}"?`)) {
+                                    deleteDraft(group.id);
+                                  }
+                                }}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.82rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'inline-flex', gap: '0.45rem', alignItems: 'center' }}>
+                              {/* Excel Export Icon button */}
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExportModalGroup(group);
+                                }}
+                                title="Export Excel for this Buyer"
+                                style={{ padding: '0.35rem 0.65rem', color: '#16a34a', borderColor: '#86efac', backgroundColor: '#f0fdf4', cursor: 'pointer' }}
+                              >
+                                <FileSpreadsheet size={16} color="#16a34a" />
+                              </button>
 
-                          {/* Edit Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); openGroupedEdit(group); }}
-                            className="btn-secondary"
-                            style={{ padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
-                          >
-                            Edit ({group.totalStyles})
-                          </button>
+                              {/* Edit Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openGroupedEdit(group); }}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+                              >
+                                Edit ({group.totalStyles})
+                              </button>
 
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteGroup(group, e)}
-                            className="btn-secondary"
-                            style={{ padding: '0.35rem 0.6rem', fontSize: '0.82rem', color: '#dc2626', borderColor: '#fca5a5' }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+                              {/* Delete Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteGroup(group, e)}
+                                className="btn-secondary"
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.82rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

@@ -5,7 +5,8 @@ import {
   Search, Download, Plus, ArrowLeft, ChevronRight, Package, Warehouse,
   Tag, CheckCircle2, AlertCircle, Building2, Factory, Wrench, Palette,
   PackageCheck, ClipboardCheck, Boxes, Layers, RefreshCw, CheckCircle,
-  XCircle, Clock, User, AlertTriangle, ArrowRight, X, FileText, ChevronDown
+  XCircle, Clock, User, Users, AlertTriangle, ArrowRight, X, FileText, ChevronDown,
+  Edit3, Trash2, RotateCcw, Sparkles
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
@@ -576,76 +577,101 @@ function Stock() {
       case 'In Stock':
         return (
           <span style={{
-            backgroundColor: '#d1fae5',
-            color: '#059669',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-            display: 'inline-block'
+            backgroundColor: '#ecfdf5',
+            color: '#065f46',
+            border: '1px solid #a7f3d0',
+            fontSize: '0.68rem',
+            fontWeight: 750,
+            padding: '1.5px 7px',
+            borderRadius: '999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            letterSpacing: '0.02em',
+            whiteSpace: 'nowrap'
           }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
             IN STOCK
           </span>
         );
       case 'Low Stock':
         return (
           <span style={{
-            backgroundColor: '#fef3c7',
-            color: '#b45309',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-            display: 'inline-block'
+            backgroundColor: '#fffbeb',
+            color: '#92400e',
+            border: '1px solid #fde68a',
+            fontSize: '0.68rem',
+            fontWeight: 750,
+            padding: '1.5px 7px',
+            borderRadius: '999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            letterSpacing: '0.02em',
+            whiteSpace: 'nowrap'
           }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} />
             LOW STOCK
           </span>
         );
       case 'Reserved':
         return (
           <span style={{
-            backgroundColor: '#e0e7ff',
-            color: '#4338ca',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-            display: 'inline-block'
+            backgroundColor: '#f5f3ff',
+            color: '#5b21b6',
+            border: '1px solid #ddd6fe',
+            fontSize: '0.68rem',
+            fontWeight: 750,
+            padding: '1.5px 7px',
+            borderRadius: '999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            letterSpacing: '0.02em',
+            whiteSpace: 'nowrap'
           }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#8b5cf6', display: 'inline-block' }} />
             RESERVED
           </span>
         );
       case 'Out of Stock':
         return (
           <span style={{
-            backgroundColor: '#fee2e2',
-            color: '#dc2626',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-            display: 'inline-block'
+            backgroundColor: '#fef2f2',
+            color: '#991b1b',
+            border: '1px solid #fecaca',
+            fontSize: '0.68rem',
+            fontWeight: 750,
+            padding: '1.5px 7px',
+            borderRadius: '999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            letterSpacing: '0.02em',
+            whiteSpace: 'nowrap'
           }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }} />
             OUT OF STOCK
           </span>
         );
       default:
         return (
           <span style={{
-            backgroundColor: '#f1f5f9',
+            backgroundColor: '#f8fafc',
             color: '#475569',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            textTransform: 'uppercase',
-            display: 'inline-block'
+            border: '1px solid #e2e8f0',
+            fontSize: '0.68rem',
+            fontWeight: 750,
+            padding: '1.5px 7px',
+            borderRadius: '999px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            letterSpacing: '0.02em',
+            whiteSpace: 'nowrap'
           }}>
-            {status}
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#94a3b8', display: 'inline-block' }} />
+            {status || 'UNKNOWN'}
           </span>
         );
     }
@@ -1027,43 +1053,57 @@ function Stock() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1.5rem',
+            marginBottom: '0.75rem',
             flexWrap: 'wrap',
-            gap: '1rem'
+            gap: '0.75rem'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                backgroundColor: '#faf5ee',
-                border: '1px solid #f0eae1',
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #5c3a21 0%, #3e2413 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#5c3a21',
-                flexShrink: 0
+                color: '#ffffff',
+                flexShrink: 0,
+                boxShadow: '0 3px 8px rgba(92, 58, 33, 0.22)'
               }}>
-                <FileText size={22} />
+                <Boxes size={19} />
               </div>
               <div>
-                <h2 style={{
-                  margin: 0,
-                  fontSize: '1.6rem',
-                  fontWeight: 800,
-                  color: '#1c1917',
-                  letterSpacing: '-0.02em',
-                  lineHeight: 1.2
-                }}>
-                  Inventory Stock Registry
-                </h2>
-                <p style={{ margin: '3px 0 0', fontSize: '0.86rem', color: '#78716c' }}>
-                  Track passed stock, factory units, availability and manufacturing stage assignments.
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <h2 style={{
+                    margin: 0,
+                    fontSize: '1.3rem',
+                    fontWeight: 800,
+                    color: '#1c1917',
+                    letterSpacing: '-0.025em',
+                    lineHeight: 1.15
+                  }}>
+                    Inventory Stock Registry
+                  </h2>
+                  <span style={{
+                    backgroundColor: '#f5ede3',
+                    color: '#5c3a21',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    padding: '2px 7px',
+                    borderRadius: '5px',
+                    letterSpacing: '0.03em',
+                    textTransform: 'uppercase'
+                  }}>
+                    Live Inventory
+                  </span>
+                </div>
+                <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#78716c' }}>
+                  Track passed stock, factory units, availability and manufacturing stage assignments across all units.
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn-subtle-motion"
@@ -1072,18 +1112,19 @@ function Stock() {
                   backgroundColor: '#ffffff',
                   color: '#44403c',
                   border: '1px solid #e7e5e4',
-                  borderRadius: '10px',
-                  padding: '0.6rem 1.1rem',
-                  fontSize: '0.85rem',
+                  borderRadius: '9px',
+                  padding: '0.42rem 0.85rem',
+                  fontSize: '0.8rem',
                   fontWeight: 650,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.45rem',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                  gap: '0.4rem',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                 }}
               >
-                <Factory size={16} color="#78716c" /> Manage Factory Units
+                <Factory size={15} color="#78716c" />
+                <span>Manage Factory Units</span>
               </button>
 
               <button
@@ -1092,20 +1133,21 @@ function Stock() {
                 onClick={handleDownloadExcel}
                 style={{
                   backgroundColor: '#ffffff',
-                  color: '#44403c',
-                  border: '1px solid #e7e5e4',
-                  borderRadius: '10px',
-                  padding: '0.6rem 1.1rem',
-                  fontSize: '0.85rem',
+                  color: '#15803d',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '9px',
+                  padding: '0.42rem 0.85rem',
+                  fontSize: '0.8rem',
                   fontWeight: 650,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.45rem',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                  gap: '0.4rem',
+                  boxShadow: '0 1px 2px rgba(22, 163, 74, 0.04)'
                 }}
               >
-                <Download size={16} color="#78716c" /> Export Excel
+                <Download size={15} color="#16a34a" />
+                <span>Export Excel</span>
               </button>
 
               <button
@@ -1113,63 +1155,98 @@ function Stock() {
                 className="btn-subtle-motion"
                 onClick={openCreateModal}
                 style={{
-                  backgroundColor: '#5c3a21',
+                  background: 'linear-gradient(135deg, #5c3a21 0%, #3e2413 100%)',
                   color: '#ffffff',
                   border: 'none',
-                  borderRadius: '10px',
-                  padding: '0.6rem 1.25rem',
-                  fontSize: '0.85rem',
+                  borderRadius: '9px',
+                  padding: '0.42rem 1.1rem',
+                  fontSize: '0.8rem',
                   fontWeight: 750,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.45rem',
-                  boxShadow: '0 2px 5px rgba(92, 58, 33, 0.2)'
+                  gap: '0.4rem',
+                  boxShadow: '0 2px 8px rgba(92, 58, 33, 0.25)'
                 }}
               >
-                <Plus size={16} /> Add Stock Item
+                <Plus size={15} strokeWidth={2.5} />
+                <span>Add Stock Item</span>
               </button>
             </div>
           </div>
 
-          {/* ── Factory Unit Segmented Control Box ── */}
+          {/* ── Factory Production Unit Horizontal Bar ── */}
           <div style={{
             backgroundColor: '#ffffff',
-            border: '1px solid #f0eae1',
-            borderRadius: '14px',
-            padding: '1.1rem 1.35rem',
+            border: '1px solid #e7e5e4',
+            borderRadius: '12px',
+            padding: '0.45rem 0.95rem',
             boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-            marginBottom: '1.5rem'
+            marginBottom: '0.75rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            overflowX: 'auto',
+            scrollbarWidth: 'none'
           }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 750, color: '#1c1917', marginBottom: '0.65rem' }}>
-              Factory Unit
+            {/* Title & Icon on Left */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.84rem',
+              fontWeight: 750,
+              color: '#0f172a',
+              whiteSpace: 'nowrap',
+              flexShrink: 0
+            }}>
+              <Factory size={16} color="#334155" />
+              <span>Factory Production Unit</span>
             </div>
             
-            <div className="unit-tab-container">
-              {/* Hardware-Accelerated Sliding Indicator Backdrop */}
-              <div className="unit-tab-sliding-indicator" style={unitIndicatorStyle} />
-
+            {/* Unit Pills Inline */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              overflowX: 'auto',
+              scrollbarWidth: 'none',
+              flex: 1
+            }}>
               <button
                 key="all"
-                ref={el => unitTabRefs.current['all'] = el}
                 type="button"
+                className="btn-subtle-motion"
                 onClick={() => setSelectedUnitId('all')}
                 style={{
-                  position: 'relative',
-                  zIndex: 2,
-                  padding: '0.5rem 1rem',
-                  borderRadius: '8px',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  color: selectedUnitId === 'all' ? '#ffffff' : '#78716c',
-                  fontWeight: selectedUnitId === 'all' ? 750 : 500,
-                  fontSize: '0.83rem',
+                  padding: '0.32rem 0.85rem',
+                  borderRadius: '999px',
+                  border: selectedUnitId === 'all' ? 'none' : '1px solid #e2e8f0',
+                  backgroundColor: selectedUnitId === 'all' ? '#5c3a21' : '#f1f5f9',
+                  color: selectedUnitId === 'all' ? '#ffffff' : '#1e293b',
+                  fontWeight: selectedUnitId === 'all' ? 750 : 600,
+                  fontSize: '0.8rem',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
-                  transition: 'color 180ms ease'
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: selectedUnitId === 'all' ? '0 2px 5px rgba(92, 58, 33, 0.22)' : 'none',
+                  transition: 'all 150ms ease'
                 }}
               >
-                All Units ({stockItems.length})
+                <span>All Units</span>
+                <span style={{
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  fontSize: '0.68rem',
+                  fontWeight: 750,
+                  backgroundColor: selectedUnitId === 'all' ? 'rgba(255, 255, 255, 0.22)' : '#e2e8f0',
+                  color: selectedUnitId === 'all' ? '#ffffff' : '#475569',
+                  transition: 'all 150ms ease'
+                }}>
+                  {stockItems.length}
+                </span>
               </button>
 
               {units.map((u) => {
@@ -1179,25 +1256,38 @@ function Stock() {
                 return (
                   <button
                     key={u.id}
-                    ref={el => unitTabRefs.current[u.id] = el}
                     type="button"
+                    className="btn-subtle-motion"
                     onClick={() => setSelectedUnitId(u.id)}
                     style={{
-                      position: 'relative',
-                      zIndex: 2,
-                      padding: '0.5rem 1rem',
-                      borderRadius: '8px',
-                      border: isSel ? 'none' : '1px solid transparent',
-                      backgroundColor: 'transparent',
-                      color: isSel ? '#ffffff' : '#78716c',
-                      fontWeight: isSel ? 750 : 500,
-                      fontSize: '0.83rem',
+                      padding: '0.32rem 0.85rem',
+                      borderRadius: '999px',
+                      border: isSel ? 'none' : '1px solid #e2e8f0',
+                      backgroundColor: isSel ? '#5c3a21' : '#f1f5f9',
+                      color: isSel ? '#ffffff' : '#1e293b',
+                      fontWeight: isSel ? 750 : 600,
+                      fontSize: '0.8rem',
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
-                      transition: 'color 180ms ease'
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: isSel ? '0 2px 5px rgba(92, 58, 33, 0.22)' : 'none',
+                      transition: 'all 150ms ease'
                     }}
                   >
-                    {u.name} ({uStockCount})
+                    <span>{u.name}</span>
+                    <span style={{
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      fontSize: '0.68rem',
+                      fontWeight: 750,
+                      backgroundColor: isSel ? 'rgba(255, 255, 255, 0.22)' : '#e2e8f0',
+                      color: isSel ? '#ffffff' : '#475569',
+                      transition: 'all 150ms ease'
+                    }}>
+                      {uStockCount}
+                    </span>
                   </button>
                 );
               })}
@@ -1213,23 +1303,30 @@ function Stock() {
           />
 
           {/* ── Stock Stages Section & 4 Color-Coded Cards ── */}
-          <div style={{ marginBottom: '1.25rem' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
             <div style={{
-              fontSize: '0.92rem',
-              fontWeight: 800,
-              color: '#1c1917',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              marginBottom: '0.85rem'
+              justifyContent: 'space-between',
+              marginBottom: '0.45rem'
             }}>
-              <Boxes size={18} color="#5c3a21" /> Stock Stages
+              <div style={{
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                color: '#1c1917',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem'
+              }}>
+                <Boxes size={15} color="#5c3a21" />
+                <span>Manufacturing Stages & Pipeline Stock</span>
+              </div>
             </div>
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '1.25rem'
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '0.65rem'
             }}>
               {/* Stage 1: Raw Stock */}
               <div
@@ -1237,35 +1334,73 @@ function Stock() {
                 onClick={() => navigate('/stock/details/raw')}
                 style={{
                   backgroundColor: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '1.25rem',
-                  border: '2px solid #38bdf8',
-                  boxShadow: '0 2px 10px rgba(56, 189, 248, 0.08)',
-                  cursor: 'pointer',
+                  border: '1px solid #bae6fd',
+                  borderTop: '3.5px solid #0284c7',
+                  borderRadius: '10px',
+                  padding: '0.7rem 0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.85rem',
+                  boxShadow: '0 1px 3px rgba(2, 132, 199, 0.04)',
                   animationDelay: '100ms'
                 }}
               >
-                <div>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    color: '#0284c7',
-                    backgroundColor: '#e0f2fe',
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    display: 'inline-block'
+                {/* Left: Icon Box */}
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  backgroundColor: '#e0f2fe',
+                  color: '#0284c7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <FileText size={22} strokeWidth={2} />
+                </div>
+
+                {/* Middle: Badge, Title, Qty */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: '2px' }}>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      color: '#0284c7',
+                      backgroundColor: '#e0f2fe',
+                      padding: '1.5px 7px',
+                      borderRadius: '999px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase'
+                    }}>
+                      Stage 1
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 650,
+                    color: '#334155',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.2
                   }}>
-                    Stage 1
-                  </span>
+                    Raw Stock Details
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 850, color: '#0284c7', lineHeight: 1 }}>
+                      {rawStockTotal.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                      pcs
+                    </span>
+                  </div>
                 </div>
-                <h4 style={{ margin: '0.65rem 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                  Raw Stock Details
-                </h4>
-                <div style={{ fontSize: '0.78rem', color: '#78716c' }}>
-                  Passed Gate Receiving Audit
-                </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 850, color: '#0284c7', marginTop: '0.85rem', lineHeight: 1.1 }}>
-                  {rawStockTotal.toLocaleString()} pcs
+
+                {/* Right: Chevron */}
+                <div className="stage-card-arrow" style={{ flexShrink: 0, color: '#0284c7', display: 'flex', alignItems: 'center' }}>
+                  <ChevronRight size={22} strokeWidth={2.6} />
                 </div>
               </div>
 
@@ -1275,35 +1410,73 @@ function Stock() {
                 onClick={() => navigate('/stock/details/sanded')}
                 style={{
                   backgroundColor: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '1.25rem',
-                  border: '2px solid #f59e0b',
-                  boxShadow: '0 2px 10px rgba(245, 158, 11, 0.08)',
-                  cursor: 'pointer',
+                  border: '1px solid #fde68a',
+                  borderTop: '3.5px solid #d97706',
+                  borderRadius: '10px',
+                  padding: '0.7rem 0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.85rem',
+                  boxShadow: '0 1px 3px rgba(217, 119, 6, 0.04)',
                   animationDelay: '135ms'
                 }}
               >
-                <div>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    color: '#b45309',
-                    backgroundColor: '#fef3c7',
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    display: 'inline-block'
+                {/* Left: Icon Box */}
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  backgroundColor: '#fef3c7',
+                  color: '#d97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Users size={22} strokeWidth={2} />
+                </div>
+
+                {/* Middle: Badge, Title, Qty */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: '2px' }}>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      color: '#d97706',
+                      backgroundColor: '#fef3c7',
+                      padding: '1.5px 7px',
+                      borderRadius: '999px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase'
+                    }}>
+                      Stage 2
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 650,
+                    color: '#334155',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.2
                   }}>
-                    Stage 2
-                  </span>
+                    Sanded Stock Details
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 850, color: '#d97706', lineHeight: 1 }}>
+                      {sandedStockTotal.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                      pcs
+                    </span>
+                  </div>
                 </div>
-                <h4 style={{ margin: '0.65rem 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                  Sanded Stock Details
-                </h4>
-                <div style={{ fontSize: '0.78rem', color: '#78716c' }}>
-                  Passed Sanding QC Audit
-                </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 850, color: '#d97706', marginTop: '0.85rem', lineHeight: 1.1 }}>
-                  {sandedStockTotal.toLocaleString()} pcs
+
+                {/* Right: Chevron */}
+                <div className="stage-card-arrow" style={{ flexShrink: 0, color: '#d97706', display: 'flex', alignItems: 'center' }}>
+                  <ChevronRight size={22} strokeWidth={2.6} />
                 </div>
               </div>
 
@@ -1313,35 +1486,73 @@ function Stock() {
                 onClick={() => navigate('/stock/details/polished')}
                 style={{
                   backgroundColor: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '1.25rem',
-                  border: '2px solid #8b5cf6',
-                  boxShadow: '0 2px 10px rgba(139, 92, 246, 0.08)',
-                  cursor: 'pointer',
+                  border: '1px solid #e9d5ff',
+                  borderTop: '3.5px solid #7c3aed',
+                  borderRadius: '10px',
+                  padding: '0.7rem 0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.85rem',
+                  boxShadow: '0 1px 3px rgba(124, 58, 237, 0.04)',
                   animationDelay: '170ms'
                 }}
               >
-                <div>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    color: '#7c3aed',
-                    backgroundColor: '#f3e8ff',
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    display: 'inline-block'
+                {/* Left: Icon Box */}
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  backgroundColor: '#f3e8ff',
+                  color: '#7c3aed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <FileText size={22} strokeWidth={2} />
+                </div>
+
+                {/* Middle: Badge, Title, Qty */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: '2px' }}>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      color: '#7c3aed',
+                      backgroundColor: '#f3e8ff',
+                      padding: '1.5px 7px',
+                      borderRadius: '999px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase'
+                    }}>
+                      Stage 3
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 650,
+                    color: '#334155',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.2
                   }}>
-                    Stage 3
-                  </span>
+                    Polished Stock Details
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 850, color: '#7c3aed', lineHeight: 1 }}>
+                      {polishedStockTotal.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                      pcs
+                    </span>
+                  </div>
                 </div>
-                <h4 style={{ margin: '0.65rem 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                  Polished Stock Details
-                </h4>
-                <div style={{ fontSize: '0.78rem', color: '#78716c' }}>
-                  Passed Polishing QC Audit
-                </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 850, color: '#7c3aed', marginTop: '0.85rem', lineHeight: 1.1 }}>
-                  {polishedStockTotal.toLocaleString()} pcs
+
+                {/* Right: Chevron */}
+                <div className="stage-card-arrow" style={{ flexShrink: 0, color: '#7c3aed', display: 'flex', alignItems: 'center' }}>
+                  <ChevronRight size={22} strokeWidth={2.6} />
                 </div>
               </div>
 
@@ -1351,35 +1562,73 @@ function Stock() {
                 onClick={() => navigate('/stock/details/packaged')}
                 style={{
                   backgroundColor: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '1.25rem',
-                  border: '2px solid #10b981',
-                  boxShadow: '0 2px 10px rgba(16, 185, 129, 0.08)',
-                  cursor: 'pointer',
+                  border: '1px solid #bbf7d0',
+                  borderTop: '3.5px solid #16a34a',
+                  borderRadius: '10px',
+                  padding: '0.7rem 0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.85rem',
+                  boxShadow: '0 1px 3px rgba(22, 163, 74, 0.04)',
                   animationDelay: '205ms'
                 }}
               >
-                <div>
-                  <span style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 800,
-                    color: '#059669',
-                    backgroundColor: '#d1fae5',
-                    padding: '3px 10px',
-                    borderRadius: '999px',
-                    display: 'inline-block'
+                {/* Left: Icon Box */}
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '10px',
+                  backgroundColor: '#dcfce7',
+                  color: '#16a34a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Package size={22} strokeWidth={2} />
+                </div>
+
+                {/* Middle: Badge, Title, Qty */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: '2px' }}>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      color: '#16a34a',
+                      backgroundColor: '#dcfce7',
+                      padding: '1.5px 7px',
+                      borderRadius: '999px',
+                      letterSpacing: '0.02em',
+                      textTransform: 'uppercase'
+                    }}>
+                      Packaged
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.84rem',
+                    fontWeight: 650,
+                    color: '#334155',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    lineHeight: 1.2
                   }}>
-                    Packaged
-                  </span>
+                    Finished Goods
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 850, color: '#16a34a', lineHeight: 1 }}>
+                      {packagedStockTotal.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                      pcs
+                    </span>
+                  </div>
                 </div>
-                <h4 style={{ margin: '0.65rem 0 2px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                  Finished Goods
-                </h4>
-                <div style={{ fontSize: '0.78rem', color: '#78716c' }}>
-                  Packaged / Ready Shipment
-                </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 850, color: '#059669', marginTop: '0.85rem', lineHeight: 1.1 }}>
-                  {packagedStockTotal.toLocaleString()} pcs
+
+                {/* Right: Chevron */}
+                <div className="stage-card-arrow" style={{ flexShrink: 0, color: '#16a34a', display: 'flex', alignItems: 'center' }}>
+                  <ChevronRight size={22} strokeWidth={2.6} />
                 </div>
               </div>
             </div>
@@ -1388,26 +1637,26 @@ function Stock() {
           {/* ── 3 Summary KPI Cards Row ── */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '1.25rem',
-            marginBottom: '1.75rem'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '0.65rem',
+            marginBottom: '0.75rem'
           }}>
             {/* Card 1 */}
             <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
-              borderRadius: '14px',
-              padding: '1.1rem 1.35rem',
+              borderRadius: '12px',
+              padding: '0.55rem 0.85rem',
               border: '1px solid #e7e5e4',
               display: 'flex',
               alignItems: 'center',
-              gap: '1rem',
+              gap: '0.75rem',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
               animationDelay: '100ms'
             }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
                 backgroundColor: '#dcfce7',
                 color: '#15803d',
                 display: 'flex',
@@ -1415,14 +1664,17 @@ function Stock() {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Package size={22} />
+                <Package size={18} />
               </div>
               <div>
-                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#78716c' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 750, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Total Stock Items
                 </div>
-                <div style={{ fontSize: '1.45rem', fontWeight: 850, color: '#1c1917', marginTop: '2px', lineHeight: 1.1 }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
                   {totalStockItemsCount}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
+                  Unique style items in registry
                 </div>
               </div>
             </div>
@@ -1430,19 +1682,19 @@ function Stock() {
             {/* Card 2 */}
             <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
-              borderRadius: '14px',
-              padding: '1.1rem 1.35rem',
+              borderRadius: '12px',
+              padding: '0.55rem 0.85rem',
               border: '1px solid #e7e5e4',
               display: 'flex',
               alignItems: 'center',
-              gap: '1rem',
+              gap: '0.75rem',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
               animationDelay: '150ms'
             }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
                 backgroundColor: '#dbeafe',
                 color: '#1d4ed8',
                 display: 'flex',
@@ -1450,14 +1702,17 @@ function Stock() {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <FileText size={22} />
+                <FileText size={18} />
               </div>
               <div>
-                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#78716c' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 750, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Total Passed Quantity
                 </div>
-                <div style={{ fontSize: '1.45rem', fontWeight: 850, color: '#1c1917', marginTop: '2px', lineHeight: 1.1 }}>
-                  {totalPassedQuantity.toLocaleString()} pcs
+                <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
+                  {totalPassedQuantity.toLocaleString()} <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>pcs</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
+                  Audited manufacturing volume
                 </div>
               </div>
             </div>
@@ -1465,19 +1720,19 @@ function Stock() {
             {/* Card 3 */}
             <div className="stat-card-animated" style={{
               backgroundColor: '#ffffff',
-              borderRadius: '14px',
-              padding: '1.1rem 1.35rem',
+              borderRadius: '12px',
+              padding: '0.55rem 0.85rem',
               border: '1px solid #e7e5e4',
               display: 'flex',
               alignItems: 'center',
-              gap: '1rem',
+              gap: '0.75rem',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
               animationDelay: '200ms'
             }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
                 backgroundColor: '#fef3c7',
                 color: '#d97706',
                 display: 'flex',
@@ -1485,14 +1740,17 @@ function Stock() {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Tag size={22} />
+                <Tag size={18} />
               </div>
               <div>
-                <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#78716c' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 750, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Estimated Stock Value
                 </div>
-                <div style={{ fontSize: '1.45rem', fontWeight: 850, color: '#1c1917', marginTop: '2px', lineHeight: 1.1 }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
                   ₹{estimatedStockValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
+                  Calculated from recorded unit prices
                 </div>
               </div>
             </div>
@@ -1500,7 +1758,7 @@ function Stock() {
 
           {/* ── Main Navigation Sub-Tabs ── */}
           <div className="stock-nav-container">
-            {/* Sliding Underline Indicator */}
+            {/* Sliding Indicator Backdrop */}
             <div className="stock-nav-sliding-underline" style={navIndicatorStyle} />
 
             <button
@@ -1508,21 +1766,34 @@ function Stock() {
               onClick={() => setActiveTab('stock')}
               style={{
                 position: 'relative',
-                padding: '0.65rem 0.25rem',
+                zIndex: 2,
+                padding: '0.38rem 0.8rem',
+                borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'stock' ? 750 : 500,
-                color: activeTab === 'stock' ? '#5c3a21' : '#78716c',
-                fontSize: '0.9rem',
+                fontWeight: activeTab === 'stock' ? 750 : 600,
+                color: activeTab === 'stock' ? '#ffffff' : '#57534e',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.45rem',
+                gap: '0.4rem',
                 whiteSpace: 'nowrap',
                 transition: 'color 180ms ease'
               }}
             >
-              <Boxes size={17} /> Stock Levels
+              <Boxes size={14} />
+              <span>Stock Levels</span>
+              <span style={{
+                padding: '1px 6px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 750,
+                backgroundColor: activeTab === 'stock' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
+                color: activeTab === 'stock' ? '#ffffff' : '#78716c'
+              }}>
+                {unitFilteredStock.length}
+              </span>
             </button>
 
             <button
@@ -1530,21 +1801,34 @@ function Stock() {
               onClick={() => setActiveTab('sanding')}
               style={{
                 position: 'relative',
-                padding: '0.65rem 0.25rem',
+                zIndex: 2,
+                padding: '0.38rem 0.8rem',
+                borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'sanding' ? 750 : 500,
-                color: activeTab === 'sanding' ? '#5c3a21' : '#78716c',
-                fontSize: '0.9rem',
+                fontWeight: activeTab === 'sanding' ? 750 : 600,
+                color: activeTab === 'sanding' ? '#ffffff' : '#57534e',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.45rem',
+                gap: '0.4rem',
                 whiteSpace: 'nowrap',
                 transition: 'color 180ms ease'
               }}
             >
-              <Wrench size={17} /> Sanding Stage ({getJobsByStage('sanding').length})
+              <Wrench size={14} />
+              <span>Sanding Stage</span>
+              <span style={{
+                padding: '1px 6px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 750,
+                backgroundColor: activeTab === 'sanding' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
+                color: activeTab === 'sanding' ? '#ffffff' : '#78716c'
+              }}>
+                {getJobsByStage('sanding').length}
+              </span>
             </button>
 
             <button
@@ -1552,21 +1836,34 @@ function Stock() {
               onClick={() => setActiveTab('polishing')}
               style={{
                 position: 'relative',
-                padding: '0.65rem 0.25rem',
+                zIndex: 2,
+                padding: '0.38rem 0.8rem',
+                borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'polishing' ? 750 : 500,
-                color: activeTab === 'polishing' ? '#5c3a21' : '#78716c',
-                fontSize: '0.9rem',
+                fontWeight: activeTab === 'polishing' ? 750 : 600,
+                color: activeTab === 'polishing' ? '#ffffff' : '#57534e',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.45rem',
+                gap: '0.4rem',
                 whiteSpace: 'nowrap',
                 transition: 'color 180ms ease'
               }}
             >
-              <Palette size={17} /> Polishing Stage ({getJobsByStage('polishing').length})
+              <Palette size={14} />
+              <span>Polishing Stage</span>
+              <span style={{
+                padding: '1px 6px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 750,
+                backgroundColor: activeTab === 'polishing' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
+                color: activeTab === 'polishing' ? '#ffffff' : '#78716c'
+              }}>
+                {getJobsByStage('polishing').length}
+              </span>
             </button>
 
             <button
@@ -1574,21 +1871,34 @@ function Stock() {
               onClick={() => setActiveTab('packaging')}
               style={{
                 position: 'relative',
-                padding: '0.65rem 0.25rem',
+                zIndex: 2,
+                padding: '0.38rem 0.8rem',
+                borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'packaging' ? 750 : 500,
-                color: activeTab === 'packaging' ? '#5c3a21' : '#78716c',
-                fontSize: '0.9rem',
+                fontWeight: activeTab === 'packaging' ? 750 : 600,
+                color: activeTab === 'packaging' ? '#ffffff' : '#57534e',
+                fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.45rem',
+                gap: '0.4rem',
                 whiteSpace: 'nowrap',
                 transition: 'color 180ms ease'
               }}
             >
-              <PackageCheck size={17} /> Packaging Stage ({getJobsByStage('packaging').length})
+              <PackageCheck size={14} />
+              <span>Packaging Stage</span>
+              <span style={{
+                padding: '1px 6px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 750,
+                backgroundColor: activeTab === 'packaging' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
+                color: activeTab === 'packaging' ? '#ffffff' : '#78716c'
+              }}>
+                {getJobsByStage('packaging').length}
+              </span>
             </button>
 
             {isSupervisor && (
@@ -1597,50 +1907,63 @@ function Stock() {
                 onClick={() => setActiveTab('qc')}
                 style={{
                   position: 'relative',
-                  padding: '0.65rem 0.25rem',
+                  zIndex: 2,
+                  padding: '0.38rem 0.8rem',
+                  borderRadius: '7px',
                   border: 'none',
                   background: 'none',
-                  fontWeight: activeTab === 'qc' ? 750 : 500,
-                  color: activeTab === 'qc' ? '#5c3a21' : '#78716c',
-                  fontSize: '0.9rem',
+                  fontWeight: activeTab === 'qc' ? 750 : 600,
+                  color: activeTab === 'qc' ? '#ffffff' : '#57534e',
+                  fontSize: '0.8rem',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.45rem',
+                  gap: '0.4rem',
                   whiteSpace: 'nowrap',
                   transition: 'color 180ms ease'
                 }}
               >
-                <ClipboardCheck size={17} /> QC Requests ({qcPendingJobs.length})
+                <ClipboardCheck size={14} />
+                <span>QC Requests</span>
+                <span style={{
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  fontSize: '0.68rem',
+                  fontWeight: 750,
+                  backgroundColor: activeTab === 'qc' ? 'rgba(255,255,255,0.25)' : qcPendingJobs.length > 0 ? '#fee2e2' : '#f5f5f4',
+                  color: activeTab === 'qc' ? '#ffffff' : qcPendingJobs.length > 0 ? '#dc2626' : '#78716c'
+                }}>
+                  {qcPendingJobs.length}
+                </span>
               </button>
             )}
           </div>
 
-          {/* ── Search & Filter Controls Bar (SINGLE INLINE ROW MATCHING MOCKUP) ── */}
+          {/* ── Search & Filter Controls Bar ── */}
           <div style={{
             backgroundColor: '#ffffff',
-            borderRadius: '14px',
-            padding: '0.85rem 1.25rem',
+            borderRadius: '12px',
+            padding: '0.5rem 0.85rem',
             border: '1px solid #e7e5e4',
             boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-            marginBottom: '1.25rem'
+            marginBottom: '0.75rem'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap' }}>
               
               {/* Left Search Bar */}
               <div className="stock-search-input-wrap" style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.6rem',
+                gap: '0.5rem',
                 flex: '1 1 260px',
-                maxWidth: '360px',
+                maxWidth: '380px',
                 backgroundColor: '#ffffff',
                 border: '1px solid #e7e5e4',
-                borderRadius: '10px',
-                padding: '0 0.85rem',
-                height: '40px'
+                borderRadius: '8px',
+                padding: '0 0.75rem',
+                height: '36px'
               }}>
-                <Search size={16} color="#a8a29e" />
+                <Search size={15} color="#a8a29e" />
                 <input
                   type="text"
                   placeholder="Search by style no., product name..."
@@ -1651,17 +1974,26 @@ function Stock() {
                     outline: 'none',
                     background: 'transparent',
                     width: '100%',
-                    fontSize: '0.86rem',
+                    fontSize: '0.82rem',
                     color: '#1c1917'
                   }}
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    style={{ background: 'none', border: 'none', color: '#a8a29e', cursor: 'pointer', padding: 0 }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
 
               {/* Right Responsive Dropdowns */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
                 {activeTab === 'stock' && (
                   <>
-                    <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
+                    <div style={{ flex: '1 1 125px', minWidth: '115px', maxWidth: '155px' }}>
                       <StatusSelect
                         options={STOCK_STATUS_FILTER_OPTIONS}
                         value={statusFilter}
@@ -1669,7 +2001,7 @@ function Stock() {
                       />
                     </div>
 
-                    <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
+                    <div style={{ flex: '1 1 125px', minWidth: '115px', maxWidth: '155px' }}>
                       <CustomSelect
                         value={buyerFilter}
                         onChange={e => setBuyerFilter(e.target.value)}
@@ -1683,13 +2015,41 @@ function Stock() {
                   </>
                 )}
 
-                <div style={{ flex: '1 1 130px', minWidth: '120px', maxWidth: '160px' }}>
+                <div style={{ flex: '1 1 125px', minWidth: '115px', maxWidth: '155px' }}>
                   <OrderBySelect
                     options={ORDER_OPTIONS_DATE_QTY}
                     value={ordering}
                     onChange={setOrdering}
                   />
                 </div>
+
+                {(searchTerm || statusFilter || buyerFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('');
+                      setBuyerFilter('');
+                    }}
+                    style={{
+                      backgroundColor: '#f5f5f4',
+                      border: '1px solid #e7e5e4',
+                      borderRadius: '8px',
+                      padding: '0 0.75rem',
+                      height: '36px',
+                      fontSize: '0.78rem',
+                      fontWeight: 650,
+                      color: '#57534e',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    <span>Reset</span>
+                  </button>
+                )}
               </div>
 
             </div>
@@ -1702,29 +2062,30 @@ function Stock() {
               <div className="po-desktop-table table-fade-slide-in">
                 <div style={{
                   backgroundColor: '#ffffff',
-                  borderRadius: '14px',
+                  borderRadius: '12px',
                   border: '1px solid #e7e5e4',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                   overflow: 'hidden'
                 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e7e5e4' }}>
-                        <th style={{ padding: '0.9rem 1rem', width: '40px' }}>
+                      <tr style={{ backgroundColor: '#faf8f5', borderBottom: '1px solid #e7e5e4' }}>
+                        <th style={{ padding: '0.45rem 0.75rem', width: '36px' }}>
                           <input
                             type="checkbox"
                             checked={selectedRowIds.size === unitFilteredStock.length && unitFilteredStock.length > 0}
                             onChange={toggleSelectAll}
+                            style={{ cursor: 'pointer', accentColor: '#5c3a21' }}
                           />
                         </th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ITEM / PRODUCT NAME</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QUANTITY</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>UNIT PRICE</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>LOCATION</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>BUYER REF</th>
-                        <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ITEM / PRODUCT NAME</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>QUANTITY</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>UNIT PRICE</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>LOCATION</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>BUYER REF</th>
+                        <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1732,128 +2093,183 @@ function Stock() {
                         <TableSkeleton rows={6} cols={9} hasImage={false} />
                       ) : unitFilteredStock.length === 0 ? (
                         <tr>
-                          <td colSpan={9} style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: '#78716c' }}>
+                          <td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#78716c' }}>
                             <div style={{
-                              width: '56px',
-                              height: '56px',
+                              width: '46px',
+                              height: '46px',
                               borderRadius: '50%',
                               backgroundColor: '#f5f5f4',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              margin: '0 auto 1rem auto',
+                              margin: '0 auto 0.75rem auto',
                               color: '#a8a29e'
                             }}>
-                              <Package size={28} />
+                              <Package size={24} />
                             </div>
-                            <div style={{ fontWeight: 750, fontSize: '1rem', color: '#1c1917', marginBottom: '0.35rem' }}>No stock items found</div>
-                            <div style={{ fontSize: '0.84rem', color: '#78716c' }}>Try adjusting your search terms or filters to find what you're looking for.</div>
+                            <div style={{ fontWeight: 750, fontSize: '0.92rem', color: '#1c1917', marginBottom: '0.25rem' }}>No stock items found</div>
+                            <div style={{ fontSize: '0.8rem', color: '#78716c' }}>Try adjusting your search terms or filters to find what you're looking for.</div>
                           </td>
                         </tr>
                       ) : (
                         unitFilteredStock.map((item, idx) => (
                           <tr
                             key={item.id}
-                            className="table-row-stagger"
+                            className="table-row-stagger stock-table-row"
                             style={{
                               borderBottom: '1px solid #f5f5f4',
-                              animationDelay: `${Math.min(idx * 25, 250)}ms`
+                              animationDelay: `${Math.min(idx * 20, 200)}ms`
                             }}
                           >
-                          <td style={{ padding: '0.85rem 1rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
                             <input
                               type="checkbox"
                               checked={selectedRowIds.has(item.id)}
                               onChange={(e) => toggleSelectRow(item.id, e)}
+                              style={{ cursor: 'pointer', accentColor: '#5c3a21' }}
                             />
                           </td>
-                          <td style={{ padding: '0.85rem 1rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
                             <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '1.5px 6px',
+                              borderRadius: '5px',
+                              backgroundColor: '#f5ede3',
+                              color: '#5c3a21',
+                              fontFamily: 'ui-monospace, monospace',
                               fontWeight: 750,
-                              fontSize: '0.84rem',
-                              color: '#1c1917',
-                              display: 'inline-block'
+                              fontSize: '0.76rem',
+                              letterSpacing: '0.01em'
                             }}>
                               {item.style_no}
                             </span>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1c1917', fontSize: '0.86rem' }}>
-                            {item.item_name}
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
+                            <div style={{ fontWeight: 700, color: '#1c1917', fontSize: '0.82rem' }}>
+                              {item.item_name}
+                            </div>
+                            {item.description && (
+                              <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px', maxWidth: '280px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {item.description}
+                              </div>
+                            )}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '0.88rem' }}>
-                            {parseFloat(item.quantity).toFixed(2)} {item.unit}
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'baseline',
+                              gap: '3px',
+                              fontWeight: 800,
+                              color: '#047857',
+                              fontSize: '0.82rem',
+                              backgroundColor: '#ecfdf5',
+                              padding: '1.5px 6px',
+                              borderRadius: '5px'
+                            }}>
+                              <span>{parseFloat(item.quantity).toFixed(2)}</span>
+                              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669' }}>{item.unit}</span>
+                            </span>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 500, color: '#44403c', fontSize: '0.84rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 650, color: '#1c1917', fontSize: '0.82rem' }}>
                             {item.unit_price ? `₹${parseFloat(item.unit_price).toLocaleString('en-IN')}` : '—'}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#44403c', fontSize: '0.82rem' }}>
-                            <div style={{ fontWeight: 650, color: '#1c1917' }}>{item.location || 'Main Store'}</div>
-                            <div style={{ fontSize: '0.78rem', color: '#78716c' }}>Raw Zone</div>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Warehouse size={13} color="#78716c" style={{ flexShrink: 0 }} />
+                              <div>
+                                <div style={{ fontWeight: 650, color: '#1c1917', fontSize: '0.8rem', lineHeight: 1.15 }}>{item.location || 'Main Store'}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#a8a29e', lineHeight: 1.15 }}>Raw Zone</div>
+                              </div>
+                            </div>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
                             {getStatusBadge(item.status)}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', fontSize: '0.82rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
                             {item.buyer_detail?.name ? (
-                              <span style={{ color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}>{item.buyer_detail.name}</span>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                color: '#2563eb',
+                                fontWeight: 700,
+                                fontSize: '0.8rem'
+                              }}>
+                                <Building2 size={12} color="#3b82f6" />
+                                {item.buyer_detail.name}
+                              </span>
                             ) : (
                               <span style={{ color: '#a8a29e' }}>—</span>
                             )}
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.4rem' }}>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.3rem' }}>
                               {isSupervisor && (
                                 <button
                                   type="button"
+                                  className="stock-action-pill"
                                   onClick={() => handleOpenAssignModal('sanding', item)}
                                   style={{
                                     backgroundColor: '#ffffff',
                                     color: '#44403c',
                                     border: '1px solid #e7e5e4',
-                                    borderRadius: '8px',
-                                    padding: '4px 10px',
-                                    fontSize: '0.78rem',
+                                    borderRadius: '6px',
+                                    padding: '2px 6px',
+                                    fontSize: '0.74rem',
                                     fontWeight: 650,
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '3px'
+                                    gap: '2px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                                   }}
                                 >
-                                  Arrange <ChevronDown size={13} color="#78716c" />
+                                  Arrange <ChevronDown size={11} color="#78716c" />
                                 </button>
                               )}
                               <button
                                 type="button"
+                                className="stock-action-pill"
                                 onClick={() => openEditModal(item)}
                                 style={{
                                   backgroundColor: '#ffffff',
                                   color: '#44403c',
                                   border: '1px solid #e7e5e4',
-                                  borderRadius: '8px',
-                                  padding: '4px 10px',
-                                  fontSize: '0.78rem',
+                                  borderRadius: '6px',
+                                  padding: '2px 6px',
+                                  fontSize: '0.74rem',
                                   fontWeight: 650,
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                                 }}
                               >
-                                Edit
+                                <Edit3 size={11} color="#78716c" />
+                                <span>Edit</span>
                               </button>
                               <button
                                 type="button"
+                                className="stock-action-delete"
                                 onClick={() => handleDelete(item.id, item.item_name)}
                                 style={{
-                                  backgroundColor: '#ffffff',
+                                  backgroundColor: 'transparent',
                                   color: '#dc2626',
                                   border: 'none',
-                                  borderRadius: '8px',
-                                  padding: '4px 8px',
-                                  fontSize: '0.78rem',
+                                  borderRadius: '6px',
+                                  padding: '2px 6px',
+                                  fontSize: '0.74rem',
                                   fontWeight: 700,
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px'
                                 }}
                               >
-                                Delete
+                                <Trash2 size={11} />
+                                <span>Delete</span>
                               </button>
                             </div>
                           </td>
@@ -1864,22 +2280,66 @@ function Stock() {
                 </table>
               </div>
 
+              {/* Floating Bulk Selection Dock */}
+              {selectedRowIds.size > 0 && (
+                <div className="stock-floating-dock">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem', fontWeight: 750 }}>
+                    <CheckCircle2 size={16} color="#22c55e" />
+                    <span>{selectedRowIds.size} {selectedRowIds.size === 1 ? 'item' : 'items'} selected</span>
+                  </div>
+                  <div style={{ width: '1px', height: '16px', backgroundColor: 'rgba(255,255,255,0.2)' }} />
+                  <button
+                    type="button"
+                    onClick={handleDownloadExcel}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem'
+                    }}
+                  >
+                    <Download size={13} /> Export Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRowIds(new Set())}
+                    style={{
+                      background: 'rgba(255,255,255,0.15)',
+                      border: 'none',
+                      color: '#ffffff',
+                      borderRadius: '999px',
+                      padding: '2px 8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              )}
+
               {/* ── Table Footer & Pagination Bar ── */}
               <div style={{
-                marginTop: '1.25rem',
+                marginTop: '0.65rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '1rem',
-                fontSize: '0.83rem',
+                gap: '0.75rem',
+                fontSize: '0.78rem',
                 color: '#78716c'
               }}>
                 <div>
                   Showing {unitFilteredStock.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, unitFilteredStock.length)} of {unitFilteredStock.length} items
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                   <button
                     type="button"
                     disabled={currentPage === 1}
@@ -1888,8 +2348,9 @@ function Stock() {
                       border: '1px solid #e7e5e4',
                       backgroundColor: '#ffffff',
                       color: '#44403c',
-                      borderRadius: '8px',
-                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      padding: '2px 8px',
+                      fontSize: '0.78rem',
                       cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
                       opacity: currentPage === 1 ? 0.5 : 1
                     }}
@@ -1903,8 +2364,9 @@ function Stock() {
                       border: 'none',
                       backgroundColor: '#5c3a21',
                       color: '#ffffff',
-                      borderRadius: '8px',
-                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      padding: '2px 10px',
+                      fontSize: '0.78rem',
                       fontWeight: 750
                     }}
                   >
@@ -1919,8 +2381,9 @@ function Stock() {
                       border: '1px solid #e7e5e4',
                       backgroundColor: '#ffffff',
                       color: '#44403c',
-                      borderRadius: '8px',
-                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      padding: '2px 8px',
+                      fontSize: '0.78rem',
                       cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
                       opacity: currentPage >= totalPages ? 0.5 : 1
                     }}
@@ -1929,7 +2392,7 @@ function Stock() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <span>Items per page:</span>
                   <select
                     value={itemsPerPage}
@@ -1939,10 +2402,10 @@ function Stock() {
                     }}
                     style={{
                       border: '1px solid #e7e5e4',
-                      borderRadius: '8px',
-                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      padding: '2px 6px',
                       backgroundColor: '#ffffff',
-                      fontSize: '0.83rem',
+                      fontSize: '0.78rem',
                       color: '#1c1917',
                       outline: 'none'
                     }}
@@ -1961,68 +2424,94 @@ function Stock() {
             <div className="po-desktop-table">
               <div style={{
                 backgroundColor: '#ffffff',
-                borderRadius: '14px',
+                borderRadius: '12px',
                 border: '1px solid #e7e5e4',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                 overflow: 'hidden'
               }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#f7f3ee', borderBottom: '1px solid #e7e5e4' }}>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>JOB ID</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PRODUCT NAME</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED CONTRACTOR</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED QTY</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PASSED QTY</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
+                    <tr style={{ backgroundColor: '#faf8f5', borderBottom: '1px solid #e7e5e4' }}>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>JOB ID</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PRODUCT NAME</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED CONTRACTOR</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED QTY</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PASSED QTY</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
                     {getJobsByStage(activeTab).length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: '#78716c' }}>
-                          <Wrench size={32} style={{ marginBottom: '0.5rem', color: '#d6d3d1' }} />
-                          <div style={{ fontWeight: 600 }}>No active jobs found for {activeTab} stage.</div>
+                        <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: '#78716c' }}>
+                          <Wrench size={28} style={{ marginBottom: '0.4rem', color: '#d6d3d1' }} />
+                          <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>No active jobs found for {activeTab} stage.</div>
                         </td>
                       </tr>
                     ) : (
                       getJobsByStage(activeTab).map((job) => (
-                        <tr key={job.id} style={{ borderBottom: '1px solid #f5f5f4' }}>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#0284c7' }}>#JOB-{job.id}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>{job.style_no}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1c1917' }}>{job.item_name}</td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#44403c', fontWeight: 600 }}>{job.contractor_name || 'Unassigned'}</td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 800, color: '#1c1917' }}>{job.assigned_qty} {job.unit}</td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 800, color: '#059669' }}>{job.passed_qty || 0} {job.unit}</td>
-                          <td style={{ padding: '0.85rem 1rem' }}>
+                        <tr key={job.id} className="stock-table-row" style={{ borderBottom: '1px solid #f5f5f4' }}>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
                             <span style={{
-                              padding: '3px 10px',
-                              borderRadius: '6px',
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              textTransform: 'uppercase',
-                              backgroundColor: job.status === 'qc_requested' ? '#fef3c7' : job.status === 'qc_completed' ? '#d1fae5' : '#e0f2fe',
-                              color: job.status === 'qc_requested' ? '#b45309' : job.status === 'qc_completed' ? '#059669' : '#0284c7'
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '1.5px 6px',
+                              borderRadius: '5px',
+                              backgroundColor: '#e0f2fe',
+                              color: '#0369a1',
+                              fontFamily: 'ui-monospace, monospace',
+                              fontWeight: 750,
+                              fontSize: '0.74rem'
                             }}>
+                              #JOB-{job.id}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 700, color: '#1c1917', fontSize: '0.8rem' }}>{job.style_no}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 700, color: '#1c1917', fontSize: '0.82rem' }}>{job.item_name}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', color: '#44403c', fontWeight: 600, fontSize: '0.78rem' }}>{job.contractor_name || 'Unassigned'}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 750, color: '#1c1917', fontSize: '0.82rem' }}>{job.assigned_qty} {job.unit}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '0.82rem' }}>{job.passed_qty || 0} {job.unit}</td>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
+                            <span style={{
+                              padding: '1.5px 7px',
+                              borderRadius: '999px',
+                              fontSize: '0.68rem',
+                              fontWeight: 750,
+                              textTransform: 'uppercase',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              backgroundColor: job.status === 'qc_requested' ? '#fffbeb' : job.status === 'qc_completed' ? '#ecfdf5' : '#f0f9ff',
+                              border: job.status === 'qc_requested' ? '1px solid #fde68a' : job.status === 'qc_completed' ? '1px solid #a7f3d0' : '1px solid #bae6fd',
+                              color: job.status === 'qc_requested' ? '#92400e' : job.status === 'qc_completed' ? '#065f46' : '#0369a1'
+                            }}>
+                              <span style={{
+                                width: '4px',
+                                height: '4px',
+                                borderRadius: '50%',
+                                backgroundColor: job.status === 'qc_requested' ? '#f59e0b' : job.status === 'qc_completed' ? '#10b981' : '#0284c7'
+                              }} />
                               {job.status === 'qc_requested' ? 'QC REQUESTED' : job.status === 'qc_completed' ? 'QC COMPLETED' : 'IN PRODUCTION'}
                             </span>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
                             {isSupervisor ? (
                               <button
                                 type="button"
+                                className="btn-subtle-motion"
                                 onClick={() => handleOpenQCModal(job)}
                                 style={{
                                   backgroundColor: '#059669',
                                   color: '#ffffff',
                                   border: 'none',
-                                  borderRadius: '8px',
-                                  padding: '4px 10px',
-                                  fontSize: '0.78rem',
+                                  borderRadius: '6px',
+                                  padding: '3px 9px',
+                                  fontSize: '0.75rem',
                                   fontWeight: 700,
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 2px rgba(5,150,105,0.2)'
                                 }}
                               >
                                 Perform QC
@@ -2030,16 +2519,18 @@ function Stock() {
                             ) : (
                               <button
                                 type="button"
+                                className="btn-subtle-motion"
                                 onClick={() => handleRequestQC(job.id)}
                                 style={{
                                   backgroundColor: '#2563eb',
                                   color: '#ffffff',
                                   border: 'none',
-                                  borderRadius: '8px',
-                                  padding: '4px 10px',
-                                  fontSize: '0.78rem',
+                                  borderRadius: '6px',
+                                  padding: '3px 9px',
+                                  fontSize: '0.75rem',
                                   fontWeight: 700,
-                                  cursor: 'pointer'
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 2px rgba(37,99,235,0.2)'
                                 }}
                               >
                                 Request QC
@@ -2060,7 +2551,7 @@ function Stock() {
             <div className="po-desktop-table">
               <div style={{
                 backgroundColor: '#ffffff',
-                borderRadius: '14px',
+                borderRadius: '12px',
                 border: '1px solid #e7e5e4',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                 overflow: 'hidden'
@@ -2068,45 +2559,62 @@ function Stock() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ backgroundColor: '#fff1f2', borderBottom: '1px solid #fecdd3' }}>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>JOB ID</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STAGE</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO & PRODUCT</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'left', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>CONTRACTOR</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED QTY</th>
-                      <th style={{ padding: '0.9rem 1rem', textAlign: 'right', fontSize: '0.72rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTION</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>JOB ID</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STAGE</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO & PRODUCT</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>CONTRACTOR</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED QTY</th>
+                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#9f1239', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
                     {qcPendingJobs.length === 0 ? (
                       <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', padding: '3rem', color: '#78716c' }}>
-                          <CheckCircle2 size={32} style={{ marginBottom: '0.5rem', color: '#059669' }} />
-                          <div style={{ fontWeight: 600 }}>All contractor QC requests completed!</div>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem', color: '#78716c' }}>
+                          <CheckCircle2 size={28} style={{ marginBottom: '0.4rem', color: '#059669' }} />
+                          <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>All contractor QC requests completed!</div>
                         </td>
                       </tr>
                     ) : (
                       qcPendingJobs.map((job) => (
-                        <tr key={job.id} style={{ borderBottom: '1px solid #f5f5f4' }}>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#dc2626' }}>#JOB-{job.id}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700, textTransform: 'capitalize' }}>{job.stage}</td>
-                          <td style={{ padding: '0.85rem 1rem' }}>
-                            <strong style={{ color: '#1c1917' }}>{job.style_no}</strong> — {job.item_name}
+                        <tr key={job.id} className="stock-table-row" style={{ borderBottom: '1px solid #f5f5f4' }}>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '1.5px 6px',
+                              borderRadius: '5px',
+                              backgroundColor: '#fee2e2',
+                              color: '#b91c1c',
+                              fontFamily: 'ui-monospace, monospace',
+                              fontWeight: 750,
+                              fontSize: '0.74rem'
+                            }}>
+                              #JOB-{job.id}
+                            </span>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#44403c' }}>{job.contractor_name}</td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 800 }}>{job.assigned_qty} {job.unit}</td>
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 700, textTransform: 'capitalize', color: '#1c1917', fontSize: '0.8rem' }}>{job.stage}</td>
+                          <td style={{ padding: '0.35rem 0.75rem' }}>
+                            <strong style={{ color: '#1c1917', fontSize: '0.82rem' }}>{job.style_no}</strong>{' '}
+                            <span style={{ color: '#57534e', fontSize: '0.8rem' }}>— {job.item_name}</span>
+                          </td>
+                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 600, color: '#44403c', fontSize: '0.78rem' }}>{job.contractor_name}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 800, color: '#1c1917', fontSize: '0.82rem' }}>{job.assigned_qty} {job.unit}</td>
+                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
                             <button
                               type="button"
+                              className="btn-subtle-motion"
                               onClick={() => handleOpenQCModal(job)}
                               style={{
                                 backgroundColor: '#dc2626',
                                 color: '#ffffff',
                                 border: 'none',
-                                borderRadius: '8px',
-                                padding: '5px 12px',
-                                fontSize: '0.8rem',
+                                borderRadius: '6px',
+                                padding: '3px 9px',
+                                fontSize: '0.76rem',
                                 fontWeight: 700,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 2px rgba(220,38,38,0.2)'
                               }}
                             >
                               Perform Inspection QC

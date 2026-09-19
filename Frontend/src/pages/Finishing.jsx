@@ -1,17 +1,15 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { 
-  X, Upload, Sparkles, Filter, Search, ArrowLeft, Download, 
-  Trash2, Edit3, Eye, CheckCircle, AlertCircle, Palette, Layers, FileSpreadsheet
-} from 'lucide-react';
+import { Palette, X, Search, Filter, ArrowLeft, ChevronRight, Upload, Plus, Download, FileSpreadsheet, Trash2, Edit2, CheckSquare, Square, FileEdit, Sparkles } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
-import { useAuth } from '../context/AuthContext';
 import CustomSelect from '../components/CustomSelect';
+import { useAuth } from '../context/AuthContext';
 import { useLastVisitedItem } from '../hooks/useLastVisitedItem';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
+import { useDrafts } from '../context/DraftsContext';
 
 const emptyFinishForm = {
   name: '',
@@ -143,6 +141,23 @@ function Finishing() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterWoodType, setFilterWoodType] = useState('');
   const [ordering, setOrdering] = useState('-created_at');
+
+  const { drafts, deleteDraft } = useDrafts();
+
+  const orderOptions = useMemo(() => {
+    const draftCount = drafts.filter(d => d.formType === 'finishing').length;
+    return [
+      ...ORDER_OPTIONS_FINISH,
+      {
+        value: 'draft',
+        label: 'Drafts',
+        badge: draftCount > 0 ? draftCount : null,
+        icon: FileEdit,
+        isDividerBefore: true
+      }
+    ];
+  }, [drafts]);
+
   const [currentPage, setCurrentPage] = useState(() => {
     try {
       const hasVisitedItem = sessionStorage.getItem('last_visited_finishes');
@@ -274,6 +289,47 @@ function Finishing() {
   }, [searchTerm]);
 
   const fetchFinishes = useCallback(() => {
+    if (ordering === 'draft') {
+      setLoading(true);
+      const currentDrafts = drafts.filter(d => d.formType === 'finishing');
+      const mapped = currentDrafts.map(d => {
+        const data = d.data || {};
+        return {
+          id: d.id,
+          name: data.name || 'Draft Finish',
+          finish_code: data.finish_code || '',
+          color: data.color || '',
+          wood_type: data.wood_type || '',
+          image: null,
+          image_url: null,
+          isDraft: true,
+          rawDraft: d,
+          updatedAt: d.updatedAt
+        };
+      });
+
+      let resList = mapped;
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
+        resList = resList.filter(f =>
+          (f.name && f.name.toLowerCase().includes(q)) ||
+          (f.finish_code && f.finish_code.toLowerCase().includes(q)) ||
+          (f.color && f.color.toLowerCase().includes(q))
+        );
+      }
+      if (filterWoodType) {
+        resList = resList.filter(f => f.wood_type === filterWoodType);
+      }
+
+      resList.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+      setTotalPages(Math.max(1, Math.ceil(resList.length / 20)));
+      const paginated = resList.slice((currentPage - 1) * 20, currentPage * 20);
+      setFinishes(paginated);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const params = { page: currentPage, page_size: 20, ordering };
     if (debouncedSearch) params.search = debouncedSearch;
@@ -282,7 +338,8 @@ function Finishing() {
     api.get('/finishes/', { params })
       .then(res => {
         const data = res.data.results || res.data || [];
-        setFinishes(data);
+        const mapped = data.map(item => ({ ...item, isDraft: false }));
+        setFinishes(mapped);
         if (res.data.count !== undefined) {
           setTotalPages(Math.ceil(res.data.count / 20) || 1);
         } else {
@@ -291,7 +348,7 @@ function Finishing() {
       })
       .catch(err => console.error('Error fetching finishes:', err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, debouncedSearch, filterWoodType]);
+  }, [currentPage, ordering, debouncedSearch, filterWoodType, drafts]);
 
   useEffect(() => {
     fetchFinishes();
@@ -1281,7 +1338,7 @@ function Finishing() {
           {/* Order By */}
           <div className="orderby-wrap" style={{ marginLeft: 'auto', flexShrink: 0 }}>
             <OrderBySelect
-              options={ORDER_OPTIONS_FINISH}
+              options={orderOptions}
               value={ordering}
               onChange={setOrdering}
               width="180px"
@@ -1299,10 +1356,20 @@ function Finishing() {
         </div>
       ) : finishes.length === 0 ? (
         <div style={{ backgroundColor: '#ffffff', borderRadius: '24px', padding: '3.5rem 1.5rem', textAlign: 'center', border: '1px solid #e6ded3' }}>
-          <Palette size={40} color="#a8a29e" style={{ margin: '0 auto 0.75rem' }} />
-          <h3 style={{ margin: '0 0 0.4rem', color: '#1c1917', fontSize: '1.1rem', fontWeight: 800 }}>No Finishes Found</h3>
-          <p style={{ margin: 0, color: '#78716c', fontSize: '0.88rem' }}>Create a new finish record to get started with the catalog.</p>
-          {isAdmin && (
+          {ordering === 'draft' ? (
+            <FileEdit size={40} color="#d97706" style={{ margin: '0 auto 0.75rem' }} />
+          ) : (
+            <Palette size={40} color="#a8a29e" style={{ margin: '0 auto 0.75rem' }} />
+          )}
+          <h3 style={{ margin: '0 0 0.4rem', color: '#1c1917', fontSize: '1.1rem', fontWeight: 800 }}>
+            {ordering === 'draft' ? 'No Draft Finishes Found' : 'No Finishes Found'}
+          </h3>
+          <p style={{ margin: 0, color: '#78716c', fontSize: '0.88rem' }}>
+            {ordering === 'draft'
+              ? 'When you save a Finish as draft, it will appear here.'
+              : 'Create a new finish record to get started with the catalog.'}
+          </p>
+          {isAdmin && ordering !== 'draft' && (
             <button onClick={() => navigate('/finishing/new')} className="btn-primary" style={{ marginTop: '1.25rem', borderRadius: '10px', backgroundColor: '#9a5323' }}>
               + Add First Finish
             </button>
@@ -1323,7 +1390,7 @@ function Finishing() {
                 className={`finish-card-animated ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
                 style={{
                   animationDelay: `${index * 50}ms`,
-                  backgroundColor: isSelected ? '#fffbeb' : undefined,
+                  backgroundColor: finish.isDraft ? '#fffdf7' : isSelected ? '#fffbeb' : undefined,
                   borderRadius: '24px',
                   boxShadow: '0 8px 30px rgba(0, 0, 0, 0.04)',
                   padding: '1.25rem 1.35rem',
@@ -1333,9 +1400,19 @@ function Finishing() {
                   cursor: 'pointer',
                   transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
                   position: 'relative',
-                  border: isSelected ? '2px solid #f59e0b' : undefined
+                  border: finish.isDraft ? '1.5px solid #fde68a' : isSelected ? '2px solid #f59e0b' : undefined
                 }}
-                onClick={() => selectionMode ? toggleSelectFinish(finish.id) : navigate(`/finishing/${finish.id}`)}
+                onClick={() => {
+                  if (selectionMode) {
+                    toggleSelectFinish(finish.id);
+                  } else if (finish.isDraft) {
+                    navigate('/finishing/new', {
+                      state: { draftId: finish.rawDraft.id, draftData: finish.rawDraft.data }
+                    });
+                  } else {
+                    navigate(`/finishing/${finish.id}`);
+                  }
+                }}
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = 'translateY(-4px)';
                   e.currentTarget.style.boxShadow = '0 16px 36px rgba(0, 0, 0, 0.08)';
@@ -1344,6 +1421,7 @@ function Finishing() {
                   e.currentTarget.style.transform = 'translateY(0)';
                   e.currentTarget.style.boxShadow = '0 8px 30px rgba(0, 0, 0, 0.04)';
                 }}
+                title={finish.isDraft ? "Click to resume draft" : undefined}
               >
                 {/* Selection Checkbox – only in selectionMode, staggered fade-in */}
                 {selectionMode && (
@@ -1397,22 +1475,40 @@ function Finishing() {
                 {/* ── Right Content Block ── */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem', minWidth: 0 }}>
                   
-                  {/* Finish Code Pill Badge */}
-                  {finish.finish_code && (
-                    <span style={{
-                      backgroundColor: '#fff2e2',
-                      color: '#9a5323',
-                      fontWeight: 700,
-                      fontSize: '0.82rem',
-                      padding: '3px 12px',
-                      borderRadius: '8px',
-                      alignSelf: 'flex-start',
-                      letterSpacing: '0.01em',
-                      lineHeight: 1.25
-                    }}>
-                      {finish.finish_code}
-                    </span>
-                  )}
+                  {/* Finish Code Pill Badge & Draft Badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {finish.finish_code && (
+                      <span style={{
+                        backgroundColor: '#fff2e2',
+                        color: '#9a5323',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        padding: '3px 12px',
+                        borderRadius: '8px',
+                        letterSpacing: '0.01em',
+                        lineHeight: 1.25
+                      }}>
+                        {finish.finish_code}
+                      </span>
+                    )}
+                    {finish.isDraft && (
+                      <span style={{
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        fontWeight: 700,
+                        fontSize: '0.75rem',
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        border: '1px solid #fde68a',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                        Draft
+                      </span>
+                    )}
+                  </div>
 
                   {/* Main Finish Title */}
                   <h3 className="finish-card-title" style={{
@@ -1476,6 +1572,44 @@ function Finishing() {
                       </strong>
                     </div>
                   </div>
+
+                  {finish.isDraft && (
+                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }} onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/finishing/new', {
+                          state: { draftId: finish.rawDraft.id, draftData: finish.rawDraft.data }
+                        })}
+                        className="btn-secondary"
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          backgroundColor: '#fef3c7',
+                          borderColor: '#fde68a',
+                          color: '#92400e',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FileEdit size={13} /> Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Discard draft for "${finish.name}"?`)) {
+                            deleteDraft(finish.id);
+                          }
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '0.35rem 0.6rem', fontSize: '0.78rem', color: '#dc2626', borderColor: '#fca5a5' }}
+                      >
+                        <Trash2 size={13} /> Discard
+                      </button>
+                    </div>
+                  )}
 
                 </div>
               </div>
