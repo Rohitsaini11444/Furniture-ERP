@@ -1,7 +1,7 @@
 """
 Django settings for core project.
 """
-
+# deployment testing changes 
 import os
 from pathlib import Path
 from datetime import timedelta
