@@ -150,13 +150,15 @@ export default function StoreManagement() {
   // Multi-Select Bulk Actions State
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [activeRowId, setActiveRowId] = useState(null);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [deletingBulk, setDeletingBulk] = useState(false);
 
-  // Clear selection when activeTab changes
+  // Clear selection and active row when activeTab changes
   useEffect(() => {
     setSelectedRowIds(new Set());
+    setActiveRowId(null);
   }, [activeTab]);
 
   const getActiveModuleKey = useCallback(() => {
@@ -781,8 +783,45 @@ export default function StoreManagement() {
   }, [orderMaterialReturns, materialReturnDrafts, searchQuery, itemsList, contractors, paginatedMaterialReturns]);
 
   return (
-    <div style={{ padding: '1rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
+    <div style={{ padding: '0.25rem 0.5rem 1rem 0.5rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
       <style>{`
+        .desktop-table-view table th {
+          padding: 0.5rem 0.75rem !important;
+          font-size: 0.8rem !important;
+        }
+        .desktop-table-view table td {
+          padding: 0.48rem 0.75rem !important;
+          font-size: 0.82rem !important;
+        }
+        .desktop-table-view table tbody tr {
+          transition: background-color 140ms ease, box-shadow 140ms ease;
+          cursor: pointer;
+        }
+        .desktop-table-view table tbody tr:hover {
+          background-color: #f1f5f9 !important;
+        }
+        .desktop-table-view table tbody tr:hover td {
+          background-color: transparent !important;
+        }
+        .desktop-table-view table tbody tr.row-active-highlight {
+          background-color: #e0f2fe !important;
+          box-shadow: inset 4px 0 0 #0284c7;
+        }
+        .desktop-table-view table tbody tr.row-active-highlight td {
+          background-color: transparent !important;
+        }
+        .desktop-table-view table tbody tr.row-active-highlight:hover {
+          background-color: #d0ebfc !important;
+        }
+        .desktop-table-view table tbody tr.row-active-highlight:hover td {
+          background-color: transparent !important;
+        }
+        .store-tab-content-wrapper > div > div:first-child {
+          padding: 0.5rem 0.85rem !important;
+        }
+        .store-tab-content-wrapper h3 {
+          font-size: 0.95rem !important;
+        }
         @media (min-width: 769px) {
           .mobile-only { display: none !important; }
         }
@@ -902,16 +941,16 @@ export default function StoreManagement() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '1.5rem',
+        marginBottom: '0.75rem',
         flexWrap: 'wrap',
-        gap: '1rem'
+        gap: '0.5rem'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
             <div style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '10px',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
               backgroundColor: '#ea580c',
               color: '#ffffff',
               display: 'flex',
@@ -919,148 +958,148 @@ export default function StoreManagement() {
               justifyContent: 'center',
               flexShrink: 0
             }}>
-              <Warehouse size={22} />
+              <Warehouse size={18} />
             </div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
               Store Management Hub
             </h1>
           </div>
-          <p style={{ margin: '8px 0 0 0', fontSize: '0.88rem', color: '#64748b', lineHeight: 1.4 }}>
-          
-          </p>
         </div>
 
         {/* Action Buttons */}
-        <div className="store-action-btns" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div className="store-action-btns" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/store-management/material-in')}
             className="btn-subtle-motion btn-action-material-in"
+            title="Credit Stock Inward Entry"
             style={{
-              padding: '0.65rem 1.25rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
               border: 'none',
               backgroundColor: '#16a34a',
               color: '#ffffff',
               fontWeight: 700,
-              fontSize: '0.9rem',
+              fontSize: '0.82rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 4px 6px -1px rgba(22, 163, 74, 0.2)'
+              gap: '0.4rem',
+              boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)'
             }}
           >
-            <ArrowDownRight size={18} />
-            <span>Material In (Credit Stock)</span>
+            <ArrowDownRight size={15} />
+            <span>Material In</span>
           </button>
 
           <button
             onClick={() => navigate('/store-management/daily-issue')}
             className="btn-subtle-motion btn-action-daily-issue"
+            title="Daily Issue Entry Outward"
             style={{
-              padding: '0.65rem 1.25rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
               border: 'none',
               backgroundColor: '#ea580c',
               color: '#ffffff',
               fontWeight: 700,
-              fontSize: '0.9rem',
+              fontSize: '0.82rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 4px 6px -1px rgba(234, 88, 12, 0.2)'
+              gap: '0.4rem',
+              boxShadow: '0 2px 4px rgba(234, 88, 12, 0.2)'
             }}
           >
-            <ArrowUpRight size={18} />
-            <span>Daily Issue Entry (Outward)</span>
+            <ArrowUpRight size={15} />
+            <span>Daily Issue</span>
           </button>
 
           <button
             onClick={() => navigate('/store-management/material-return')}
             className="btn-subtle-motion btn-action-return"
+            title="Record Material Return"
             style={{
-              padding: '0.65rem 1.25rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
               border: 'none',
               backgroundColor: '#d97706',
               color: '#ffffff',
               fontWeight: 700,
-              fontSize: '0.9rem',
+              fontSize: '0.82rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 4px 6px -1px rgba(217, 119, 6, 0.2)'
+              gap: '0.4rem',
+              boxShadow: '0 2px 4px rgba(217, 119, 6, 0.2)'
             }}
           >
-            <Undo2 size={18} />
-            <span>Record Material Return</span>
+            <Undo2 size={15} />
+            <span>Material Return</span>
           </button>
 
           <button
             onClick={() => setIsPhysicalAuditModalOpen(true)}
             style={{
-              padding: '0.65rem 1.1rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.75rem',
+              borderRadius: '8px',
               border: '1px solid #e7e5e4',
               backgroundColor: '#ffffff',
               color: '#44403c',
               fontWeight: 700,
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
             }}
           >
-            <ClipboardCheck size={17} color="#5c3a21" />
-            <span>Start Physical Audit</span>
+            <ClipboardCheck size={15} color="#5c3a21" />
+            <span>Physical Audit</span>
           </button>
 
           <button
             onClick={() => setIsExcelImportModalOpen(true)}
             style={{
-              padding: '0.65rem 1.1rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.75rem',
+              borderRadius: '8px',
               border: '1px solid #bae6fd',
               backgroundColor: '#f0f9ff',
               color: '#0369a1',
               fontWeight: 700,
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               transition: 'all 0.2s'
             }}
           >
-            <Download size={17} color="#0284c7" />
-            <span>Import Excel Data</span>
+            <Download size={15} color="#0284c7" />
+            <span>Import Excel</span>
           </button>
 
           <button
             onClick={() => setShowAnalytics(prev => !prev)}
             style={{
-              padding: '0.65rem 1.1rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.75rem',
+              borderRadius: '8px',
               border: '1px solid #e7e5e4',
               backgroundColor: showAnalytics ? '#5c3a21' : '#ffffff',
               color: showAnalytics ? '#ffffff' : '#44403c',
               fontWeight: 700,
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               transition: 'all 0.2s'
             }}
           >
-            <BarChart3 size={17} color={showAnalytics ? '#ffffff' : '#5c3a21'} />
-            <span>{showAnalytics ? 'Hide Analytics' : 'Store Analytics'}</span>
+            <BarChart3 size={15} color={showAnalytics ? '#ffffff' : '#5c3a21'} />
+            <span>{showAnalytics ? 'Hide Analytics' : 'Analytics'}</span>
           </button>
 
           <button
@@ -1069,22 +1108,22 @@ export default function StoreManagement() {
               if (selectionMode) setSelectedRowIds(new Set());
             }}
             style={{
-              padding: '0.65rem 1.1rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.75rem',
+              borderRadius: '8px',
               border: selectionMode ? '1px solid #2563eb' : '1px solid #e7e5e4',
               backgroundColor: selectionMode ? '#eff6ff' : '#ffffff',
               color: selectionMode ? '#1d4ed8' : '#44403c',
               fontWeight: 700,
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
               transition: 'all 0.2s'
             }}
           >
-            <CheckCircle size={17} color={selectionMode ? '#1d4ed8' : '#5c3a21'} />
+            <CheckCircle size={15} color={selectionMode ? '#1d4ed8' : '#5c3a21'} />
             <span>{selectionMode ? 'Exit Selection' : 'Select Items'}</span>
           </button>
 
@@ -1092,21 +1131,21 @@ export default function StoreManagement() {
             onClick={() => navigate('/store-management/item-master/new')}
             className="btn-subtle-motion btn-action-new-item"
             style={{
-              padding: '0.65rem 1.25rem',
-              borderRadius: '10px',
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
               color: '#1e293b',
               fontWeight: 700,
-              fontSize: '0.9rem',
+              fontSize: '0.82rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
+              gap: '0.4rem'
             }}
           >
-            <Plus size={18} />
-            <span>New Item Master</span>
+            <Plus size={16} />
+            <span>New Item</span>
           </button>
         </div>
       </div>
@@ -1114,17 +1153,17 @@ export default function StoreManagement() {
       {/* Floating Multi-Select Action Bar */}
       {selectionMode && (
         <div style={{
-          marginBottom: '1.25rem',
-          padding: '0.85rem 1.25rem',
-          borderRadius: '14px',
+          marginBottom: '0.75rem',
+          padding: '0.5rem 1rem',
+          borderRadius: '10px',
           backgroundColor: '#3c2415',
           color: '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '1rem',
-          boxShadow: '0 10px 25px rgba(60, 36, 21, 0.25)',
+          gap: '0.75rem',
+          boxShadow: '0 6px 18px rgba(60, 36, 21, 0.2)',
           animation: 'slideDown 0.2s ease-out'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -1236,25 +1275,25 @@ export default function StoreManagement() {
         <div
           className="store-low-stock-banner"
           style={{
-            padding: '0.9rem 1.25rem',
+            padding: '0.45rem 0.85rem',
             backgroundColor: '#fffbeb',
             border: '1.5px solid #fde68a',
-            borderRadius: '12px',
-            marginBottom: '1.25rem',
+            borderRadius: '10px',
+            marginBottom: '0.65rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '1rem',
-            boxShadow: '0 2px 5px rgba(217, 119, 6, 0.08)',
+            gap: '0.75rem',
+            boxShadow: '0 1px 3px rgba(217, 119, 6, 0.06)',
             animation: 'fadeIn 0.2s ease-out'
           }}
         >
-          <div className="store-low-stock-banner-text" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="store-low-stock-banner-text" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <div
               style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
+                width: '28px',
+                height: '28px',
+                borderRadius: '7px',
                 backgroundColor: '#fef3c7',
                 border: '1px solid #fde68a',
                 display: 'flex',
@@ -1264,14 +1303,14 @@ export default function StoreManagement() {
                 flexShrink: 0
               }}
             >
-              <AlertTriangle size={20} />
+              <AlertTriangle size={16} />
             </div>
-            <div>
-              <strong style={{ fontSize: '0.92rem', color: '#78350f', display: 'block', lineHeight: 1.2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: '0.84rem', color: '#78350f', lineHeight: 1.2 }}>
                 ⚠️ Low Stock Alert: {lowStockItems.length} Store {lowStockItems.length === 1 ? 'Item is' : 'Items are'} below threshold!
               </strong>
-              <span style={{ fontSize: '0.78rem', color: '#92400e', lineHeight: 1.3 }}>
-                Generate batch purchase requisitions for Admin approval to restore inventory levels.
+              <span style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: 1.2 }}>
+                Generate batch purchase requisitions for Admin approval.
               </span>
             </div>
           </div>
@@ -1284,19 +1323,19 @@ export default function StoreManagement() {
               backgroundColor: '#5c3a21',
               color: '#ffffff',
               border: 'none',
-              borderRadius: '10px',
-              padding: '0.65rem 1.25rem',
-              fontSize: '0.85rem',
+              borderRadius: '8px',
+              padding: '0.38rem 0.85rem',
+              fontSize: '0.8rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 2px 5px rgba(92, 58, 33, 0.2)',
+              gap: '0.4rem',
+              boxShadow: '0 2px 4px rgba(92, 58, 33, 0.15)',
               whiteSpace: 'nowrap'
             }}
           >
-            <Sparkles size={16} color="#fbbf24" /> Review & Generate Indent
+            <Sparkles size={14} color="#fbbf24" /> Review & Generate Indent
           </button>
         </div>
       )}
@@ -1315,69 +1354,165 @@ export default function StoreManagement() {
         <StatCardsSkeleton count={4} />
       ) : (
         <>
-          <div className="desktop-only" style={{ marginBottom: '1.5rem' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1rem'
-        }}>
-          {/* Card 1: Total Stock Qty */}
-          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '0ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Inward Received Stock</span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ArrowDownRight size={18} />
+          <div className="desktop-only" style={{ marginBottom: '0.75rem' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '0.65rem'
+            }}>
+              {/* Card 1: Total Stock Qty */}
+              <div className="stat-card-animated" style={{
+                backgroundColor: '#ffffff',
+                padding: '0.55rem 0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                animationDelay: '0ms'
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  backgroundColor: '#e0f2fe',
+                  color: '#0284c7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <ArrowDownRight size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Inward Received Stock
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7', lineHeight: 1.15 }}>
+                    {stockSummaryData ? stockSummaryData.total_stock_qty.toLocaleString() : 0}
+                  </div>
+                  <div style={{ fontSize: '0.66rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Total Store Received
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0284c7', marginTop: '0.5rem' }}>
-              {stockSummaryData ? stockSummaryData.total_stock_qty.toLocaleString() : 0}
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Store Inventory Received</span>
-          </div>
 
-          {/* Card 2: Total Issued Qty */}
-          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '30ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase' }}>Issued Stock Qty</span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#ffedd5', color: '#ea580c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ArrowUpRight size={18} />
+              {/* Card 2: Total Issued Qty */}
+              <div className="stat-card-animated" style={{
+                backgroundColor: '#ffffff',
+                padding: '0.55rem 0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                animationDelay: '30ms'
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  backgroundColor: '#ffedd5',
+                  color: '#ea580c',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <ArrowUpRight size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Issued Stock Qty
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ea580c', lineHeight: 1.15 }}>
+                    {stockSummaryData ? stockSummaryData.total_issued_qty.toLocaleString() : 0}
+                  </div>
+                  <div style={{ fontSize: '0.66rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Total Issued to Contractors
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ea580c', marginTop: '0.5rem' }}>
-              {stockSummaryData ? stockSummaryData.total_issued_qty.toLocaleString() : 0}
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Total Issued to Contractors</span>
-          </div>
 
-          {/* Card 3: Balance Stock Qty */}
-          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '60ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Balance Available Stock</span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Warehouse size={18} />
+              {/* Card 3: Balance Stock Qty */}
+              <div className="stat-card-animated" style={{
+                backgroundColor: '#ffffff',
+                padding: '0.55rem 0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                animationDelay: '60ms'
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  backgroundColor: '#dcfce7',
+                  color: '#16a34a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <Warehouse size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Balance Available Stock
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.15 }}>
+                    {stockSummaryData ? stockSummaryData.total_balance_qty.toLocaleString() : 0}
+                  </div>
+                  <div style={{ fontSize: '0.66rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Available in Store
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#16a34a', marginTop: '0.5rem' }}>
-              {stockSummaryData ? stockSummaryData.total_balance_qty.toLocaleString() : 0}
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Available Stock Balance in Store</span>
-          </div>
 
-          {/* Card 4: Inventory Valuation */}
-          <div className="stat-card-animated" style={{ backgroundColor: '#ffffff', padding: '1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', animationDelay: '90ms' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase' }}>Inventory Valuation (₹)</span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <IndianRupee size={18} />
+              {/* Card 4: Inventory Valuation */}
+              <div className="stat-card-animated" style={{
+                backgroundColor: '#ffffff',
+                padding: '0.55rem 0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                animationDelay: '90ms'
+              }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fef3c7',
+                  color: '#d97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <IndianRupee size={18} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#8b5a2b', textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Inventory Valuation (₹)
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#8b5a2b', lineHeight: 1.15 }}>
+                    ₹ {stockSummaryData ? stockSummaryData.total_inventory_valuation.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                  </div>
+                  <div style={{ fontSize: '0.66rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    Current Store Valuation
+                  </div>
+                </div>
               </div>
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5a2b', marginTop: '0.5rem' }}>
-              ₹ {stockSummaryData ? stockSummaryData.total_inventory_valuation.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Current Store Inventory Valuation</span>
           </div>
-        </div>
-      </div>
 
       {/* Mobile OVERVIEW KPI Cards (Image 1 Screenshot) */}
       <div className="mobile-only" style={{ marginBottom: '1.25rem' }}>
@@ -1563,22 +1698,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'stock-summary' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <Layers size={16} />
+          <Layers size={14} />
           <span>Stock Summary (Excel Sheet 1)</span>
         </button>
 
@@ -1588,22 +1723,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'item-master' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <Tag size={16} />
+          <Tag size={14} />
           <span>Item Master & Rate Comparison (Sheet 5)</span>
         </button>
 
@@ -1613,22 +1748,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'material-in' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <ArrowDownRight size={16} />
+          <ArrowDownRight size={14} />
           <span>Material In (Sheet 4)</span>
         </button>
 
@@ -1638,22 +1773,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'daily-issue' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <ArrowUpRight size={16} />
+          <ArrowUpRight size={14} />
           <span>Daily Issue Entry (Sheet 2)</span>
         </button>
 
@@ -1663,22 +1798,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'material-returns' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <Undo2 size={16} />
+          <Undo2 size={14} />
           <span>Material Returns (Sheet 3)</span>
         </button>
 
@@ -1688,22 +1823,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'requisitions' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <FileText size={16} />
+          <FileText size={14} />
           <span>Material Requisitions (MRN)</span>
         </button>
 
@@ -1713,22 +1848,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'adjustments' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <ShieldAlert size={16} />
+          <ShieldAlert size={14} />
           <span>Stock Variance & Loss Logs</span>
         </button>
 
@@ -1738,22 +1873,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'contractors' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <Users size={16} />
+          <Users size={14} />
           <span>Contractors Directory (Sheet 3)</span>
         </button>
 
@@ -1763,22 +1898,22 @@ export default function StoreManagement() {
           style={{
             position: 'relative',
             zIndex: 2,
-            padding: '0.65rem 1.25rem',
-            borderRadius: '8px',
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
             border: 'none',
             backgroundColor: 'transparent',
             color: activeTab === 'billing' ? '#ffffff' : '#64748b',
             fontWeight: 700,
-            fontSize: '0.875rem',
+            fontSize: '0.8rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
+            gap: '0.35rem',
             whiteSpace: 'nowrap',
             transition: 'color 180ms ease'
           }}
         >
-          <FileText size={16} />
+          <FileText size={14} />
           <span>Monthly Contractor Billing</span>
         </button>
       </div>
@@ -1788,16 +1923,16 @@ export default function StoreManagement() {
 
         {/* TAB 1: STOCK SUMMARY */}
         {activeTab === 'stock-summary' && (
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '400px', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.4rem 0.75rem' }}>
-                <Search size={18} color="#94a3b8" />
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ padding: '0.5rem 0.85rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: '340px', border: '1px solid #cbd5e1', borderRadius: '7px', padding: '0.3rem 0.65rem' }}>
+                <Search size={16} color="#94a3b8" />
                 <input
                   type="text"
                   placeholder="Search store items by code or name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.9rem' }}
+                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.84rem' }}
                 />
               </div>
               <button
@@ -1808,9 +1943,9 @@ export default function StoreManagement() {
                   setTimeout(() => setIsRefreshingSummary(false), 600);
                 }}
                 disabled={isRefreshingSummary}
-                style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: isRefreshingSummary ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+                style={{ padding: '0.3rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: isRefreshingSummary ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem' }}
               >
-                <RefreshCw size={14} className={isRefreshingSummary ? 'spin-once' : ''} /> Refresh Summary
+                <RefreshCw size={13} className={isRefreshingSummary ? 'spin-once' : ''} /> Refresh Summary
               </button>
             </div>
 
@@ -1843,62 +1978,69 @@ export default function StoreManagement() {
                   {loading ? (
                     <TableSkeleton rows={8} cols={selectionMode ? 9 : 8} />
                   ) :
-                    paginatedStockItems.map((item, idx) => (
-                    <tr
-                      key={idx}
-                      className="table-row-stagger"
-                      onClick={() => {
-                        if (selectionMode) {
-                          handleToggleSelectRow(item.id);
-                          return;
-                        }
-                        const fullItem = itemsList.find(i => i.id === item.id || i.item_code === item.item_code) || item;
-                        setSelectedDetailItem(fullItem);
-                        setIsDetailModalOpen(true);
-                      }}
-                      title="Click to view full item details and image"
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: selectedRowIds.has(item.id) ? '#eff6ff' : (item.is_low_stock ? '#fff1f2' : 'transparent'),
-                        animationDelay: `${Math.min(idx * 20, 200)}ms`,
-                        cursor: 'pointer'
-                      }}
-                    >
-                    {selectionMode && (
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedRowIds.has(item.id)}
-                          onChange={() => handleToggleSelectRow(item.id)}
-                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                        />
-                      </td>
-                    )}
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
-                      {item.item_name}
-                      {item.is_low_stock && (
-                        <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#fecaca', color: '#991b1b', fontWeight: 700 }}>
-                          Low Stock
-                        </span>
+                    paginatedStockItems.map((item, idx) => {
+                      const isSelected = selectedRowIds.has(item.id);
+                      const isActive = activeRowId === item.id;
+                      return (
+                      <tr
+                        key={item.id || idx}
+                        className={`table-row-stagger ${isActive ? 'row-active-highlight' : ''}`}
+                        onClick={() => {
+                          if (selectionMode) {
+                            handleToggleSelectRow(item.id);
+                            return;
+                          }
+                          setActiveRowId(prev => prev === item.id ? null : item.id);
+                        }}
+                        onDoubleClick={() => {
+                          const fullItem = itemsList.find(i => i.id === item.id || i.item_code === item.item_code) || item;
+                          setSelectedDetailItem(fullItem);
+                          setIsDetailModalOpen(true);
+                        }}
+                        title="Click to select & highlight row | Double-click to open full details"
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          backgroundColor: isSelected ? '#eff6ff' : (isActive ? '#e0f2fe' : (item.is_low_stock ? '#fff1f2' : 'transparent')),
+                          animationDelay: `${Math.min(idx * 20, 200)}ms`,
+                          cursor: 'pointer'
+                        }}
+                      >
+                      {selectionMode && (
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedRowIds.has(item.id)}
+                            onChange={() => handleToggleSelectRow(item.id)}
+                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                          />
+                        </td>
                       )}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0284c7', backgroundColor: '#f0f9ff' }}>
-                      {item.stock_qty}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#ea580c', backgroundColor: '#fff7ed' }}>
-                      {item.issued_qty}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: item.balance_qty < 0 ? '#dc2626' : '#16a34a', backgroundColor: '#f0fdf4' }}>
-                      {item.balance_qty}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>₹ {item.rate.toFixed(2)}</td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#64748b' }}>{item.unit}</td>
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>
-                      ₹ {item.total_value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
+                        {item.item_name}
+                        {item.is_low_stock && (
+                          <span style={{ marginLeft: '8px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', backgroundColor: '#fecaca', color: '#991b1b', fontWeight: 700 }}>
+                            Low Stock
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0284c7', backgroundColor: (isActive || isSelected) ? 'transparent' : '#f0f9ff' }}>
+                        {item.stock_qty}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#ea580c', backgroundColor: (isActive || isSelected) ? 'transparent' : '#fff7ed' }}>
+                        {item.issued_qty}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: item.balance_qty < 0 ? '#dc2626' : '#16a34a', backgroundColor: (isActive || isSelected) ? 'transparent' : '#f0fdf4' }}>
+                        {item.balance_qty}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>₹ {item.rate.toFixed(2)}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#64748b' }}>{item.unit}</td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#8b5a2b' }}>
+                        ₹ {item.total_value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -2087,20 +2229,32 @@ export default function StoreManagement() {
                     </td>
                   </tr>
                 ) : (
-                  displayItemMaster.map((item, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => {
-                      if (item.isDraft) {
-                        navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
-                      } else {
-                        setSelectedDetailItem(item);
-                        setIsDetailModalOpen(true);
-                      }
-                    }}
-                    title={item.isDraft ? "Click to resume draft" : "Click to view full details and image"}
-                    style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
-                  >
+                  displayItemMaster.map((item, idx) => {
+                    const isActive = activeRowId === item.id;
+                    return (
+                    <tr
+                      key={item.id || idx}
+                      className={isActive ? 'row-active-highlight' : ''}
+                      onClick={() => {
+                        if (item.isDraft) {
+                          navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
+                          return;
+                        }
+                        setActiveRowId(prev => prev === item.id ? null : item.id);
+                      }}
+                      onDoubleClick={() => {
+                        if (!item.isDraft) {
+                          setSelectedDetailItem(item);
+                          setIsDetailModalOpen(true);
+                        }
+                      }}
+                      title={item.isDraft ? "Click to resume draft" : "Click to select & highlight row | Double-click to open full details"}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
+                        cursor: 'pointer'
+                      }}
+                    >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{item.item_name}</td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{item.category_name || '-'}</td>
@@ -2183,7 +2337,8 @@ export default function StoreManagement() {
                       )}
                     </td>
                   </tr>
-                )))}
+                );
+              }))}
               </tbody>
             </table>
           </div>
@@ -2376,16 +2531,27 @@ export default function StoreManagement() {
                     </td>
                   </tr>
                 ) : (
-                  displayMaterialIn.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => {
-                      if (row.isDraft) {
-                        navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
-                      }
-                    }}
-                    style={{ borderBottom: '1px solid #f1f5f9', cursor: row.isDraft ? 'pointer' : 'default' }}
-                  >
+                  displayMaterialIn.map((row, idx) => {
+                    const rowKey = row.id || `in-${idx}`;
+                    const isActive = activeRowId === rowKey;
+                    return (
+                    <tr
+                      key={rowKey}
+                      className={isActive ? 'row-active-highlight' : ''}
+                      onClick={() => {
+                        if (row.isDraft) {
+                          navigate('/store-management/material-in', { state: { draftData: row.draftData, draftId: row.id } });
+                          return;
+                        }
+                        setActiveRowId(prev => prev === rowKey ? null : rowKey);
+                      }}
+                      title={row.isDraft ? "Click to resume draft" : "Click to select & highlight row"}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
+                        cursor: 'pointer'
+                      }}
+                    >
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{row.month_year || 'Jul-26'}</td>
                     <td style={{ padding: '0.85rem 1rem' }}>{row.inward_date}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.bill_no}</td>
@@ -2456,7 +2622,8 @@ export default function StoreManagement() {
                       )
                     )}
                   </tr>
-                )))}
+                );
+              }))}
               </tbody>
             </table>
           </div>
@@ -2617,16 +2784,27 @@ export default function StoreManagement() {
                     </td>
                   </tr>
                 ) : (
-                  displayDailyIssues.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => {
-                      if (row.isDraft) {
-                        navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
-                      }
-                    }}
-                    style={{ borderBottom: '1px solid #f1f5f9', cursor: row.isDraft ? 'pointer' : 'default' }}
-                  >
+                  displayDailyIssues.map((row, idx) => {
+                    const rowKey = row.id || `issue-${idx}`;
+                    const isActive = activeRowId === rowKey;
+                    return (
+                    <tr
+                      key={rowKey}
+                      className={isActive ? 'row-active-highlight' : ''}
+                      onClick={() => {
+                        if (row.isDraft) {
+                          navigate('/store-management/daily-issue', { state: { draftData: row.draftData, draftId: row.id } });
+                          return;
+                        }
+                        setActiveRowId(prev => prev === rowKey ? null : rowKey);
+                      }}
+                      title={row.isDraft ? "Click to resume draft" : "Click to select & highlight row"}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
+                        cursor: 'pointer'
+                      }}
+                    >
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{row.voucher_no}</td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{row.contractor_name}</td>
                     <td style={{ padding: '0.85rem 1rem', color: '#1e293b' }}>{row.contractor_person_name || 'Self'}</td>
@@ -2710,7 +2888,8 @@ export default function StoreManagement() {
                       )
                     )}
                   </tr>
-                )))}
+                );
+              }))}
               </tbody>
             </table>
           </div>
@@ -2900,15 +3079,26 @@ export default function StoreManagement() {
                     </td>
                   </tr>
                 ) : (
-                  displayMaterialReturns.map((ret, idx) => (
+                  displayMaterialReturns.map((ret, idx) => {
+                    const rowKey = ret.id || `ret-${idx}`;
+                    const isActive = activeRowId === rowKey;
+                    return (
                     <tr
-                      key={idx}
+                      key={rowKey}
+                      className={isActive ? 'row-active-highlight' : ''}
                       onClick={() => {
                         if (ret.isDraft) {
                           navigate('/store-management/material-return', { state: { draftData: ret.draftData, draftId: ret.id } });
+                          return;
                         }
+                        setActiveRowId(prev => prev === rowKey ? null : rowKey);
                       }}
-                      style={{ borderBottom: '1px solid #f1f5f9', cursor: ret.isDraft ? 'pointer' : 'default' }}
+                      title={ret.isDraft ? "Click to resume draft" : "Click to select & highlight row"}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
+                        cursor: 'pointer'
+                      }}
                     >
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#b45309' }}>{ret.voucher_no}</td>
                       <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{ret.return_date}</td>
@@ -2992,8 +3182,8 @@ export default function StoreManagement() {
                         )
                       )}
                     </tr>
-                  ))
-                )}
+                  );
+                }))}
               </tbody>
             </table>
           </div>
