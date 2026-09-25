@@ -89,7 +89,7 @@ function Stock() {
       });
     }
   }, [activeTab]);
-
+ 
   useEffect(() => {
     const handleResize = () => {
       const activeUnitEl = unitTabRefs.current[selectedUnitId];

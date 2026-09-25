@@ -1431,7 +1431,7 @@ function BuyerMasters() {
           {/* Page Title */}
           <div style={{ marginBottom: '1.25rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <Layers size={24} color="#8b5a2b" /> {editingId ? '✏️ Edit Buyer Master Style' : '+ Register New Buyer Master Styles'}
+              <Layers size={24} color="#8b5a2b" /> {editingId ? '✏️ Edit Buyer Master Style' : 'Register New Buyer Master Styles'}
             </h2>
           </div>
 

@@ -1307,7 +1307,7 @@ export default function StoreManagement() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: '0.84rem', color: '#78350f', lineHeight: 1.2 }}>
-                ⚠️ Low Stock Alert: {lowStockItems.length} Store {lowStockItems.length === 1 ? 'Item is' : 'Items are'} below threshold!
+                Low Stock Alert: {lowStockItems.length} Store {lowStockItems.length === 1 ? 'Item is' : 'Items are'} below threshold!
               </strong>
               <span style={{ fontSize: '0.75rem', color: '#92400e', lineHeight: 1.2 }}>
                 Generate batch purchase requisitions for Admin approval.
