@@ -2377,7 +2377,7 @@ function BuyerPIs() {
                             {pRem <= 0 ? 'Status:' : 'Unassigned:'}
                           </span>
                           <strong style={{ color: pRem <= 0 ? '#15803d' : '#0284c7', fontWeight: 800 }}>
-                            {pRem <= 0 ? '🔒 Fully Allocated' : `✨ ${pRem} pcs`}
+                            {pRem <= 0 ? '🔒 Fully Allocated' : `${pRem} pcs`}
                           </strong>
                         </div>
                       </div>
@@ -2789,7 +2789,7 @@ function BuyerPIs() {
                                 </span>
                               ) : (
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0284c7', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', padding: '3px 8px', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Click to view supplier breakdown">
-                                  🔍 Unassigned ({pRem} pcs)
+                                Unassigned ({pRem} pcs)
                                 </span>
                               )}
                             </td>

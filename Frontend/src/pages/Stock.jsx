@@ -1097,9 +1097,6 @@ function Stock() {
                     Live Inventory
                   </span>
                 </div>
-                <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#78716c' }}>
-                  Track passed stock, factory units, availability and manufacturing stage assignments across all units.
-                </p>
               </div>
             </div>
 
@@ -1318,8 +1315,6 @@ function Stock() {
                 alignItems: 'center',
                 gap: '0.45rem'
               }}>
-                <Boxes size={15} color="#5c3a21" />
-                <span>Manufacturing Stages & Pipeline Stock</span>
               </div>
             </div>
 
@@ -1673,9 +1668,6 @@ function Stock() {
                 <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
                   {totalStockItemsCount}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
-                  Unique style items in registry
-                </div>
               </div>
             </div>
 
@@ -1710,9 +1702,6 @@ function Stock() {
                 </div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
                   {totalPassedQuantity.toLocaleString()} <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>pcs</span>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
-                  Audited manufacturing volume
                 </div>
               </div>
             </div>
@@ -1749,9 +1738,6 @@ function Stock() {
                 <div style={{ fontSize: '1.2rem', fontWeight: 850, color: '#1c1917', marginTop: '1px', lineHeight: 1.1 }}>
                   ₹{estimatedStockValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#78716c', marginTop: '1px' }}>
-                  Calculated from recorded unit prices
-                </div>
               </div>
             </div>
           </div>
@@ -1782,7 +1768,6 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <Boxes size={14} />
               <span>Stock Levels</span>
               <span style={{
                 padding: '1px 6px',
@@ -1817,7 +1802,6 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <Wrench size={14} />
               <span>Sanding Stage</span>
               <span style={{
                 padding: '1px 6px',
@@ -1852,7 +1836,6 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <Palette size={14} />
               <span>Polishing Stage</span>
               <span style={{
                 padding: '1px 6px',
@@ -1887,7 +1870,6 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <PackageCheck size={14} />
               <span>Packaging Stage</span>
               <span style={{
                 padding: '1px 6px',
@@ -1923,7 +1905,6 @@ function Stock() {
                   transition: 'color 180ms ease'
                 }}
               >
-                <ClipboardCheck size={14} />
                 <span>QC Requests</span>
                 <span style={{
                   padding: '1px 6px',

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
   X, Warehouse, DollarSign, Tag, Weight, AlertTriangle, CheckCircle,
-  Package, Edit3, Image as ImageIcon, Maximize2, ShieldAlert
+  Package, Edit3, Image as ImageIcon, Maximize2, ShieldAlert, Trash2
 } from 'lucide-react';
 
-export default function StoreItemDetailModal({ isOpen, onClose, item, onEdit }) {
+export default function StoreItemDetailModal({ isOpen, onClose, item, onEdit, onDelete }) {
   const [isZoomed, setIsZoomed] = useState(false);
 
   if (!isOpen || !item) return null;
@@ -464,6 +464,34 @@ export default function StoreItemDetailModal({ isOpen, onClose, item, onEdit }) 
               >
                 Close
               </button>
+
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onDelete(item);
+                  }}
+                  style={{
+                    padding: '0.6rem 1.1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    flex: 1,
+                  }}
+                >
+                  <Trash2 size={15} />
+                  Delete Item
+                </button>
+              )}
 
               {onEdit && (
                 <button

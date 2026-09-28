@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Warehouse, DollarSign, Image as ImageIcon, CheckCircle, AlertCircle, Save, Plus, Tag } from 'lucide-react';
+import { X, Warehouse, DollarSign, Image as ImageIcon, CheckCircle, AlertCircle, Save, Plus, Tag, Trash2 } from 'lucide-react';
 import api from '../api/axios';
 import CustomFileUpload from './CustomFileUpload';
 import StoreCategoryModal from './StoreCategoryModal';
@@ -22,9 +22,11 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoryList, setCategoryList] = useState(categories);
+  const [syncRates, setSyncRates] = useState(true);
 
   useEffect(() => {
     setCategoryList(categories);
@@ -32,13 +34,15 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
 
   useEffect(() => {
     if (item) {
+      const bRate = item.base_rate !== undefined && item.base_rate !== null ? String(item.base_rate) : '0.00';
+      const cRate = item.current_rate !== undefined && item.current_rate !== null ? String(item.current_rate) : bRate;
       setFormData({
         item_code: item.item_code || '',
         item_name: item.item_name || '',
         category: item.category || '',
         unit: item.unit || 'pcs',
-        base_rate: item.base_rate || '0.00',
-        current_rate: item.current_rate || item.base_rate || '0.00',
+        base_rate: bRate,
+        current_rate: cRate,
         weight: item.weight || '',
         default_status: item.default_status || 'charge',
         reorder_level: item.reorder_level || '10.00',
@@ -46,6 +50,9 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
       });
       setImagePreview(item.image || null);
       setImageFile(null);
+      // Auto-sync rates if they are currently equal
+      const areEqual = parseFloat(bRate || 0) === parseFloat(cRate || 0);
+      setSyncRates(areEqual);
     } else {
       setFormData({
         item_code: `IT${Math.floor(100 + Math.random() * 900)}`,
@@ -61,6 +68,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
       });
       setImageFile(null);
       setImagePreview(null);
+      setSyncRates(true);
     }
     setError(null);
     setFormErrors({});
@@ -70,14 +78,48 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        [name]: value
+      };
+      if (name === 'base_rate' && syncRates) {
+        next.current_rate = value;
+      }
+      return next;
+    });
     if (formErrors[name]) {
       setFormErrors(prev => {
         const copy = { ...prev };
         delete copy[name];
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const handleToggleSyncRates = (e) => {
+    const checked = e.target.checked;
+    setSyncRates(checked);
+    if (checked) {
+      setFormData(prev => ({
+        ...prev,
+        current_rate: prev.base_rate
+      }));
+    }
+  };
+
+  const handleCurrentRateChange = (e) => {
+    const { value } = e.target;
+    setSyncRates(false);
+    setFormData(prev => ({
+      ...prev,
+      current_rate: value
+    }));
+    if (formErrors.current_rate) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.current_rate;
         return copy;
       });
     }
@@ -207,6 +249,24 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
     }
   };
 
+  const handleDeleteItem = async () => {
+    if (!item?.id) return;
+    if (!window.confirm(`Are you sure you want to delete Store Item "${item.item_name}" (${item.item_code})? This action cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/store/items/${item.id}/`);
+      if (onSuccess) onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete store item:', err);
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete store item.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -226,6 +286,11 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
           grid-template-columns: 1fr 2fr;
           gap: 1rem;
         }
+        .simm-grid-2-eq {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1rem;
+        }
         .simm-grid-3 {
           display: grid;
           grid-template-columns: 1.2fr 1fr 1fr;
@@ -241,7 +306,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
             max-height: 94vh;
             border-radius: 12px;
           }
-          .simm-grid-2, .simm-grid-3, .simm-grid-3-eq {
+          .simm-grid-2, .simm-grid-2-eq, .simm-grid-3, .simm-grid-3-eq {
             grid-template-columns: 1fr !important;
             gap: 0.85rem !important;
           }
@@ -411,7 +476,7 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
               </div>
             </div>
 
-            <div className="simm-grid-3">
+            <div className="simm-grid-2-eq">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: formErrors.category ? '#dc2626' : '#334155', margin: 0 }}>
@@ -497,34 +562,113 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
                   </div>
                 )}
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: formErrors.base_rate ? '#dc2626' : '#334155', marginBottom: '6px' }}>
-                  Master Base Rate (₹) *
+            </div>
+
+            {/* Pricing & Valuation Rates Card */}
+            <div style={{
+              backgroundColor: '#faf8f5',
+              border: '1.5px solid #f1ece5',
+              borderRadius: '12px',
+              padding: '0.95rem 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <DollarSign size={16} color="#8b5a2b" />
+                  <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#334155' }}>
+                    Item Pricing & Valuation Rates
+                  </span>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 600, color: '#8b5a2b', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={syncRates}
+                    onChange={handleToggleSyncRates}
+                    style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#8b5a2b' }}
+                  />
+                  <span>Auto-sync Current Rate with Master Rate</span>
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="base_rate"
-                  value={formData.base_rate}
-                  onChange={handleChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.85rem',
-                    borderRadius: '8px',
-                    border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
-                    backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
-                    fontSize: '0.9rem',
-                    fontWeight: 600,
-                    boxSizing: 'border-box'
-                  }}
-                />
-                {formErrors.base_rate && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
-                    <AlertCircle size={12} />
-                    <span>{formErrors.base_rate}</span>
-                  </div>
-                )}
+              </div>
+
+              <div className="simm-grid-2-eq">
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: formErrors.base_rate ? '#dc2626' : '#475569', marginBottom: '4px' }}>
+                    Master Base Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="base_rate"
+                    value={formData.base_rate}
+                    onChange={handleChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      color: '#1e293b',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                    Catalog / standard benchmark rate
+                  </span>
+                  {formErrors.base_rate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                      <AlertCircle size={12} />
+                      <span>{formErrors.base_rate}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: formErrors.current_rate ? '#dc2626' : '#8b5a2b', marginBottom: '4px' }}>
+                    Current Effective Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="current_rate"
+                    value={formData.current_rate}
+                    onChange={handleCurrentRateChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      border: formErrors.current_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.current_rate ? '#fff5f5' : '#ffffff',
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      color: '#8b5a2b',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#8b5a2b', display: 'block', marginTop: '3px', fontWeight: 600 }}>
+                    Active rate in Listing UI & Stock Valuation
+                  </span>
+                  {formErrors.current_rate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.75rem', marginTop: '4px' }}>
+                      <AlertCircle size={12} />
+                      <span>{formErrors.current_rate}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ fontSize: '0.75rem', color: '#64748b', backgroundColor: '#ffffff', padding: '0.45rem 0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span>
+                  💡 <strong>Stock Summary (Sheet 1)</strong> calculates total stock value using <strong>Current Effective Rate</strong>:
+                </span>
+                <span style={{ fontWeight: 700, color: '#8b5a2b' }}>
+                  ₹ {Number(formData.current_rate || 0).toFixed(2)} / {formData.unit}
+                </span>
               </div>
             </div>
 
@@ -659,6 +803,30 @@ export default function StoreItemMasterModal({ isOpen, onClose, item, categories
               paddingTop: '1rem',
               borderTop: '1px solid #e2e8f0'
             }}>
+              {item && item.id && (
+                <button
+                  type="button"
+                  onClick={handleDeleteItem}
+                  disabled={deleting || loading}
+                  style={{
+                    marginRight: 'auto',
+                    padding: '0.65rem 1.1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                    fontWeight: 600,
+                    fontSize: '0.85rem',
+                    cursor: (deleting || loading) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {deleting ? 'Deleting...' : 'Delete Item'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}

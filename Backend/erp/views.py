@@ -5237,6 +5237,25 @@ class StoreItemViewSet(viewsets.ModelViewSet):
 
         return qs.order_by('item_code')
 
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        old_rate = instance.current_rate or instance.base_rate
+        updated_item = serializer.save()
+        new_rate = updated_item.current_rate or updated_item.base_rate
+        if old_rate != new_rate and old_rate > Decimal('0.00'):
+            diff = new_rate - old_rate
+            pct_change = round((diff / old_rate * 100), 2)
+            StoreItemRateHistory.objects.create(
+                item=updated_item,
+                old_rate=old_rate,
+                new_rate=new_rate,
+                rate_difference=diff,
+                percentage_change=pct_change,
+                supplier_name="Manual Adjustment",
+                revision_reason="Item Master Rate Revision",
+                updated_by=self.request.user if self.request.user.is_authenticated else None
+            )
+
     @action(detail=True, methods=['get'], url_path='unit-stock')
     def unit_stock(self, request, pk=None):
         """
@@ -5964,10 +5983,15 @@ class StoreStockSummaryView(APIView):
 
         items = StoreItem.objects.select_related('category').order_by('item_code')
         
-        # Pre-aggregate totals across all items in 4 single bulk SQL queries instead of 4*N queries
-        inward_map = dict(
+        # Pre-aggregate totals across all items in single bulk SQL queries instead of 4*N queries
+        inward_qty_map = dict(
             StoreMaterialIn.objects.values('item_id')
             .annotate(total=Sum('qty'))
+            .values_list('item_id', 'total')
+        )
+        inward_amt_map = dict(
+            StoreMaterialIn.objects.values('item_id')
+            .annotate(total=Sum('total_amount'))
             .values_list('item_id', 'total')
         )
         issued_map = dict(
@@ -5994,13 +6018,20 @@ class StoreStockSummaryView(APIView):
         tot_valuation = Decimal('0.00')
 
         for item in items:
-            stk_qty = inward_map.get(item.id) or Decimal('0.00')
+            stk_qty = inward_qty_map.get(item.id) or Decimal('0.00')
+            stk_amt = inward_amt_map.get(item.id) or Decimal('0.00')
             iss_qty = issued_map.get(item.id) or Decimal('0.00')
             ret_qty = returned_map.get(item.id) or Decimal('0.00')
             adj_qty = adjustment_map.get(item.id) or Decimal('0.00')
 
             bal_qty = (stk_qty + ret_qty + adj_qty) - iss_qty
-            rate = item.current_rate or item.base_rate
+            
+            # Weighted Average Valuation Rate based on actual Material Inward bills
+            if stk_qty > Decimal('0.00') and stk_amt > Decimal('0.00'):
+                rate = round(stk_amt / stk_qty, 2)
+            else:
+                rate = item.current_rate or item.base_rate
+
             val = bal_qty * rate
 
             tot_stock += stk_qty

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Warehouse, Upload, Download, FileSpreadsheet, Plus, CheckCircle,
-  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw, FileText, X
+  AlertCircle, Save, Layers, DollarSign, Image as ImageIcon, Check, RefreshCw, FileText, X, Trash2
 } from 'lucide-react';
 import api from '../api/axios';
 import CustomFileUpload from '../components/CustomFileUpload';
@@ -44,9 +44,11 @@ export default function StoreItemMasterPage() {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
+  const [syncRates, setSyncRates] = useState(true);
 
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
@@ -118,19 +120,22 @@ export default function StoreItemMasterPage() {
       api.get(`/store/items/${id}/`)
         .then(res => {
           const item = res.data;
+          const bRate = item.base_rate !== undefined && item.base_rate !== null ? String(item.base_rate) : '0.00';
+          const cRate = item.current_rate !== undefined && item.current_rate !== null ? String(item.current_rate) : bRate;
           setFormData({
             item_code: item.item_code || '',
             item_name: item.item_name || '',
             category: item.category || '',
             unit: item.unit || 'pcs',
-            base_rate: item.base_rate || '0.00',
-            current_rate: item.current_rate || item.base_rate || '0.00',
+            base_rate: bRate,
+            current_rate: cRate,
             weight: item.weight || '',
             default_status: item.default_status || 'charge',
             reorder_level: item.reorder_level || '10.00',
             remark: item.remark || '',
           });
           setImagePreview(item.image || null);
+          setSyncRates(parseFloat(bRate || 0) === parseFloat(cRate || 0));
         })
         .catch(err => setError('Failed to load item details.'))
         .finally(() => setLoading(false));
@@ -142,7 +147,7 @@ export default function StoreItemMasterPage() {
     const { name, value } = e.target;
     setFormData(prev => {
       const next = { ...prev, [name]: value };
-      if (name === 'base_rate' && !isEditing) {
+      if (name === 'base_rate' && syncRates) {
         next.current_rate = value;
       }
       return next;
@@ -151,6 +156,36 @@ export default function StoreItemMasterPage() {
       setFormErrors(prev => {
         const copy = { ...prev };
         delete copy[name];
+        return copy;
+      });
+    }
+    if (error) setError(null);
+  };
+
+  const handleToggleSyncRates = (e) => {
+    const checked = e.target.checked;
+    setSyncRates(checked);
+    setIsDirty(true);
+    if (checked) {
+      setFormData(prev => ({
+        ...prev,
+        current_rate: prev.base_rate
+      }));
+    }
+  };
+
+  const handleCurrentRateChange = (e) => {
+    const { value } = e.target;
+    setSyncRates(false);
+    setIsDirty(true);
+    setFormData(prev => ({
+      ...prev,
+      current_rate: value
+    }));
+    if (formErrors.current_rate) {
+      setFormErrors(prev => {
+        const copy = { ...prev };
+        delete copy.current_rate;
         return copy;
       });
     }
@@ -302,6 +337,24 @@ export default function StoreItemMasterPage() {
       .finally(() => setLoading(false));
   };
 
+  const handleDeleteItem = async () => {
+    if (!id) return;
+    if (!window.confirm(`Are you sure you want to delete Store Item "${formData.item_name || 'this item'}" (${formData.item_code})? This action cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/store/items/${id}/`);
+      setIsDirty(false);
+      navigate('/store-management', { replace: true, state: { defaultTab: 'item-master' } });
+    } catch (err) {
+      console.error('Failed to delete store item:', err);
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete store item.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Excel Import Handlers
   const handleDownloadTemplate = () => {
     api.get('/store/items/download-template/', { responseType: 'blob' })
@@ -443,8 +496,8 @@ export default function StoreItemMasterPage() {
           </div>
         </div>
 
-        {/* Tab Toggle: Form Entry vs Import Excel */}
-        {!isEditing && (
+        {/* Tab Toggle: Form Entry vs Import Excel or Delete button when editing */}
+        {!isEditing ? (
           <div className="item-master-tab-switcher" style={{
             display: 'flex',
             backgroundColor: '#e2e8f0',
@@ -489,6 +542,29 @@ export default function StoreItemMasterPage() {
               <FileSpreadsheet size={16} /> Import Excel
             </button>
           </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDeleteItem}
+            disabled={deleting || loading}
+            style={{
+              padding: '0.55rem 1.1rem',
+              borderRadius: '8px',
+              border: '1px solid #fecaca',
+              backgroundColor: '#fef2f2',
+              color: '#dc2626',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: (deleting || loading) ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <Trash2 size={16} />
+            <span>{deleting ? 'Deleting...' : 'Delete Item Master'}</span>
+          </button>
         )}
       </div>
 
@@ -682,35 +758,115 @@ export default function StoreItemMasterPage() {
                 )}
               </div>
 
-              {/* Base Rate */}
-              <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: formErrors.base_rate ? '#dc2626' : '#334155', marginBottom: '0.4rem' }}>
-                  Master Base Rate (₹) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="base_rate"
-                  value={formData.base_rate}
-                  onChange={handleChange}
-                  required
-                  placeholder="0.00"
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.85rem',
-                    borderRadius: '8px',
-                    border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
-                    backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
-                    fontSize: '0.9rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                {formErrors.base_rate && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
-                    <AlertCircle size={13} />
-                    <span>{formErrors.base_rate}</span>
+              {/* Pricing & Valuation Section */}
+              <div style={{
+                gridColumn: '1 / -1',
+                backgroundColor: '#faf8f5',
+                border: '1.5px solid #f1ece5',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.85rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <DollarSign size={18} color="#8b5a2b" />
+                    <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#334155' }}>
+                      Item Pricing & Valuation Rates
+                    </span>
                   </div>
-                )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, color: '#8b5a2b', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={syncRates}
+                      onChange={handleToggleSyncRates}
+                      style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#8b5a2b' }}
+                    />
+                    <span>Auto-sync Current Effective Rate with Master Rate</span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.base_rate ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                      Master Base Rate (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="base_rate"
+                      value={formData.base_rate}
+                      onChange={handleChange}
+                      required
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '8px',
+                        border: formErrors.base_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.base_rate ? '#fff5f5' : '#ffffff',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        color: '#1e293b',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '3px' }}>
+                      Catalog / standard reference benchmark rate
+                    </span>
+                    {formErrors.base_rate && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} />
+                        <span>{formErrors.base_rate}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.current_rate ? '#dc2626' : '#8b5a2b', marginBottom: '4px' }}>
+                      Current Effective Rate (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="current_rate"
+                      value={formData.current_rate}
+                      onChange={handleCurrentRateChange}
+                      required
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '8px',
+                        border: formErrors.current_rate ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.current_rate ? '#fff5f5' : '#ffffff',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        color: '#8b5a2b',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: '#8b5a2b', display: 'block', marginTop: '3px', fontWeight: 600 }}>
+                      Active rate in Listing UI & Stock Valuation
+                    </span>
+                    {formErrors.current_rate && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                        <AlertCircle size={13} />
+                        <span>{formErrors.current_rate}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#ffffff', padding: '0.5rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span>
+                    💡 <strong>Stock Summary (Sheet 1)</strong> calculates total stock value using <strong>Current Effective Rate</strong>:
+                  </span>
+                  <span style={{ fontWeight: 700, color: '#8b5a2b' }}>
+                    ₹ {Number(formData.current_rate || 0).toFixed(2)} / {formData.unit}
+                  </span>
+                </div>
               </div>
 
               {/* Default Debit Status */}
@@ -845,6 +1001,30 @@ export default function StoreItemMasterPage() {
               paddingTop: '1.25rem',
               borderTop: '1px solid #f1f5f9'
             }}>
+              {isEditing && (
+                <button
+                  type="button"
+                  onClick={handleDeleteItem}
+                  disabled={deleting || loading}
+                  style={{
+                    marginRight: 'auto',
+                    padding: '0.65rem 1.25rem',
+                    borderRadius: '8px',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fef2f2',
+                    color: '#dc2626',
+                    fontWeight: 700,
+                    fontSize: '0.9rem',
+                    cursor: (deleting || loading) ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                >
+                  <Trash2 size={16} />
+                  <span>{deleting ? 'Deleting...' : 'Delete Item Master'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

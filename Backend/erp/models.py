@@ -1066,8 +1066,20 @@ class StoreItem(models.Model):
         return (self.total_stock_qty + self.total_returned_qty + self.total_adjustment_qty) - self.total_issued_qty
 
     @property
+    def weighted_average_rate(self):
+        inward_agg = self.inward_entries.aggregate(
+            total_qty=Sum('qty'),
+            total_amt=Sum('total_amount')
+        )
+        t_qty = inward_agg['total_qty'] or Decimal('0.00')
+        t_amt = inward_agg['total_amt'] or Decimal('0.00')
+        if t_qty > Decimal('0.00') and t_amt > Decimal('0.00'):
+            return round(t_amt / t_qty, 2)
+        return self.current_rate or self.base_rate
+
+    @property
     def total_stock_value(self):
-        return self.balance_stock_qty * (self.current_rate or self.base_rate)
+        return self.balance_stock_qty * self.weighted_average_rate
 
     def has_material_in_for_unit(self, unit_id):
         """Checks if this item was ever received (Material In) in the specified production unit."""

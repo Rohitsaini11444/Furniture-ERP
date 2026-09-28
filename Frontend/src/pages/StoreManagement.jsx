@@ -4,7 +4,8 @@ import {
   Warehouse, ArrowDownRight, ArrowUpRight, Plus, Search, Filter, RefreshCw,
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
-  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X, FileEdit
+  ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X, FileEdit,
+  Factory, MapPin, Gauge, LayoutGrid, List, Building2, ArrowRightLeft
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -25,13 +26,64 @@ import StoreReorderIndentModal from '../components/StoreReorderIndentModal';
 import StorePhysicalAuditModal from '../components/StorePhysicalAuditModal';
 import StoreAnalyticsSection from '../components/StoreAnalyticsSection';
 import StoreExcelImportModal from '../components/StoreExcelImportModal';
+import StoreFactoryUnitModal from '../components/StoreFactoryUnitModal';
 
+const getStoreImageUrl = (img) => {
+  if (!img) return null;
+  if (typeof img !== 'string') return null;
+  if (img.startsWith('http://') || img.startsWith('https://')) return img;
+  const backendBase = import.meta.env.VITE_API_URL 
+    ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') 
+    : 'http://127.0.0.1:8000';
+  return `${backendBase}${img.startsWith('/') ? '' : '/'}${img}`;
+};
+
+function StoreItemThumbnail({ image, code, name, size = 30 }) {
+  const [imgError, setImgError] = useState(false);
+  const src = !imgError ? getStoreImageUrl(image) : null;
+
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        minWidth: `${size}px`,
+        borderRadius: '7px',
+        backgroundColor: '#faf6f0',
+        border: '1px solid #e7d8c4',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        flexShrink: 0,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+      }}
+      title={name ? `${code} - ${name}` : code}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt={name || code || 'item'}
+          onError={() => setImgError(true)}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: '6px'
+          }}
+        />
+      ) : (
+        <Package size={Math.max(14, Math.round(size * 0.52))} color="#8b5a2b" />
+      )}
+    </div>
+  );
+}
 
 export default function StoreManagement() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'material-returns' | 'requisitions' | 'adjustments' | 'contractors' | 'billing'
+  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'material-returns' | 'requisitions' | 'adjustments' | 'contractors' | 'billing' | 'factory-units'
 
   // Pagination states (20 entries per page)
   const ITEMS_PER_PAGE = 20;
@@ -44,6 +96,7 @@ export default function StoreManagement() {
   const [pageRequisitions, setPageRequisitions] = useState(1);
   const [pageAdjustments, setPageAdjustments] = useState(1);
   const [pageMaterialReturns, setPageMaterialReturns] = useState(1);
+  const [pageUnits, setPageUnits] = useState(1);
   const [showMobileFabMenu, setShowMobileFabMenu] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -124,6 +177,15 @@ export default function StoreManagement() {
   // Modal states
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [selectedItemForEdit, setSelectedItemForEdit] = useState(null);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(false);
+
+  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
+  const [selectedUnitForEdit, setSelectedUnitForEdit] = useState(null);
+  const [unitToDelete, setUnitToDelete] = useState(null);
+  const [deletingUnit, setDeletingUnit] = useState(false);
+  const [unitViewMode, setUnitViewMode] = useState('table'); // 'table' | 'cards'
+  const [unitStatusFilter, setUnitStatusFilter] = useState('all'); // 'all' | 'active' | 'inactive'
 
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
   const [selectedItemForRate, setSelectedItemForRate] = useState(null);
@@ -351,6 +413,8 @@ export default function StoreManagement() {
         setContractors(cRes.data.results || cRes.data || []);
         setContractorsTotalCount(cRes.data.count ?? (cRes.data.results || cRes.data || []).length);
         setContractorPersons(cpRes.data.results || cpRes.data || []);
+      } else if (tabKey === 'factory-units') {
+        await fetchProductionUnits();
       }
       setLoadedTabs(prev => ({ ...prev, [tabKey]: true }));
     } catch (err) {
@@ -367,6 +431,18 @@ export default function StoreManagement() {
       setCategories(res.data.results || res.data || []);
     } catch (err) {
       console.error('Failed to load categories', err);
+    }
+  }, []);
+
+  // Fetch factory units
+  const fetchProductionUnits = useCallback(async () => {
+    try {
+      const res = await api.get('/production-units/');
+      setProductionUnits(res.data.results || res.data || []);
+      setModalOptionsLoaded(prev => ({ ...prev, units: true }));
+      setLoadedTabs(prev => ({ ...prev, 'factory-units': true }));
+    } catch (err) {
+      console.error('Failed to load factory units', err);
     }
   }, []);
 
@@ -398,6 +474,7 @@ export default function StoreManagement() {
       await Promise.allSettled([
         fetchStockSummary(targetPage, targetSearch, targetCategory),
         fetchCategories(),
+        fetchProductionUnits(),
       ]);
       if (activeTab !== 'stock-summary') {
         fetchTabData(activeTab, true);
@@ -407,7 +484,7 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, fetchCategories, fetchStockSummary, fetchTabData, searchQuery, selectedCategory]);
+  }, [activeTab, fetchCategories, fetchProductionUnits, fetchStockSummary, fetchTabData, searchQuery, selectedCategory]);
 
   // Ensure dropdown data for modals is loaded on-demand
   const ensureModalOptions = useCallback(async (optionsList = []) => {
@@ -423,7 +500,7 @@ export default function StoreManagement() {
       toFetch.push(api.get('/store/items/', { params: { nopage: true } }).then(r => setItemsList(r.data.results || r.data || [])));
     }
     if (optionsList.includes('units') && !modalOptionsLoaded.units) {
-      toFetch.push(api.get('/production-units/').then(r => setProductionUnits(r.data.results || r.data || [])));
+      toFetch.push(fetchProductionUnits());
     }
     if (toFetch.length > 0) {
       await Promise.allSettled(toFetch);
@@ -453,6 +530,60 @@ export default function StoreManagement() {
     } catch (err) {
       console.error('Error voiding voucher:', err);
       alert(err.response?.data?.detail || 'Failed to void voucher.');
+    }
+  };
+
+  // Store Item Master Delete Handlers
+  const handleDeleteStoreItem = (item) => {
+    if (item.isDraft) {
+      if (window.confirm('Are you sure you want to discard this draft?')) {
+        deleteDraft(item.id);
+      }
+      return;
+    }
+    setItemToDelete(item);
+  };
+
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    setDeletingItem(true);
+    try {
+      await api.delete(`/store/items/${itemToDelete.id}/`);
+      alert(`Store Item "${itemToDelete.item_name}" (${itemToDelete.item_code}) deleted successfully.`);
+      setItemToDelete(null);
+      if (selectedDetailItem?.id === itemToDelete.id) {
+        setIsDetailModalOpen(false);
+        setSelectedDetailItem(null);
+      }
+      fetchBaselineData();
+      fetchStockSummary();
+      fetchTabData(activeTab, true);
+    } catch (err) {
+      console.error('Failed to delete store item:', err);
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete store item.');
+    } finally {
+      setDeletingItem(false);
+    }
+  };
+
+  // Factory Unit Action Handlers
+  const handleDeleteUnit = (unit) => {
+    setUnitToDelete(unit);
+  };
+
+  const handleConfirmDeleteUnit = async () => {
+    if (!unitToDelete) return;
+    setDeletingUnit(true);
+    try {
+      await api.delete(`/production-units/${unitToDelete.id}/`);
+      alert(`Factory Unit "${unitToDelete.name}" (${unitToDelete.unit_code}) deleted successfully.`);
+      setUnitToDelete(null);
+      fetchProductionUnits();
+    } catch (err) {
+      console.error('Failed to delete factory unit:', err);
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to delete factory unit.');
+    } finally {
+      setDeletingUnit(false);
     }
   };
 
@@ -537,6 +668,10 @@ export default function StoreManagement() {
         else if (activeTab === 'adjustments') currentPage = pageAdjustments;
         else if (activeTab === 'contractors') currentPage = pageContractors;
         else if (activeTab === 'billing') currentPage = pageBilling;
+        else if (activeTab === 'factory-units') {
+          fetchProductionUnits();
+          return;
+        }
 
         fetchTabData(activeTab, true, currentPage, searchQuery);
       }, 200);
@@ -545,6 +680,7 @@ export default function StoreManagement() {
   }, [
     activeTab,
     fetchTabData,
+    fetchProductionUnits,
     searchQuery,
     selectedCategory,
     selectedStatus,
@@ -564,8 +700,11 @@ export default function StoreManagement() {
     orderMaterialReturns
   ]);
 
-  // Handle auto-opening item detail modal when navigated from top Navbar Search
+  // Handle auto-opening item detail modal when navigated from top Navbar Search & tab routing
   useEffect(() => {
+    if (location.state?.defaultTab || location.state?.activeTab) {
+      setActiveTab(location.state.defaultTab || location.state.activeTab);
+    }
     if (location.state?.selectedItemId || location.state?.itemData) {
       const targetId = location.state?.selectedItemId || location.state?.itemData?.id;
       const targetItem = (stockSummaryData?.items || []).find(it => String(it.id) === String(targetId)) || location.state?.itemData;
@@ -587,6 +726,7 @@ export default function StoreManagement() {
     setPageAdjustments(1);
     setPageContractors(1);
     setPageBilling(1);
+    setPageUnits(1);
   }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter]);
 
   // Drafts per module
@@ -646,6 +786,39 @@ export default function StoreManagement() {
   const paginatedMaterialReturns = materialReturnsList;
   const paginatedRequisitions = requisitionsList;
   const paginatedAdjustments = stockAdjustmentsList;
+
+  // Filtered & Paginated Factory Units
+  const filteredProductionUnits = React.useMemo(() => {
+    let list = productionUnits || [];
+    if (unitStatusFilter === 'active') {
+      list = list.filter(u => u.is_active);
+    } else if (unitStatusFilter === 'inactive') {
+      list = list.filter(u => !u.is_active);
+    }
+    if (!searchQuery) return list;
+    const q = searchQuery.toLowerCase().trim();
+    return list.filter(u =>
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.unit_code && u.unit_code.toLowerCase().includes(q)) ||
+      (u.location && u.location.toLowerCase().includes(q))
+    );
+  }, [productionUnits, searchQuery, unitStatusFilter]);
+
+  const factoryUnitStats = React.useMemo(() => {
+    const list = productionUnits || [];
+    const total = list.length;
+    const active = list.filter(u => u.is_active).length;
+    const inactive = total - active;
+    const totalCapacity = list.reduce((acc, u) => acc + (parseInt(u.capacity_pcs, 10) || 0), 0);
+    const totalSupervisors = list.reduce((acc, u) => acc + (parseInt(u.supervisor_count, 10) || 0), 0);
+    const totalContractors = list.reduce((acc, u) => acc + (parseInt(u.contractor_count, 10) || 0), 0);
+    return { total, active, inactive, totalCapacity, totalSupervisors, totalContractors };
+  }, [productionUnits]);
+
+  const paginatedProductionUnits = React.useMemo(() => {
+    const start = (pageUnits - 1) * ITEMS_PER_PAGE;
+    return filteredProductionUnits.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredProductionUnits, pageUnits, ITEMS_PER_PAGE]);
 
   // Display lists: when in draft mode, show mapped drafts
   const displayItemMaster = React.useMemo(() => {
@@ -912,6 +1085,7 @@ export default function StoreManagement() {
             { id: 'adjustments', label: 'Adjustments', icon: ShieldAlert, color: '#d97706' },
             { id: 'contractors', label: 'Contractors', icon: Users, color: '#475569' },
             { id: 'billing', label: 'Billing', icon: FileText, color: '#8b5a2b' },
+            { id: 'factory-units', label: 'Factory Units', icon: Factory, color: '#0284c7' },
           ].map(chip => {
             const IconComp = chip.icon;
             const isActive = activeTab === chip.id;
@@ -1147,6 +1321,32 @@ export default function StoreManagement() {
             <Plus size={16} />
             <span>New Item</span>
           </button>
+
+          <button
+            onClick={() => {
+              setSelectedUnitForEdit(null);
+              setIsUnitModalOpen(true);
+            }}
+            className="btn-subtle-motion"
+            title="Add New Factory Unit"
+            style={{
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
+              border: '1px solid #bae6fd',
+              backgroundColor: '#f0f9ff',
+              color: '#0369a1',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}
+          >
+            <Factory size={15} color="#0284c7" />
+            <span>Factory Unit</span>
+          </button>
         </div>
       </div>
 
@@ -1185,7 +1385,9 @@ export default function StoreManagement() {
             {/* Select All / Deselect All */}
             <button
               onClick={() => {
-                const currentItems = stockSummaryData?.items || itemsList || [];
+                const currentItems = activeTab === 'item-master'
+                  ? displayItemMaster
+                  : (stockSummaryData?.items || itemsList || []);
                 handleToggleSelectAll(currentItems);
               }}
               style={{
@@ -1916,6 +2118,31 @@ export default function StoreManagement() {
           <FileText size={14} />
           <span>Monthly Contractor Billing</span>
         </button>
+
+        <button
+          ref={el => navTabRefs.current['factory-units'] = el}
+          onClick={() => setActiveTab('factory-units')}
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '0.38rem 0.8rem',
+            borderRadius: '6px',
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: activeTab === 'factory-units' ? '#ffffff' : '#64748b',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            whiteSpace: 'nowrap',
+            transition: 'color 180ms ease'
+          }}
+        >
+          <Factory size={14} />
+          <span>Factory Units</span>
+        </button>
       </div>
 
       {/* Main Content Sections based on Active Tab */}
@@ -2015,7 +2242,12 @@ export default function StoreManagement() {
                           />
                         </td>
                       )}
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#1e293b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <StoreItemThumbnail image={item.image} code={item.item_code} name={item.item_name} size={30} />
+                          <span>{item.item_code}</span>
+                        </div>
+                      </td>
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
                         {item.item_name}
                         {item.is_low_stock && (
@@ -2070,19 +2302,7 @@ export default function StoreManagement() {
               >
                 {/* Top Header: Box Icon Badge + Item Name + Item Code & Status Badges + Chevron */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '12px',
-                    backgroundColor: item.is_low_stock ? '#fee2e2' : '#fef3c7',
-                    color: item.is_low_stock ? '#dc2626' : '#8b5a2b',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    <Package size={20} />
-                  </div>
+                  <StoreItemThumbnail image={item.image} code={item.item_code} name={item.item_name} size={42} />
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h4 style={{ margin: '0 0 0.25rem 0', fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
@@ -2209,6 +2429,16 @@ export default function StoreManagement() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
+                  {selectionMode && (
+                    <th style={{ width: '40px', padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>
+                      <input
+                        type="checkbox"
+                        checked={displayItemMaster.length > 0 && displayItemMaster.every(i => selectedRowIds.has(i.id))}
+                        onChange={() => handleToggleSelectAll(displayItemMaster)}
+                        style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                      />
+                    </th>
+                  )}
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Code</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Item Name</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Category</th>
@@ -2221,21 +2451,26 @@ export default function StoreManagement() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={8} />
+                  <TableSkeleton rows={8} cols={selectionMode ? 9 : 8} />
                 ) : displayItemMaster.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                    <td colSpan={selectionMode ? 9 : 8} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
                       {orderItemMaster === 'draft' ? 'No item master drafts saved.' : 'No store items found.'}
                     </td>
                   </tr>
                 ) : (
                   displayItemMaster.map((item, idx) => {
+                    const isSelected = selectedRowIds.has(item.id);
                     const isActive = activeRowId === item.id;
                     return (
                     <tr
                       key={item.id || idx}
                       className={isActive ? 'row-active-highlight' : ''}
                       onClick={() => {
+                        if (selectionMode) {
+                          handleToggleSelectRow(item.id);
+                          return;
+                        }
                         if (item.isDraft) {
                           navigate('/store-management/item-master/new', { state: { draftData: item.draftData, draftId: item.id } });
                           return;
@@ -2251,11 +2486,26 @@ export default function StoreManagement() {
                       title={item.isDraft ? "Click to resume draft" : "Click to select & highlight row | Double-click to open full details"}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
+                        backgroundColor: isSelected ? '#eff6ff' : (isActive ? '#e0f2fe' : 'transparent'),
                         cursor: 'pointer'
                       }}
                     >
-                    <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#1e293b' }}>{item.item_code}</td>
+                    {selectionMode && (
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(item.id)}
+                          onChange={() => handleToggleSelectRow(item.id)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                        />
+                      </td>
+                    )}
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: 700, color: '#1e293b' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <StoreItemThumbnail image={item.image} code={item.item_code} name={item.item_name} size={30} />
+                        <span>{item.item_code}</span>
+                      </div>
+                    </td>
                     <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{item.item_name}</td>
                     <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>{item.category_name || '-'}</td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#64748b' }}>{item.unit}</td>
@@ -2332,6 +2582,13 @@ export default function StoreManagement() {
                             style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer' }}
                           >
                             <Edit size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteStoreItem(item); }}
+                            title="Delete Item Master"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       )}
@@ -2445,6 +2702,12 @@ export default function StoreManagement() {
                         style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
                         <Edit size={14} /> Edit
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteStoreItem(item); }}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Trash2 size={14} /> Delete
                       </button>
                     </>
                   )}
@@ -3779,6 +4042,635 @@ export default function StoreManagement() {
           </div>
         </div>
       )}
+
+        {/* TAB 10: FACTORY UNITS (PRODUCTION & STORAGE UNITS) */}
+        {activeTab === 'factory-units' && (
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            
+            {/* Factory Summary KPI Bar */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '0.75rem',
+              padding: '1rem 1.25rem',
+              backgroundColor: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0'
+            }}>
+              <div style={{ backgroundColor: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Factory size={20} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Factory Units</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{factoryUnitStats.total}</div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#f0fdf4', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CheckCircle size={20} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Active Units</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.1 }}>{factoryUnitStats.active}</div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Gauge size={20} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Capacity</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#d97706', lineHeight: 1.1 }}>{factoryUnitStats.totalCapacity.toLocaleString()} pcs</div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#faf5ff', color: '#9333ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={20} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Staff Assigned</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#9333ea', lineHeight: 1.1 }}>{factoryUnitStats.totalSupervisors + factoryUnitStats.totalContractors}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Controls & Filter Bar */}
+            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap', flex: 1 }}>
+                <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', minWidth: '220px', maxWidth: '320px' }}>
+                  <Search size={16} color="#94a3b8" />
+                  <input
+                    type="text"
+                    placeholder="Search factory unit name, code, location..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      title="Clear search"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Status Filter Buttons */}
+                <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    onClick={() => setUnitStatusFilter('all')}
+                    style={{
+                      padding: '0.35rem 0.7rem',
+                      border: 'none',
+                      backgroundColor: unitStatusFilter === 'all' ? '#0f172a' : '#ffffff',
+                      color: unitStatusFilter === 'all' ? '#ffffff' : '#475569',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    All ({factoryUnitStats.total})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnitStatusFilter('active')}
+                    style={{
+                      padding: '0.35rem 0.7rem',
+                      border: 'none',
+                      borderLeft: '1px solid #cbd5e1',
+                      borderRight: '1px solid #cbd5e1',
+                      backgroundColor: unitStatusFilter === 'active' ? '#16a34a' : '#ffffff',
+                      color: unitStatusFilter === 'active' ? '#ffffff' : '#475569',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Active ({factoryUnitStats.active})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnitStatusFilter('inactive')}
+                    style={{
+                      padding: '0.35rem 0.7rem',
+                      border: 'none',
+                      backgroundColor: unitStatusFilter === 'inactive' ? '#dc2626' : '#ffffff',
+                      color: unitStatusFilter === 'inactive' ? '#ffffff' : '#475569',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Inactive ({factoryUnitStats.inactive})
+                  </button>
+                </div>
+              </div>
+
+              {/* View Switcher & Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {/* View Mode Switcher */}
+                <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    onClick={() => setUnitViewMode('table')}
+                    title="Table View"
+                    style={{
+                      padding: '0.4rem 0.65rem',
+                      border: 'none',
+                      backgroundColor: unitViewMode === 'table' ? '#e0f2fe' : '#ffffff',
+                      color: unitViewMode === 'table' ? '#0369a1' : '#64748b',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <List size={14} />
+                    <span>Table</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnitViewMode('cards')}
+                    title="Cards Grid View"
+                    style={{
+                      padding: '0.4rem 0.65rem',
+                      border: 'none',
+                      borderLeft: '1px solid #cbd5e1',
+                      backgroundColor: unitViewMode === 'cards' ? '#e0f2fe' : '#ffffff',
+                      color: unitViewMode === 'cards' ? '#0369a1' : '#64748b',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <LayoutGrid size={14} />
+                    <span>Cards</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={fetchProductionUnits}
+                  title="Refresh Factory Units"
+                  style={{
+                    padding: '0.42rem 0.65rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#475569',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  <span>Refresh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate('/units')}
+                  title="Open Workload & Buyer Allocation Page"
+                  style={{
+                    padding: '0.42rem 0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid #bae6fd',
+                    backgroundColor: '#f0f9ff',
+                    color: '#0369a1',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <ArrowRightLeft size={14} />
+                  <span>Workload Allocations</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUnitForEdit(null);
+                    setIsUnitModalOpen(true);
+                  }}
+                  style={{
+                    padding: '0.45rem 0.95rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#0284c7',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)'
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>+ Add Factory Unit</span>
+                </button>
+              </div>
+            </div>
+
+            {/* TAB CONTENT: TABLE VIEW */}
+            {unitViewMode === 'table' && (
+              <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <tr>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Unit Code</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Factory / Unit Name</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Location / Address</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Monthly Capacity</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Personnel & Linkages</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Status</th>
+                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <TableSkeleton rows={6} cols={7} />
+                    ) : paginatedProductionUnits.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <Factory size={36} color="#cbd5e1" />
+                            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#334155' }}>
+                              No factory units found{searchQuery ? ` matching "${searchQuery}"` : ''}
+                            </span>
+                            <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                              {searchQuery ? 'Try clearing your search keyword' : 'Create production units to route daily issues and inward material'}
+                            </span>
+                            {!searchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedUnitForEdit(null); setIsUnitModalOpen(true); }}
+                                style={{ marginTop: '0.5rem', padding: '0.45rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                              >
+                                <Plus size={15} /> Add First Factory Unit
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedProductionUnits.map((unit) => (
+                        <tr key={unit.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              backgroundColor: '#e0f2fe',
+                              color: '#0369a1',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontWeight: 800,
+                              fontSize: '0.78rem',
+                              letterSpacing: '0.03em',
+                              border: '1px solid #bae6fd'
+                            }}>
+                              <Factory size={12} />
+                              {unit.unit_code}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                            {unit.name}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>
+                            {unit.location ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <MapPin size={13} color="#94a3b8" />
+                                {unit.location}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>-</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>
+                            {unit.capacity_pcs !== null && unit.capacity_pcs !== undefined ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                <Gauge size={13} color="#94a3b8" />
+                                {Number(unit.capacity_pcs).toLocaleString()} pcs
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>-</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', color: '#64748b', fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                              <span style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: '#475569' }}>
+                                {unit.supervisor_count || 0} Supervisors
+                              </span>
+                              <span style={{ backgroundColor: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, color: '#475569' }}>
+                                {unit.contractor_count || 0} Contractors
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              backgroundColor: unit.is_active ? '#f0fdf4' : '#fef2f2',
+                              color: unit.is_active ? '#16a34a' : '#dc2626',
+                              border: `1px solid ${unit.is_active ? '#bbf7d0' : '#fecaca'}`
+                            }}>
+                              {unit.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUnitForEdit(unit);
+                                  setIsUnitModalOpen(true);
+                                }}
+                                title="Edit Factory Unit"
+                                style={{
+                                  padding: '4px 9px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  backgroundColor: '#ffffff',
+                                  color: '#0284c7',
+                                  fontWeight: 700,
+                                  fontSize: '0.78rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Edit size={13} />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUnit(unit)}
+                                title="Delete Factory Unit"
+                                style={{
+                                  padding: '4px 9px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fecaca',
+                                  backgroundColor: '#fff5f5',
+                                  color: '#dc2626',
+                                  fontWeight: 700,
+                                  fontSize: '0.78rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* TAB CONTENT: CARDS GRID VIEW */}
+            {unitViewMode === 'cards' && (
+              <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '1.25rem' }}>
+                {paginatedProductionUnits.length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                    <Factory size={36} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#334155' }}>No factory units found</div>
+                  </div>
+                ) : (
+                  paginatedProductionUnits.map(unit => (
+                    <div key={unit.id} style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '1.25rem', border: '1.5px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                          <span style={{ backgroundColor: '#e0f2fe', color: '#0284c7', fontWeight: 800, fontSize: '0.8rem', padding: '3px 9px', borderRadius: '7px', border: '1px solid #bae6fd', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Factory size={13} /> {unit.unit_code}
+                          </span>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '10px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            backgroundColor: unit.is_active ? '#f0fdf4' : '#fef2f2',
+                            color: unit.is_active ? '#16a34a' : '#dc2626',
+                            border: `1px solid ${unit.is_active ? '#bbf7d0' : '#fecaca'}`
+                          }}>
+                            {unit.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+
+                        <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{unit.name}</h3>
+                        <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MapPin size={13} color="#94a3b8" /> {unit.location || 'Location not specified'}
+                        </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', backgroundColor: '#f8fafc', padding: '0.75rem', borderRadius: '12px', marginBottom: '1rem', textAlign: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>SUPERVISORS</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0284c7' }}>{unit.supervisor_count || 0}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>CONTRACTORS</div>
+                            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d97706' }}>{unit.contractor_count || 0}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>CAPACITY</div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#16a34a' }}>{Number(unit.capacity_pcs || 0).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUnitForEdit(unit);
+                            setIsUnitModalOpen(true);
+                          }}
+                          style={{
+                            padding: '0.45rem',
+                            borderRadius: '8px',
+                            border: '1px solid #cbd5e1',
+                            backgroundColor: '#ffffff',
+                            color: '#0284c7',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Edit size={14} /> Edit Unit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUnit(unit)}
+                          style={{
+                            padding: '0.45rem',
+                            borderRadius: '8px',
+                            border: '1px solid #fecaca',
+                            backgroundColor: '#fff5f5',
+                            color: '#dc2626',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Mobile Card List View */}
+            <div className="mobile-only" style={{ padding: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {paginatedProductionUnits.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b' }}>
+                  <Factory size={32} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
+                  <div style={{ fontWeight: 600 }}>No factory units found</div>
+                </div>
+              ) : (
+                paginatedProductionUnits.map(unit => (
+                  <div key={unit.id} className="store-mobile-card" style={{ padding: '1rem', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        backgroundColor: '#e0f2fe',
+                        color: '#0369a1',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontWeight: 800,
+                        fontSize: '0.75rem',
+                        border: '1px solid #bae6fd'
+                      }}>
+                        <Factory size={12} />
+                        {unit.unit_code}
+                      </span>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        backgroundColor: unit.is_active ? '#f0fdf4' : '#fef2f2',
+                        color: unit.is_active ? '#16a34a' : '#dc2626',
+                        border: `1px solid ${unit.is_active ? '#bbf7d0' : '#fecaca'}`
+                      }}>
+                        {unit.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                    <h4 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                      {unit.name}
+                    </h4>
+
+                    {unit.location && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#64748b', marginBottom: '0.35rem' }}>
+                        <MapPin size={13} color="#94a3b8" />
+                        <span>{unit.location}</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.76rem', color: '#475569', margin: '0.5rem 0 0.85rem 0', flexWrap: 'wrap' }}>
+                      {unit.capacity_pcs && (
+                        <span>Capacity: <strong>{Number(unit.capacity_pcs).toLocaleString()} pcs</strong></span>
+                      )}
+                      <span>Staff: <strong>{unit.supervisor_count || 0} Superv. / {unit.contractor_count || 0} Cont.</strong></span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', paddingTop: '0.65rem', borderTop: '1px solid #f1f5f9' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedUnitForEdit(unit);
+                          setIsUnitModalOpen(true);
+                        }}
+                        style={{
+                          padding: '0.5rem',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          backgroundColor: '#ffffff',
+                          color: '#0284c7',
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Edit size={14} /> Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUnit(unit)}
+                        style={{
+                          padding: '0.5rem',
+                          borderRadius: '8px',
+                          border: '1px solid #fecaca',
+                          backgroundColor: '#fff5f5',
+                          color: '#dc2626',
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
+              <Pagination
+                currentPage={pageUnits}
+                totalPages={Math.ceil(filteredProductionUnits.length / ITEMS_PER_PAGE) || 1}
+                onPageChange={setPageUnits}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODALS */}
@@ -3804,6 +4696,7 @@ export default function StoreManagement() {
           setSelectedItemForEdit(itemToEdit);
           setIsItemModalOpen(true);
         }}
+        onDelete={handleDeleteStoreItem}
       />
 
       <StoreCategoryModal
@@ -3868,6 +4761,18 @@ export default function StoreManagement() {
         onImportSuccess={fetchBaselineData}
       />
 
+      <StoreFactoryUnitModal
+        isOpen={isUnitModalOpen}
+        onClose={() => {
+          setIsUnitModalOpen(false);
+          setSelectedUnitForEdit(null);
+        }}
+        unit={selectedUnitForEdit}
+        onSuccess={() => {
+          fetchProductionUnits();
+        }}
+      />
+
       {/* Bulk Delete Confirm Modal */}
       {showBulkDeleteConfirm && (
         <div className="modal-overlay" style={{ zIndex: 999999 }} onClick={() => setShowBulkDeleteConfirm(false)}>
@@ -3899,6 +4804,83 @@ export default function StoreManagement() {
           </div>
         </div>
       )}
+
+      {/* Item Master Delete Confirm Modal */}
+      {itemToDelete && (
+        <div className="modal-overlay" style={{ zIndex: 999999 }} onClick={() => !deletingItem && setItemToDelete(null)}>
+          <div className="modal-content" style={{ maxWidth: '440px', borderRadius: '16px', padding: '1.5rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+              <Trash2 size={26} />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+              Delete Item Master?
+            </h3>
+            <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.88rem', color: '#475569', lineHeight: 1.5 }}>
+              Are you sure you want to delete <strong style={{ color: '#0f172a' }}>{itemToDelete.item_code} - {itemToDelete.item_name}</strong>?
+            </p>
+            {Number(itemToDelete.balance_stock_qty || itemToDelete.total_stock_qty || 0) > 0 && (
+              <div style={{ margin: '0 0 1rem 0', padding: '0.65rem 0.85rem', borderRadius: '8px', backgroundColor: '#fff7ed', border: '1px solid #ffedd5', fontSize: '0.8rem', color: '#c2410c', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>This item currently has an active stock balance of <strong>{itemToDelete.balance_stock_qty || itemToDelete.total_stock_qty} {itemToDelete.unit}</strong>. Related inventory ledgers will also be deleted.</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
+              <button
+                onClick={() => setItemToDelete(null)}
+                disabled={deletingItem}
+                style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteItem}
+                disabled={deletingItem}
+                style={{ padding: '0.55rem 1.25rem', borderRadius: '8px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: deletingItem ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {deletingItem ? 'Deleting...' : 'Yes, Delete Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Factory Unit Delete Confirm Modal */}
+      {unitToDelete && (
+        <div className="modal-overlay" style={{ zIndex: 999999 }} onClick={() => !deletingUnit && setUnitToDelete(null)}>
+          <div className="modal-content" style={{ maxWidth: '440px', borderRadius: '16px', padding: '1.5rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto' }}>
+              <Trash2 size={26} />
+            </div>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
+              Delete Factory Unit?
+            </h3>
+            <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.88rem', color: '#475569', lineHeight: 1.5 }}>
+              Are you sure you want to delete <strong style={{ color: '#0f172a' }}>{unitToDelete.unit_code} - {unitToDelete.name}</strong>?
+            </p>
+            <div style={{ margin: '0 0 1rem 0', padding: '0.65rem 0.85rem', borderRadius: '8px', backgroundColor: '#fff7ed', border: '1px solid #ffedd5', fontSize: '0.8rem', color: '#c2410c', textAlign: 'left', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+              <span>Any store inwards, outward daily issues, material returns, or users linked to this factory unit will be unassigned.</span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
+              <button
+                onClick={() => setUnitToDelete(null)}
+                disabled={deletingUnit}
+                style={{ padding: '0.55rem 1.1rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#475569', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteUnit}
+                disabled={deletingUnit}
+                style={{ padding: '0.55rem 1.25rem', borderRadius: '8px', border: 'none', backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: deletingUnit ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {deletingUnit ? 'Deleting...' : 'Yes, Delete Unit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Floating Action Speed Dial (FAB) */}
       <div className="mobile-only store-mobile-fab-container">
         {showMobileFabMenu && (
@@ -3942,6 +4924,18 @@ export default function StoreManagement() {
             >
               <ClipboardCheck size={16} color="#0284c7" />
               <span>New Requisition</span>
+            </button>
+            <button
+              type="button"
+              className="store-mobile-fab-item"
+              onClick={() => {
+                setShowMobileFabMenu(false);
+                setSelectedUnitForEdit(null);
+                setIsUnitModalOpen(true);
+              }}
+            >
+              <Factory size={16} color="#0284c7" />
+              <span>New Factory Unit</span>
             </button>
           </div>
         )}
