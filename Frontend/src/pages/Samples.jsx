@@ -318,9 +318,32 @@ function Samples() {
 
   const fetchFinishesOptions = () => {
     api.get('/finishes/', { params: { nopage: true } })
-      .then(res => setFinishesOptions(res.data.results || res.data))
-      .catch(err => console.error(err));
+      .then(res => {
+        const list = res.data.results || res.data || [];
+        const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        setFinishesOptions(sorted);
+      })
+      .catch(err => console.error('Failed to load finish options', err));
   };
+
+  const finishSelectOptions = useMemo(() => {
+    const opts = [
+      { value: '', label: '-- Select Finish from Catalog --' }
+    ];
+    finishesOptions.forEach(f => {
+      const codeStr = f.finish_code ? `[${f.finish_code}] ` : '';
+      const colorWoodStr = [f.color, f.wood_type].filter(Boolean).join(' · ');
+      opts.push({
+        value: f.name,
+        label: `${codeStr}${f.name}${colorWoodStr ? ` (${colorWoodStr})` : ''}`,
+        badge: f.finish_code || null,
+        sublabel: colorWoodStr || null,
+        image: f.image || null,
+        finishId: f.id,
+      });
+    });
+    return opts;
+  }, [finishesOptions]);
 
   const [debouncedSearch, setDebouncedSearch] = useState(filterSearch);
   useEffect(() => {
@@ -530,6 +553,7 @@ function Samples() {
             sample_id: sample.sample_id ?? '',
             style_no: sample.style_no ?? '',
             buyer: sample.buyer ?? '',
+            finish: sample.finish ?? (sample.finish_detail?.id ?? ''),
             product_name: sample.product_name ?? '',
             material: sample.material ?? '',
             finish_color: sample.finish_color ?? '',
@@ -542,7 +566,11 @@ function Samples() {
             size_height: sample.size_height ?? '',
           });
           setMaterialsList(parseSlashList(sample.material));
-          setFinishesList(parseSlashList(sample.finish_color));
+          let parsedFinishes = parseSlashList(sample.finish_color);
+          if ((!parsedFinishes.length || !parsedFinishes[0]) && sample.finish_detail?.name) {
+            parsedFinishes = [sample.finish_detail.name];
+          }
+          setFinishesList(parsedFinishes.length ? parsedFinishes : ['']);
           const existingImgs = (sample.images || []).map(img => ({
             id: img.id,
             image_url: img.image_url,
@@ -611,17 +639,41 @@ function Samples() {
     const next = [...finishesList];
     next[idx] = value;
     setFinishesList(next);
-    if (formErrors.finish_color || formErrors.general) {
+
+    const primaryFinishName = next.map(f => f.trim()).filter(Boolean)[0] || '';
+    const matched = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
+    setFormData(prev => ({
+      ...prev,
+      finish: matched ? matched.id : (idx === 0 ? '' : prev.finish),
+      finish_color: next.map(f => f.trim()).filter(Boolean).join(' / ')
+    }));
+
+    if (formErrors.finish_color || formErrors.finish || formErrors.general) {
       setFormErrors(prev => {
         const nextErr = { ...prev };
         delete nextErr.finish_color;
-        delete nextErr.general;
+        delete nextErr.finish;
+        if (Object.keys(nextErr).length === 1 && nextErr.general) {
+          delete nextErr.general;
+        }
         return nextErr;
       });
     }
   };
   const addFinishField = () => setFinishesList(prev => [...prev, '']);
-  const removeFinishField = (idx) => setFinishesList(prev => prev.filter((_, i) => i !== idx));
+  const removeFinishField = (idx) => {
+    setIsDirty(true);
+    const next = finishesList.filter((_, i) => i !== idx);
+    const updated = next.length > 0 ? next : [''];
+    setFinishesList(updated);
+    const primaryFinishName = updated.map(f => f.trim()).filter(Boolean)[0] || '';
+    const matched = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
+    setFormData(prev => ({
+      ...prev,
+      finish: matched ? matched.id : '',
+      finish_color: updated.map(f => f.trim()).filter(Boolean).join(' / ')
+    }));
+  };
 
   const handleDimChange = (key, val) => {
     setIsDirty(true);
@@ -756,14 +808,14 @@ function Samples() {
 
     // finish_color
     const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
-    if (finishJoined) {
-      if (finishJoined.length > 255) {
-        errors.finish_color = 'Finish / Color cannot exceed 255 characters.';
-      } else if (hasRepeating(finishJoined)) {
-        errors.finish_color = 'Finish / Color contains excessive repetitive characters.';
-      } else if (hasLongWord(finishJoined)) {
-        errors.finish_color = 'Finish / Color contains an excessively long word or gibberish.';
-      }
+    if (!finishJoined) {
+      errors.finish_color = 'Please select a finish from the Finish Catalog.';
+    } else if (finishJoined.length > 255) {
+      errors.finish_color = 'Finish / Color cannot exceed 255 characters.';
+    } else if (hasRepeating(finishJoined)) {
+      errors.finish_color = 'Finish / Color contains excessive repetitive characters.';
+    } else if (hasLongWord(finishJoined)) {
+      errors.finish_color = 'Finish / Color contains an excessively long word or gibberish.';
     }
 
     // vendor_name
@@ -841,16 +893,22 @@ function Samples() {
       const materialJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
       const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
 
+      // Primary finish foreign key linking to Finish model
+      const primaryFinishName = finishesList.map(f => f.trim()).filter(Boolean)[0] || '';
+      const matchedFinish = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
+      const finishId = matchedFinish ? matchedFinish.id : (formData.finish || '');
+
       const updatedFormData = {
         ...formData,
         sample_id: formData.style_no || formData.sample_id || `SMP-${Date.now()}`,
         material: materialJoined,
+        finish: finishId,
         finish_color: finishJoined,
       };
 
       const submitData = new FormData();
       Object.entries(updatedFormData).forEach(([k, v]) => {
-        if (k === 'buyer' && v === '') {
+        if ((k === 'buyer' || k === 'finish') && (v === '' || v === null)) {
           submitData.append(k, '');
         } else if (v !== '' && v !== null && v !== undefined) {
           submitData.append(k, v);
@@ -1007,8 +1065,8 @@ function Samples() {
                 </div>
               )}
 
-              {/* Row 1: Core Identifiers (4-columns across desktop) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+              {/* Row 1: Core Identifiers (3-columns across desktop) */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.style_no ? '#dc2626' : '#334155', marginBottom: '6px' }}>
                     Style No. *
@@ -1076,6 +1134,8 @@ function Samples() {
                     name="buyer"
                     value={formData.buyer}
                     onChange={handleChange}
+                    searchable={true}
+                    searchPlaceholder="Search buyer..."
                     options={[
                       { value: '', label: 'Select Buyer...' },
                       ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))
@@ -1086,31 +1146,6 @@ function Samples() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
                       <AlertCircle size={14} style={{ flexShrink: 0 }} />
                       <span>{formErrors.buyer}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.finish ? '#dc2626' : '#334155', marginBottom: '6px' }}>
-                    Finish (Catalog Reference)
-                  </label>
-                  <CustomSelect
-                    name="finish"
-                    value={formData.finish || ''}
-                    onChange={handleChange}
-                    options={[
-                      { value: '', label: 'Select Registered Finish...' },
-                      ...finishesOptions.map(f => ({
-                        value: f.id,
-                        label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})`
-                      }))
-                    ]}
-                    placeholder="Select Registered Finish..."
-                  />
-                  {formErrors.finish && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
-                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
-                      <span>{formErrors.finish}</span>
                     </div>
                   )}
                 </div>
@@ -1305,9 +1340,32 @@ function Samples() {
                   backgroundColor: formErrors.finish_color ? '#fff5f5' : '#fafaf9'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
-                      Finish / Color(s) *
-                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
+                        Finish / Polish Catalog *
+                      </label>
+                      <a
+                        href="/finishing"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: '0.73rem',
+                          color: '#8b5a2b',
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontWeight: 600,
+                          backgroundColor: '#fdf8f5',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #ebd8c8'
+                        }}
+                        title="Open Finish Section in new tab to add or manage finishes in class Finish(models.Model)"
+                      >
+                        <span>Finishing Section ↗</span>
+                      </a>
+                    </div>
                     <button
                       type="button"
                       onClick={addFinishField}
@@ -1325,37 +1383,57 @@ function Samples() {
                       + Add Finish
                     </button>
                   </div>
+                  {finishesOptions.length === 0 && (
+                    <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e', marginBottom: '8px' }}>
+                      No registered finishes found in Finish Catalog. Please add finishes in the <a href="/finishing" target="_blank" rel="noopener noreferrer" style={{ color: '#8b5a2b', fontWeight: 700 }}>Finishing Section</a>.
+                    </div>
+                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {finishesList.map((fin, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <input
-                          required={idx === 0}
-                          type="text"
-                          className="form-input"
-                          value={fin}
-                          onChange={e => handleFinishItemChange(idx, e.target.value)}
-                          placeholder={`Finish ${idx + 1} (e.g. ${idx === 0 ? 'Sand Blast Natural' : 'Fabric Linen'})`}
-                          style={{
-                            width: '100%',
-                            padding: '0.6rem 0.8rem',
-                            borderRadius: '6px',
-                            border: formErrors.finish_color ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
-                            backgroundColor: '#ffffff',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                        {finishesList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeFinishField(idx)}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.2rem' }}
-                            title="Remove Finish"
-                          >
-                            <X size={18} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {finishesList.map((fin, idx) => {
+                      const isCustomOrLegacy = fin && !finishesOptions.some(f => f.name === fin || f.id === fin);
+                      const optionsForField = isCustomOrLegacy
+                        ? [
+                            finishSelectOptions[0],
+                            { value: fin, label: `${fin} (Legacy Unregistered)`, badge: 'Legacy' },
+                            ...finishSelectOptions.slice(1)
+                          ]
+                        : finishSelectOptions;
+
+                      return (
+                        <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <CustomSelect
+                              value={fin}
+                              onChange={(e, val) => handleFinishItemChange(idx, val !== undefined ? val : e.target.value)}
+                              options={optionsForField}
+                              placeholder="-- Select Finish from Catalog --"
+                              searchable={true}
+                              searchPlaceholder="Search finish by name, code, wood..."
+                            />
+                          </div>
+                          {finishesList.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeFinishField(idx)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                padding: '0.3rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '6px'
+                              }}
+                              title="Remove Finish"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {formErrors.finish_color && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '6px' }}>
@@ -2078,7 +2156,29 @@ function Samples() {
                         </td>
                         <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                        <td>{s.finish_color || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                        <td>
+                          {s.finish_detail ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {s.finish_detail.finish_code && (
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  backgroundColor: '#f5efe8',
+                                  color: '#8b5a2b',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #e8dbce',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {s.finish_detail.finish_code}
+                                </span>
+                              )}
+                              <span>{s.finish_color || s.finish_detail.name}</span>
+                            </div>
+                          ) : (
+                            s.finish_color || <span style={{color:'var(--text-muted)'}}>—</span>
+                          )}
+                        </td>
                         <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>

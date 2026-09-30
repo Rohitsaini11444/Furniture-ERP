@@ -8,7 +8,7 @@ from django.utils import timezone
 
 
 
-# ─── Role & Category Choices ─────────────────────────────────────────────────
+# ───------------------------- Role & Category Choices ─────────────────────────────────────────────────
 
 class RoleChoices(models.TextChoices):
     ADMIN = 'admin', 'Admin'
@@ -25,7 +25,7 @@ class BatchCategory(models.TextChoices):
     PACKAGING = 'packaging', 'Packaging'
 
 
-# ─── Production Unit / Factory Model ───────────────────────────────────────
+# ────────────────────────── Production Unit / Factory Model ───────────────────────────────────────
 
 class ProductionUnit(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -46,7 +46,7 @@ class ProductionUnit(models.Model):
         return f"{self.name} ({self.unit_code})"
 
 
-# ─── Custom User Model ────────────────────────────────────────────────────────
+# ────────────────────────── Custom User Model ────────────────────────────────────────────────────────
 
 class User(AbstractUser):
     """
@@ -109,7 +109,7 @@ class User(AbstractUser):
         return self.role == RoleChoices.CONTRACTOR
 
 
-# ─── Finish / Polish Catalog Model ───────────────────────────────────────────
+# ────────────────────────── Finish / Polish Catalog Model ───────────────────────────────────────────
 
 class Finish(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -131,7 +131,7 @@ class Finish(models.Model):
         return f"{self.name}{code_str}"
 
 
-# ─── Existing ERP Models ──────────────────────────────────────────────────────
+# ────────────────────────── Existing ERP Models ──────────────────────────────────────────────────────
 
 class Sample(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -295,7 +295,7 @@ class BuyerMasterFinishingImage(models.Model):
     image = models.ImageField(upload_to='buyer_masters/finishing/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
-# ─── Supplier & Supplier PO Models ──────────────────────────────────────────
+# ────────────────────────── Supplier & Supplier PO Models ──────────────────────────────────────────
 
 class Supplier(models.Model):
     """Master list of raw-material suppliers."""
