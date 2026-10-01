@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
-import { Palette, X, Search, Filter, ArrowLeft, ChevronRight, Upload, Plus, Download, FileSpreadsheet, Trash2, Edit2, CheckSquare, Square, FileEdit, Sparkles, AlertCircle } from 'lucide-react';
+import {
+  Palette, X, Search, Filter, ArrowLeft, ChevronRight, Upload, Plus, Download,
+  FileSpreadsheet, Trash2, Edit2, CheckSquare, Square, FileEdit, Sparkles, AlertCircle,
+  Shield, Gem, Scissors, Layers, Check
+} from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
 import CustomSelect from '../components/CustomSelect';
@@ -11,11 +15,25 @@ import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
 import { useDrafts } from '../context/DraftsContext';
 
+const FINISH_CATEGORIES = [
+  { id: 'wood', label: 'Wood Finish', shortLabel: 'Wood', icon: Palette, color: '#9a5323', bg: '#fff2e2', border: '#e6ded3', placeholder: 'e.g. Smokey Grey PU' },
+  { id: 'metal', label: 'Metal Finish', shortLabel: 'Metal', icon: Shield, color: '#334155', bg: '#f1f5f9', border: '#cbd5e1', placeholder: 'e.g. Antique Brass Matte' },
+  { id: 'marble', label: 'Marble Finish', shortLabel: 'Marble', icon: Gem, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', placeholder: 'e.g. Italian Carrara Polished' },
+  { id: 'fabric', label: 'Fabric Type', shortLabel: 'Fabric', icon: Scissors, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', placeholder: 'e.g. Royal Velvet Navy' },
+];
+
 const emptyFinishForm = {
+  category: 'wood',
   name: '',
   finish_code: '',
   color: '',
   wood_type: '',
+  metal_type: '',
+  coating_type: '',
+  marble_type: '',
+  surface_treatment: '',
+  material_type: '',
+  pattern: '',
 };
 
 const WOOD_TYPES = [
@@ -29,6 +47,78 @@ const WOOD_TYPES = [
   'Reclaimed Wood',
   'MDF / Engineered Wood',
   'Plywood',
+  'Other'
+];
+
+const METAL_TYPES = [
+  'Mild Steel (MS)',
+  'Stainless Steel (SS 304)',
+  'Brass',
+  'Copper',
+  'Aluminium',
+  'Cast Iron',
+  'Wrought Iron',
+  'Other'
+];
+
+const COATING_TYPES = [
+  'Powder Coated',
+  'Electroplated',
+  'PVD Coated',
+  'Brushed / Satin',
+  'Antique Patina',
+  'Clear Lacquer',
+  'Matte Finish',
+  'Chrome Plated',
+  'Other'
+];
+
+const MARBLE_TYPES = [
+  'Makrana White Marble',
+  'Italian Carrara Marble',
+  'Black Marquina Marble',
+  'Green Marble (Udaipur)',
+  'Banswara Purple Marble',
+  'Travertine Stone',
+  'Granite',
+  'Sandstone',
+  'Onyx Stone',
+  'Other'
+];
+
+const SURFACE_TREATMENTS = [
+  'High Gloss Polished',
+  'Honed / Matte',
+  'Leather Finish',
+  'Flamed',
+  'Bush Hammered',
+  'Antique Tumbled',
+  'Other'
+];
+
+const FABRIC_MATERIALS = [
+  'Velvet',
+  'Linen',
+  'Cotton Canvas',
+  'Bouclé',
+  'Leatherette / Faux Leather',
+  'Jute / Hemp',
+  'Polyester Blend',
+  'Chenille',
+  'Jacquard',
+  'Silk / Satin',
+  'Other'
+];
+
+const FABRIC_PATTERNS = [
+  'Plain / Solid',
+  'Textured Weave',
+  'Printed',
+  'Geometric',
+  'Striped',
+  'Tufted / Quilted',
+  'Floral',
+  'Abstract',
   'Other'
 ];
 
@@ -100,8 +190,47 @@ function Finishing() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin } = useAuth();
   const isDetailPage = !!id;
+
+  const currentTab = searchParams.get('tab') || 'wood';
+  const [activeTab, setActiveTabState] = useState(currentTab);
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTabState(tabFromUrl);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tabId) => {
+    setActiveTabState(tabId);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tabId);
+      return next;
+    });
+    setCurrentPage(1);
+    setSelectedFinishIds(new Set());
+    setSearchTerm('');
+    setFilterSpecificType('');
+  };
+
+  const activeCategory = FINISH_CATEGORIES.find(c => c.id === activeTab) || FINISH_CATEGORIES[0];
+  const ActiveCatIcon = activeCategory.icon;
+
+  const [categoryCounts, setCategoryCounts] = useState({ wood: 0, metal: 0, marble: 0, fabric: 0, total: 0 });
+  const fetchCounts = useCallback(() => {
+    api.get('/finishes/counts/')
+      .then(res => setCategoryCounts(res.data))
+      .catch(err => console.error('Error fetching finish counts:', err));
+  }, []);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
   const [finishes, setFinishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -127,9 +256,9 @@ function Finishing() {
   } = useUnsavedChanges({
     formType: 'finishing',
     formLabel: 'Finishing',
-    getFormTitle: (data) => data?.name ? `Finish: ${data.name}${data.finish_code ? ' (' + data.finish_code + ')' : ''}` : 'New Finish',
+    getFormTitle: (data) => data?.name ? `${FINISH_CATEGORIES.find(c => c.id === data.category)?.label || 'Finish'}: ${data.name}${data.finish_code ? ' (' + data.finish_code + ')' : ''}` : 'New Finish',
     getFormData: () => ({ ...formData }),
-    targetPath: '/finishing/new',
+    targetPath: `/finishing/new?tab=${activeTab}`,
     onSaveForm: async () => {
       const formEl = document.getElementById('finish-detail-form');
       if (formEl) { formEl.requestSubmit(); return true; }
@@ -139,13 +268,13 @@ function Finishing() {
 
   // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterWoodType, setFilterWoodType] = useState('');
+  const [filterSpecificType, setFilterSpecificType] = useState('');
   const [ordering, setOrdering] = useState('-created_at');
 
   const { drafts, deleteDraft } = useDrafts();
 
   const orderOptions = useMemo(() => {
-    const draftCount = drafts.filter(d => d.formType === 'finishing').length;
+    const draftCount = drafts.filter(d => d.formType === 'finishing' && (d.data?.category || 'wood') === activeTab).length;
     return [
       ...ORDER_OPTIONS_FINISH,
       {
@@ -156,7 +285,7 @@ function Finishing() {
         isDividerBefore: true
       }
     ];
-  }, [drafts]);
+  }, [drafts, activeTab]);
 
   const [currentPage, setCurrentPage] = useState(() => {
     try {
@@ -183,10 +312,15 @@ function Finishing() {
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [importCategory, setImportCategory] = useState(activeTab);
   const finishFileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState('');
   const [importError, setImportError] = useState('');
+
+  useEffect(() => {
+    setImportCategory(activeTab);
+  }, [activeTab]);
 
   const enterSelectionMode = () => setSelectionMode(true);
   const exitSelectionMode = () => {
@@ -201,6 +335,7 @@ function Finishing() {
       await api.post('/finishes/bulk-delete/', { finish_ids: Array.from(selectedFinishIds) });
       setShowBulkDeleteConfirm(false);
       exitSelectionMode();
+      fetchCounts();
       fetchFinishes();
     } catch (err) {
       console.error('Bulk delete error:', err);
@@ -233,6 +368,7 @@ function Finishing() {
     try {
       const payload = {
         finish_ids: Array.from(selectedFinishIds),
+        category: activeTab,
         q: searchTerm
       };
       const response = await api.post('/finishes/export-excel/', payload, {
@@ -241,7 +377,7 @@ function Finishing() {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', selectedFinishIds.size > 0 ? `Finishes_Selected_${selectedFinishIds.size}.xlsx` : 'Finishing_Catalog.xlsx');
+      link.setAttribute('download', selectedFinishIds.size > 0 ? `Finishes_${activeTab}_Selected_${selectedFinishIds.size}.xlsx` : `Finishing_${activeTab}_Catalog.xlsx`);
       document.body.appendChild(link);
       link.click();
       if (link.parentNode) link.parentNode.removeChild(link);
@@ -261,15 +397,17 @@ function Finishing() {
     setImportError('');
     setImportSuccess('');
 
-    const formData = new FormData();
-    formData.append('file', importFile);
+    const formDataUpload = new FormData();
+    formDataUpload.append('file', importFile);
+    formDataUpload.append('category', importCategory);
 
     try {
-      const res = await api.post('/finishes/import-excel/', formData, {
+      const res = await api.post('/finishes/import-excel/', formDataUpload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportSuccess(res.data.message || 'Finishes imported successfully!');
       setImportFile(null);
+      fetchCounts();
       fetchFinishes();
     } catch (err) {
       console.error('Import error:', err);
@@ -291,15 +429,22 @@ function Finishing() {
   const fetchFinishes = useCallback(() => {
     if (ordering === 'draft') {
       setLoading(true);
-      const currentDrafts = drafts.filter(d => d.formType === 'finishing');
+      const currentDrafts = drafts.filter(d => d.formType === 'finishing' && (d.data?.category || 'wood') === activeTab);
       const mapped = currentDrafts.map(d => {
         const data = d.data || {};
         return {
           id: d.id,
+          category: data.category || activeTab,
           name: data.name || 'Draft Finish',
           finish_code: data.finish_code || '',
           color: data.color || '',
           wood_type: data.wood_type || '',
+          metal_type: data.metal_type || '',
+          coating_type: data.coating_type || '',
+          marble_type: data.marble_type || '',
+          surface_treatment: data.surface_treatment || '',
+          material_type: data.material_type || '',
+          pattern: data.pattern || '',
           image: null,
           image_url: null,
           isDraft: true,
@@ -317,8 +462,13 @@ function Finishing() {
           (f.color && f.color.toLowerCase().includes(q))
         );
       }
-      if (filterWoodType) {
-        resList = resList.filter(f => f.wood_type === filterWoodType);
+      if (filterSpecificType) {
+        resList = resList.filter(f =>
+          f.wood_type === filterSpecificType ||
+          f.metal_type === filterSpecificType ||
+          f.marble_type === filterSpecificType ||
+          f.material_type === filterSpecificType
+        );
       }
 
       resList.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
@@ -331,9 +481,14 @@ function Finishing() {
     }
 
     setLoading(true);
-    const params = { page: currentPage, page_size: 20, ordering };
+    const params = { page: currentPage, page_size: 20, ordering, category: activeTab };
     if (debouncedSearch) params.search = debouncedSearch;
-    if (filterWoodType) params.wood_type = filterWoodType;
+    if (filterSpecificType) {
+      if (activeTab === 'wood') params.wood_type = filterSpecificType;
+      else if (activeTab === 'metal') params.metal_type = filterSpecificType;
+      else if (activeTab === 'marble') params.marble_type = filterSpecificType;
+      else if (activeTab === 'fabric') params.material_type = filterSpecificType;
+    }
 
     api.get('/finishes/', { params })
       .then(res => {
@@ -348,13 +503,13 @@ function Finishing() {
       })
       .catch(err => console.error('Error fetching finishes:', err))
       .finally(() => setLoading(false));
-  }, [currentPage, ordering, debouncedSearch, filterWoodType, drafts]);
+  }, [currentPage, ordering, debouncedSearch, filterSpecificType, drafts, activeTab]);
 
   useEffect(() => {
     fetchFinishes();
   }, [fetchFinishes]);
 
-  // Reset page when filters change
+  // Reset page when filters or tab change
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -363,7 +518,7 @@ function Finishing() {
     }
     setCurrentPage(1);
     setSelectedFinishIds(new Set());
-  }, [debouncedSearch, filterWoodType, ordering]);
+  }, [debouncedSearch, filterSpecificType, ordering, activeTab]);
 
   // Handle URL parameter for detail/edit page or restore draft
   useEffect(() => {
@@ -373,16 +528,23 @@ function Finishing() {
           const f = res.data;
           setEditingId(f.id);
           setFormData({
+            category: f.category || 'wood',
             name: f.name || '',
             finish_code: f.finish_code || '',
             color: f.color || '',
             wood_type: f.wood_type || '',
+            metal_type: f.metal_type || '',
+            coating_type: f.coating_type || '',
+            marble_type: f.marble_type || '',
+            surface_treatment: f.surface_treatment || '',
+            material_type: f.material_type || '',
+            pattern: f.pattern || '',
           });
           setImagePreview(f.image_url || f.image);
         })
         .catch(err => {
           console.error('Error loading finish detail:', err);
-          navigate('/finishing');
+          navigate(`/finishing?tab=${activeTab}`);
         });
     } else if (id === 'new') {
       setEditingId(null);
@@ -392,12 +554,16 @@ function Finishing() {
         setIsDirty(true);
         if (location.state.draftId) setCurrentDraftId(location.state.draftId);
       } else {
-        setFormData(emptyFinishForm);
+        const initialCat = location.state?.category || searchParams.get('tab') || activeTab || 'wood';
+        setFormData({
+          ...emptyFinishForm,
+          category: initialCat,
+        });
         setImageFile(null);
         setImagePreview(null);
       }
     }
-  }, [id, location.state, navigate]);
+  }, [id, location.state, navigate, searchParams, activeTab]);
 
   // ── Form Validation & Handlers ──────────────────────────────────────────
   const validateForm = () => {
@@ -405,41 +571,41 @@ function Finishing() {
     const name = (formData.name || '').trim();
     const finish_code = (formData.finish_code || '').trim();
     const color = (formData.color || '').trim();
-    const wood_type = (formData.wood_type || '').trim();
+    const isFabric = formData.category === 'fabric';
 
-    // 1. Finish Name
+    // 1. Finish / Fabric Name
     if (!name) {
-      errors.name = 'Finish name is required.';
+      errors.name = isFabric ? 'Fabric name is required.' : 'Finish name is required.';
     } else if (name.length < 2) {
-      errors.name = 'Finish name must be at least 2 characters.';
+      errors.name = isFabric ? 'Fabric name must be at least 2 characters.' : 'Finish name must be at least 2 characters.';
     } else if (name.length > 100) {
-      errors.name = 'Finish name cannot exceed 100 characters.';
+      errors.name = 'Name cannot exceed 100 characters.';
     } else {
       const alphaCount = (name.match(/[a-zA-Z]/g) || []).length;
       if (alphaCount < 2) {
-        errors.name = 'Finish name must contain at least 2 letters.';
+        errors.name = 'Name must contain at least 2 letters.';
       } else if (!/^[A-Za-z0-9\s&.,'\-/( )]+$/.test(name)) {
-        errors.name = 'Finish name contains invalid characters. Use letters, numbers, spaces, and standard symbols (&, ., ,, -, \', /, (, )).';
+        errors.name = 'Name contains invalid characters. Use letters, numbers, spaces, and standard symbols (&, ., ,, -, \', /, (, )).';
       } else if (/(.)\1{3,}/.test(name)) {
-        errors.name = 'Finish name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).';
+        errors.name = 'Name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).';
       } else if (name.split(/\s+/).some(w => w.length > 30)) {
-        errors.name = 'Finish name contains an excessively long continuous word.';
+        errors.name = 'Name contains an excessively long continuous word.';
       } else if (/([A-Za-z0-9]{2,3})\1{3,}/.test(name)) {
-        errors.name = 'Finish name appears to be repetitive gibberish.';
+        errors.name = 'Name appears to be repetitive gibberish.';
       }
     }
 
-    // 2. Finish Code
+    // 2. Finish / Fabric Code
     if (!finish_code) {
-      errors.finish_code = 'Finish code is required.';
+      errors.finish_code = isFabric ? 'Fabric code is required.' : 'Finish code is required.';
     } else if (finish_code.length < 2) {
-      errors.finish_code = 'Finish code must be at least 2 characters.';
+      errors.finish_code = 'Code must be at least 2 characters.';
     } else if (finish_code.length > 30) {
-      errors.finish_code = 'Finish code cannot exceed 30 characters.';
+      errors.finish_code = 'Code cannot exceed 30 characters.';
     } else if (!/^[A-Za-z0-9\-_/]+$/.test(finish_code)) {
-      errors.finish_code = 'Finish code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).';
+      errors.finish_code = 'Code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).';
     } else if (/(.)\1{3,}/.test(finish_code)) {
-      errors.finish_code = 'Finish code cannot contain repetitive characters (e.g. 4 identical characters in a row).';
+      errors.finish_code = 'Code cannot contain repetitive characters (e.g. 4 identical characters in a row).';
     }
 
     // 3. Color (optional)
@@ -497,7 +663,7 @@ function Finishing() {
       return;
     }
 
-    // Pre-check for duplicate finish code
+    // Pre-check for duplicate code
     const code = formData.finish_code?.trim();
     if (code) {
       const duplicate = finishes.find(f =>
@@ -506,7 +672,7 @@ function Finishing() {
         String(f.id) !== String(editingId || '')
       );
       if (duplicate) {
-        setFormErrors({ finish_code: 'Finish Code of this finish is already present.' });
+        setFormErrors({ finish_code: `Code '${code}' is already present.` });
         return;
       }
     }
@@ -537,7 +703,8 @@ function Finishing() {
 
       if (currentDraftId) clearDraft(currentDraftId);
       setIsDirty(false);
-      navigate('/finishing');
+      fetchCounts();
+      navigate(`/finishing?tab=${formData.category || activeTab}`);
       fetchFinishes();
     } catch (err) {
       console.error('Failed to save finish:', err);
@@ -545,7 +712,11 @@ function Finishing() {
       const newErrors = {};
 
       if (serverData && typeof serverData === 'object') {
-        ['name', 'finish_code', 'color', 'wood_type', 'image'].forEach(field => {
+        [
+          'name', 'finish_code', 'color', 'wood_type', 'metal_type',
+          'coating_type', 'marble_type', 'surface_treatment',
+          'material_type', 'pattern', 'image', 'category'
+        ].forEach(field => {
           if (serverData[field]) {
             newErrors[field] = Array.isArray(serverData[field])
               ? serverData[field].join(' ')
@@ -562,10 +733,10 @@ function Finishing() {
         } else if (serverData.error) {
           newErrors.general = String(serverData.error);
         } else if (Object.keys(newErrors).length === 0) {
-          newErrors.general = 'Failed to save finish. Please check the entered data.';
+          newErrors.general = 'Failed to save. Please check the entered data.';
         }
       } else {
-        newErrors.general = 'Failed to save finish. Please try again.';
+        newErrors.general = 'Failed to save. Please try again.';
       }
 
       setFormErrors(newErrors);
@@ -580,7 +751,8 @@ function Finishing() {
     try {
       await api.delete(`/finishes/${editingId}/`);
       setShowDeleteConfirm(false);
-      navigate('/finishing');
+      fetchCounts();
+      navigate(`/finishing?tab=${formData.category || activeTab}`);
       fetchFinishes();
     } catch (err) {
       console.error('Failed to delete finish:', err);
@@ -639,11 +811,60 @@ function Finishing() {
             padding: '1.75rem',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #f1f5f9', marginBottom: '1.25rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#1c1917', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Sparkles size={22} color="#9a5323" />
-                {editingId ? `Edit Finish (${formData.finish_code || 'Details'})` : 'Add New Finish'}
-              </h2>
+            {/* Form Header */}
+            {(() => {
+              const currentCatObj = FINISH_CATEGORIES.find(c => c.id === (formData.category || 'wood')) || FINISH_CATEGORIES[0];
+              const CurrentIcon = currentCatObj.icon;
+              return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '1rem', borderBottom: '1px solid #f1f5f9', marginBottom: '1.25rem' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#1c1917', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CurrentIcon size={22} color={currentCatObj.color} />
+                    {editingId ? `Edit ${currentCatObj.shortLabel} Finish (${formData.finish_code || 'Details'})` : `Add New ${currentCatObj.label}`}
+                  </h2>
+                </div>
+              );
+            })()}
+
+            {/* Category Switcher Tabs */}
+            <div style={{ marginBottom: '1.35rem' }}>
+              <label className="form-label" style={{ fontWeight: 700, color: '#1c1917', marginBottom: '0.45rem', display: 'block', fontSize: '0.85rem' }}>
+                Finish Category *
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+                {FINISH_CATEGORIES.map(cat => {
+                  const isSelected = (formData.category || 'wood') === cat.id;
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, category: cat.id }));
+                        if (!editingId) setIsDirty(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.45rem',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '12px',
+                        border: isSelected ? `2px solid ${cat.color}` : '1.5px solid #e2e8f0',
+                        backgroundColor: isSelected ? cat.bg : '#ffffff',
+                        color: isSelected ? cat.color : '#64748b',
+                        fontWeight: isSelected ? 800 : 600,
+                        fontSize: '0.86rem',
+                        cursor: 'pointer',
+                        boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.06)' : 'none',
+                        transition: 'all 0.18s ease'
+                      }}
+                    >
+                      <Icon size={17} color={isSelected ? cat.color : '#94a3b8'} />
+                      <span>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <form id="finish-detail-form" onSubmit={handleSubmit} noValidate>
@@ -669,7 +890,7 @@ function Finishing() {
 
               {/* Image Upload Box */}
               <div className="form-group" style={{ marginBottom: '1.35rem' }}>
-                <label className="form-label" style={{ fontWeight: 700, color: '#1c1917' }}>Finish Image / Swatch</label>
+                <label className="form-label" style={{ fontWeight: 700, color: '#1c1917' }}>Swatch / Texture Image</label>
                 <div className="finish-upload-container" style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
                   <div style={{
                     width: '130px',
@@ -685,9 +906,10 @@ function Finishing() {
                   }}>
                     {imagePreview ? (
                       <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <Palette size={34} color="#9a5323" />
-                    )}
+                    ) : (() => {
+                      const CatIcon = FINISH_CATEGORIES.find(c => c.id === formData.category)?.icon || Palette;
+                      return <CatIcon size={34} color="#9a5323" />;
+                    })()}
                   </div>
                   <div style={{ flex: 1, minWidth: '200px' }}>
                     <label className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.55rem 1rem', fontSize: '0.85rem', borderRadius: '10px' }}>
@@ -695,7 +917,10 @@ function Finishing() {
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
                     </label>
                     <div style={{ fontSize: '0.78rem', color: '#78716c', marginTop: '6px', lineHeight: 1.4 }}>
-                      High resolution PNG, JPG or WEBP image demonstrating wood texture and grain.
+                      {formData.category === 'wood' && 'High resolution PNG, JPG or WEBP image demonstrating wood texture and grain.'}
+                      {formData.category === 'metal' && 'High resolution PNG, JPG or WEBP image demonstrating metal finish, patina or coating.'}
+                      {formData.category === 'marble' && 'High resolution PNG, JPG or WEBP image demonstrating marble veining, texture or polish.'}
+                      {formData.category === 'fabric' && 'High resolution PNG, JPG or WEBP image demonstrating fabric weave, texture or pattern.'}
                     </div>
                   </div>
                 </div>
@@ -704,12 +929,14 @@ function Finishing() {
               {/* Form Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.15rem' }}>
                 <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 650 }}>Finish Name *</label>
+                  <label className="form-label" style={{ fontWeight: 650 }}>
+                    {formData.category === 'fabric' ? 'Fabric Name *' : 'Finish Name *'}
+                  </label>
                   <input
                     type="text"
                     name="name"
                     className="form-input"
-                    placeholder="e.g. Smokey Grey PU"
+                    placeholder={FINISH_CATEGORIES.find(c => c.id === formData.category)?.placeholder || 'e.g. Smokey Grey PU'}
                     value={formData.name}
                     onChange={handleInputChange}
                     style={{
@@ -726,12 +953,18 @@ function Finishing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 650 }}>Finish Code *</label>
+                  <label className="form-label" style={{ fontWeight: 650 }}>
+                    {formData.category === 'fabric' ? 'Fabric Code *' : 'Finish Code *'}
+                  </label>
                   <input
                     type="text"
                     name="finish_code"
                     className="form-input"
-                    placeholder="e.g. FIN-109"
+                    placeholder={
+                      formData.category === 'wood' ? 'e.g. FIN-109' :
+                      formData.category === 'metal' ? 'e.g. MF-01' :
+                      formData.category === 'marble' ? 'e.g. MRB-01' : 'e.g. FAB-01'
+                    }
                     value={formData.finish_code}
                     onChange={handleInputChange}
                     style={{
@@ -748,12 +981,12 @@ function Finishing() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 650 }}>Color</label>
+                  <label className="form-label" style={{ fontWeight: 650 }}>Color / Shade</label>
                   <input
                     type="text"
                     name="color"
                     className="form-input"
-                    placeholder="e.g. Smokey Grey"
+                    placeholder="e.g. Walnut / Antique Brass / Pure White"
                     value={formData.color}
                     onChange={handleInputChange}
                     style={{
@@ -769,25 +1002,121 @@ function Finishing() {
                   )}
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label" style={{ fontWeight: 650 }}>Wood Type</label>
-                  <CustomSelect
-                    name="wood_type"
-                    value={formData.wood_type}
-                    onChange={handleInputChange}
-                    options={[
-                      { value: '', label: 'Select Wood Type...' },
-                      ...WOOD_TYPES.map(w => ({ value: w, label: w }))
-                    ]}
-                    placeholder="Select Wood Type..."
-                  />
-                  {formErrors.wood_type && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
-                      <AlertCircle size={14} style={{ flexShrink: 0 }} />
-                      <span>{formErrors.wood_type}</span>
+                {/* ── Category Specific Dynamic Fields ── */}
+                {formData.category === 'wood' && (
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 650 }}>Wood Type</label>
+                    <CustomSelect
+                      name="wood_type"
+                      value={formData.wood_type}
+                      onChange={handleInputChange}
+                      options={[
+                        { value: '', label: 'Select Wood Type...' },
+                        ...WOOD_TYPES.map(w => ({ value: w, label: w }))
+                      ]}
+                      placeholder="Select Wood Type..."
+                    />
+                    {formErrors.wood_type && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                        <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                        <span>{formErrors.wood_type}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {formData.category === 'metal' && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Metal Type</label>
+                      <CustomSelect
+                        name="metal_type"
+                        value={formData.metal_type}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Metal Type...' },
+                          ...METAL_TYPES.map(m => ({ value: m, label: m }))
+                        ]}
+                        placeholder="Select Metal Type..."
+                      />
                     </div>
-                  )}
-                </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Coating / Process</label>
+                      <CustomSelect
+                        name="coating_type"
+                        value={formData.coating_type}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Coating / Process...' },
+                          ...COATING_TYPES.map(c => ({ value: c, label: c }))
+                        ]}
+                        placeholder="Select Coating / Process..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {formData.category === 'marble' && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Marble / Stone Type</label>
+                      <CustomSelect
+                        name="marble_type"
+                        value={formData.marble_type}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Marble / Stone Type...' },
+                          ...MARBLE_TYPES.map(m => ({ value: m, label: m }))
+                        ]}
+                        placeholder="Select Marble / Stone Type..."
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Surface Treatment</label>
+                      <CustomSelect
+                        name="surface_treatment"
+                        value={formData.surface_treatment}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Surface Treatment...' },
+                          ...SURFACE_TREATMENTS.map(s => ({ value: s, label: s }))
+                        ]}
+                        placeholder="Select Surface Treatment..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {formData.category === 'fabric' && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Fabric Material</label>
+                      <CustomSelect
+                        name="material_type"
+                        value={formData.material_type}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Fabric Material...' },
+                          ...FABRIC_MATERIALS.map(f => ({ value: f, label: f }))
+                        ]}
+                        placeholder="Select Fabric Material..."
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Pattern / Texture</label>
+                      <CustomSelect
+                        name="pattern"
+                        value={formData.pattern}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Pattern / Texture...' },
+                          ...FABRIC_PATTERNS.map(p => ({ value: p, label: p }))
+                        ]}
+                        placeholder="Select Pattern / Texture..."
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Action Bar: Delete (Left) | Cancel & Save (Right) */}
@@ -846,9 +1175,9 @@ function Finishing() {
                     className="btn-secondary"
                     onClick={() => {
                       if (!editingId && isDirty) {
-                        confirmExit('/finishing');
+                        confirmExit(`/finishing?tab=${formData.category || activeTab}`);
                       } else {
-                        navigate('/finishing');
+                        navigate(`/finishing?tab=${formData.category || activeTab}`);
                       }
                     }}
                     style={{ padding: '0.55rem 1.15rem', borderRadius: '10px', fontWeight: 650 }}
@@ -861,7 +1190,7 @@ function Finishing() {
                     disabled={submitting}
                     style={{ padding: '0.55rem 1.35rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}
                   >
-                    {submitting ? 'Saving...' : editingId ? 'Save Changes' : 'Create Finish'}
+                    {submitting ? 'Saving...' : editingId ? 'Save Changes' : `Create ${FINISH_CATEGORIES.find(c => c.id === formData.category)?.shortLabel || ''} Finish`}
                   </button>
                 </div>
               </div>
@@ -1153,7 +1482,7 @@ function Finishing() {
                 transition: 'opacity 160ms cubic-bezier(0.22, 1, 0.36, 1)',
                 transitionDelay: selectionMode ? '20ms' : '0ms',
               }}>
-                {selectedFinishIds.size > 0 ? `${selectedFinishIds.size} selected` : 'Select finishes'}
+                {selectedFinishIds.size > 0 ? `${selectedFinishIds.size} selected` : 'Select items'}
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -1250,15 +1579,15 @@ function Finishing() {
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '0.75rem',
-            padding: '0 0.5rem 1rem',
+            padding: '0 0.5rem 0.65rem',
             opacity: selectionMode ? 0 : 1,
             transform: selectionMode ? 'translateY(-10px)' : 'translateY(0)',
             transition: 'opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
           }}>
             <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.45rem', fontWeight: 800, color: '#1c1917', letterSpacing: '-0.02em' }}>
               <Sparkles size={26} color="#9a5323" style={{ flexShrink: 0 }} /> Finishing Catalog
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, backgroundColor: '#fff2e2', color: '#9a5323', padding: '2px 10px', borderRadius: '999px', marginLeft: '0.25rem' }}>
-                {finishes.length} Finishes
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, backgroundColor: '#fff2e2', color: '#9a5323', border: '1px solid #fed7aa', padding: '2px 10px', borderRadius: '999px', marginLeft: '0.25rem' }}>
+                {categoryCounts.total || finishes.length} Total
               </span>
             </h2>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1281,16 +1610,88 @@ function Finishing() {
                   >
                     <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
                   </button>
-                  <button onClick={() => navigate('/finishing/new')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}>
-                    + Add New Finish
+                  <button onClick={() => navigate('/finishing/new', { state: { category: activeTab } })} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}>
+                    + Add New {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : `${activeCategory.shortLabel} Finish`}
                   </button>
                 </>
               )}
             </div>
           </div>
+
+          {/* ── Sleek Underline Tabs Bar (Linear / GitHub style) ── */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            borderBottom: '2px solid #eee8df',
+            marginBottom: '1rem',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+            padding: '0 0.5rem',
+            opacity: selectionMode ? 0 : 1,
+            transition: 'opacity 180ms cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            {FINISH_CATEGORIES.map(cat => {
+              const isActive = activeTab === cat.id;
+              const Icon = cat.icon;
+              const count = categoryCounts[cat.id] ?? 0;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleTabChange(cat.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.55rem',
+                    padding: '0.65rem 1.15rem',
+                    border: 'none',
+                    borderBottom: isActive ? '2.5px solid #9a5323' : '2.5px solid transparent',
+                    marginBottom: '-2px',
+                    backgroundColor: 'transparent',
+                    color: isActive ? '#9a5323' : '#64748b',
+                    fontWeight: isActive ? 750 : 600,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.16s ease',
+                    whiteSpace: 'nowrap',
+                    borderRadius: '6px 6px 0 0',
+                  }}
+                  onMouseEnter={e => {
+                    if (!isActive) {
+                      e.currentTarget.style.color = '#1c1917';
+                      e.currentTarget.style.backgroundColor = 'rgba(154, 83, 35, 0.04)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isActive) {
+                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  <Icon size={16} color={isActive ? '#9a5323' : '#78716c'} strokeWidth={isActive ? 2.2 : 1.7} />
+                  <span>{cat.label}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '1.5px 7.5px',
+                    borderRadius: '999px',
+                    backgroundColor: isActive ? '#fff2e2' : '#f1f5f9',
+                    color: isActive ? '#9a5323' : '#64748b',
+                    border: isActive ? '1px solid #fed7aa' : '1px solid #e2e8f0',
+                    minWidth: '20px',
+                    textAlign: 'center',
+                    lineHeight: 1.25
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
-
 
       {/* ── Filter / Search Bar ── */}
       <div className="filter-bar">
@@ -1301,7 +1702,7 @@ function Finishing() {
             <input
               type="text"
               style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: '0.85rem' }}
-              placeholder="Search finish name, code, color..."
+              placeholder={`Search ${activeCategory.shortLabel.toLowerCase()} name, code, color...`}
               value={searchTerm}
               onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
@@ -1310,25 +1711,75 @@ function Finishing() {
           {/* Filter Dropdowns */}
           <div className="filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <Filter size={15} className="filter-icon" style={{ color: '#78716c' }} />
-            <CustomSelect
-              value={filterWoodType}
-              onChange={e => {
-                const val = e.target ? e.target.value : e;
-                setFilterWoodType(val);
-                setCurrentPage(1);
-              }}
-              options={[
-                { value: '', label: 'All Wood Types' },
-                ...WOOD_TYPES.map(w => ({ value: w, label: w }))
-              ]}
-              placeholder="All Wood Types"
-              style={{ minWidth: '160px' }}
-            />
+            {activeTab === 'wood' && (
+              <CustomSelect
+                value={filterSpecificType}
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setFilterSpecificType(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'All Wood Types' },
+                  ...WOOD_TYPES.map(w => ({ value: w, label: w }))
+                ]}
+                placeholder="All Wood Types"
+                style={{ minWidth: '160px' }}
+              />
+            )}
+            {activeTab === 'metal' && (
+              <CustomSelect
+                value={filterSpecificType}
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setFilterSpecificType(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'All Metal Types' },
+                  ...METAL_TYPES.map(m => ({ value: m, label: m }))
+                ]}
+                placeholder="All Metal Types"
+                style={{ minWidth: '160px' }}
+              />
+            )}
+            {activeTab === 'marble' && (
+              <CustomSelect
+                value={filterSpecificType}
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setFilterSpecificType(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'All Marble Types' },
+                  ...MARBLE_TYPES.map(m => ({ value: m, label: m }))
+                ]}
+                placeholder="All Marble Types"
+                style={{ minWidth: '160px' }}
+              />
+            )}
+            {activeTab === 'fabric' && (
+              <CustomSelect
+                value={filterSpecificType}
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setFilterSpecificType(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'All Fabric Materials' },
+                  ...FABRIC_MATERIALS.map(f => ({ value: f, label: f }))
+                ]}
+                placeholder="All Fabric Materials"
+                style={{ minWidth: '160px' }}
+              />
+            )}
 
-            {(searchTerm || filterWoodType) && (
+            {(searchTerm || filterSpecificType) && (
               <button
                 className="filter-clear-btn"
-                onClick={() => { setSearchTerm(''); setFilterWoodType(''); setCurrentPage(1); }}
+                onClick={() => { setSearchTerm(''); setFilterSpecificType(''); setCurrentPage(1); }}
               >
                 <X size={14} /> Clear
               </button>
@@ -1359,19 +1810,19 @@ function Finishing() {
           {ordering === 'draft' ? (
             <FileEdit size={40} color="#d97706" style={{ margin: '0 auto 0.75rem' }} />
           ) : (
-            <Palette size={40} color="#a8a29e" style={{ margin: '0 auto 0.75rem' }} />
+            <ActiveCatIcon size={40} color={activeCategory.color} style={{ margin: '0 auto 0.75rem', opacity: 0.7 }} />
           )}
           <h3 style={{ margin: '0 0 0.4rem', color: '#1c1917', fontSize: '1.1rem', fontWeight: 800 }}>
-            {ordering === 'draft' ? 'No Draft Finishes Found' : 'No Finishes Found'}
+            {ordering === 'draft' ? `No Draft ${activeCategory.label} Items Found` : `No ${activeCategory.label} Items Found`}
           </h3>
           <p style={{ margin: 0, color: '#78716c', fontSize: '0.88rem' }}>
             {ordering === 'draft'
-              ? 'When you save a Finish as draft, it will appear here.'
-              : 'Create a new finish record to get started with the catalog.'}
+              ? `When you save a ${activeCategory.shortLabel} draft, it will appear here.`
+              : `Create a new ${activeCategory.shortLabel.toLowerCase()} record to get started with the catalog.`}
           </p>
           {isAdmin && ordering !== 'draft' && (
-            <button onClick={() => navigate('/finishing/new')} className="btn-primary" style={{ marginTop: '1.25rem', borderRadius: '10px', backgroundColor: '#9a5323' }}>
-              + Add First Finish
+            <button onClick={() => navigate('/finishing/new', { state: { category: activeTab } })} className="btn-primary" style={{ marginTop: '1.25rem', borderRadius: '10px', backgroundColor: '#9a5323' }}>
+              + Add First {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : `${activeCategory.shortLabel} Finish`}
             </button>
           )}
         </div>
@@ -1382,6 +1833,8 @@ function Finishing() {
             const imgSrc = finish.image_url || finish.image;
             const isSelected = selectedFinishIds.has(finish.id);
             const isRecentlyVisited = String(finish.id) === String(lastVisitedId);
+            const itemCatObj = FINISH_CATEGORIES.find(c => c.id === (finish.category || activeTab)) || activeCategory;
+            const ItemCatIcon = itemCatObj.icon;
 
             return (
               <div
@@ -1465,8 +1918,8 @@ function Finishing() {
                       }}
                     />
                   ) : (
-                    <div style={{ textAlign: 'center', color: '#9a5323' }}>
-                      <Palette size={30} strokeWidth={1.5} />
+                    <div style={{ textAlign: 'center', color: itemCatObj.color || '#9a5323' }}>
+                      <ItemCatIcon size={30} strokeWidth={1.5} />
                       <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 650, marginTop: '3px' }}>No Swatch</span>
                     </div>
                   )}
@@ -1475,8 +1928,8 @@ function Finishing() {
                 {/* ── Right Content Block ── */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem', minWidth: 0 }}>
                   
-                  {/* Finish Code Pill Badge & Draft Badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {/* Finish Code Pill Badge & Category Badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                     {finish.finish_code && (
                       <span style={{
                         backgroundColor: '#fff2e2',
@@ -1491,6 +1944,21 @@ function Finishing() {
                         {finish.finish_code}
                       </span>
                     )}
+                    <span style={{
+                      backgroundColor: itemCatObj.bg || '#f7f1ea',
+                      color: itemCatObj.color || '#78716c',
+                      border: `1px solid ${itemCatObj.border || '#e5e7eb'}`,
+                      fontWeight: 650,
+                      fontSize: '0.72rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <ItemCatIcon size={11} />
+                      {itemCatObj.shortLabel}
+                    </span>
                     {finish.isDraft && (
                       <span style={{
                         backgroundColor: '#fef3c7',
@@ -1551,27 +2019,50 @@ function Finishing() {
                   {/* Thin Horizontal Divider Line */}
                   <div style={{ borderTop: '1px solid #f0f0f0', margin: '0.25rem 0' }} />
 
-                  {/* Wood Type Row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div className="finish-icon-circle" style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '50%',
-                      backgroundColor: '#f7f1ea',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}>
-                      <DotGridIcon size={16} color="#9a5323" />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <span className="finish-row-lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#737373', fontWeight: 400, lineHeight: 1.15 }}>Wood Type</span>
-                      <strong className="finish-row-val" style={{ display: 'block', fontSize: '0.92rem', color: '#1a1a1a', fontWeight: 700, lineHeight: 1.2 }}>
-                        {finish.wood_type || '—'}
-                      </strong>
-                    </div>
-                  </div>
+                  {/* Category-Specific Row */}
+                  {(() => {
+                    const cat = finish.category || activeTab || 'wood';
+                    let label = 'Wood Type';
+                    let icon = <DotGridIcon size={16} color="#9a5323" />;
+                    let val = finish.wood_type || '—';
+
+                    if (cat === 'metal') {
+                      label = 'Metal & Coating';
+                      icon = <Shield size={16} color="#334155" />;
+                      val = [finish.metal_type, finish.coating_type].filter(Boolean).join(' • ') || '—';
+                    } else if (cat === 'marble') {
+                      label = 'Marble & Treatment';
+                      icon = <Gem size={16} color="#047857" />;
+                      val = [finish.marble_type, finish.surface_treatment].filter(Boolean).join(' • ') || '—';
+                    } else if (cat === 'fabric') {
+                      label = 'Material & Pattern';
+                      icon = <Scissors size={16} color="#7c3aed" />;
+                      val = [finish.material_type, finish.pattern].filter(Boolean).join(' • ') || '—';
+                    }
+
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div className="finish-icon-circle" style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          backgroundColor: '#f7f1ea',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {icon}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <span className="finish-row-lbl" style={{ display: 'block', fontSize: '0.75rem', color: '#737373', fontWeight: 400, lineHeight: 1.15 }}>{label}</span>
+                          <strong className="finish-row-val" style={{ display: 'block', fontSize: '0.92rem', color: '#1a1a1a', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {val}
+                          </strong>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {finish.isDraft && (
                     <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }} onClick={e => e.stopPropagation()}>
@@ -1659,9 +2150,47 @@ function Finishing() {
               </button>
             </div>
 
-            <p style={{ margin: '0 0 1.25rem', fontSize: '0.86rem', color: '#78716c', lineHeight: 1.5 }}>
-              Upload an Excel (.xlsx) or CSV (.csv) file containing finish details (`Finish Code`, `Finish Name`, `Color`, `Wood Type`).
+            <p style={{ margin: '0 0 1rem', fontSize: '0.86rem', color: '#78716c', lineHeight: 1.5 }}>
+              Upload an Excel (.xlsx) or CSV (.csv) file containing finish or fabric records. The system will automatically map the appropriate columns.
             </p>
+
+            {/* Target Category Selector */}
+            <div style={{ marginBottom: '1.15rem' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: '0.4rem' }}>
+                Target Category
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.45rem' }}>
+                {FINISH_CATEGORIES.map(c => {
+                  const isTarget = importCategory === c.id;
+                  const Icon = c.icon;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setImportCategory(c.id)}
+                      style={{
+                        padding: '0.55rem 0.4rem',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
+                        fontWeight: isTarget ? 700 : 500,
+                        border: isTarget ? `1.5px solid ${c.color}` : '1px solid #e2e8f0',
+                        backgroundColor: isTarget ? c.bg : '#ffffff',
+                        color: isTarget ? c.color : '#475569',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <Icon size={16} color={isTarget ? c.color : '#64748b'} />
+                      <span>{c.shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {importSuccess && (
               <div style={{ padding: '0.85rem 1rem', borderRadius: '12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: '0.88rem', fontWeight: 700, marginBottom: '1rem' }}>
