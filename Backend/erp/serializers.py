@@ -175,70 +175,83 @@ class FinishSerializer(serializers.ModelSerializer):
     class Meta:
         model = Finish
         fields = [
-            'id', 'name', 'finish_code', 'color', 'wood_type', 'image',
+            'id', 'category', 'name', 'finish_code', 'color',
+            'wood_type', 'metal_type', 'coating_type',
+            'marble_type', 'surface_treatment',
+            'material_type', 'pattern',
+            'image', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_category(self, value):
+        if not value:
+            return 'wood'
+        val = str(value).strip().lower()
+        valid_cats = ['wood', 'metal', 'marble', 'fabric']
+        if val not in valid_cats:
+            raise serializers.ValidationError(f"Invalid category '{value}'. Allowed: {', '.join(valid_cats)}.")
+        return val
 
     def validate_name(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Finish name is required.")
+            raise serializers.ValidationError("Name is required.")
         name = value.strip()
 
         if len(name) < 2:
-            raise serializers.ValidationError("Finish name must be at least 2 characters long.")
+            raise serializers.ValidationError("Name must be at least 2 characters long.")
         if len(name) > 100:
-            raise serializers.ValidationError("Finish name cannot exceed 100 characters.")
+            raise serializers.ValidationError("Name cannot exceed 100 characters.")
 
         alpha_count = sum(1 for c in name if c.isalpha())
         if alpha_count < 2:
-            raise serializers.ValidationError("Finish name must contain at least 2 alphabetic letters.")
+            raise serializers.ValidationError("Name must contain at least 2 alphabetic letters.")
 
         if not re.match(r"^[A-Za-z0-9\s&.,'\-/( )]+$", name):
-            raise serializers.ValidationError("Finish name contains invalid characters. Only letters, numbers, spaces, and standard symbols (&, ., ,, -, ', /, (, )) are allowed.")
+            raise serializers.ValidationError("Name contains invalid characters. Only letters, numbers, spaces, and standard symbols (&, ., ,, -, ', /, (, )) are allowed.")
 
         # 1. Reject 4 or more consecutive identical characters (e.g. 'wwww', 'aaaa')
         if re.search(r'(.)\1{3,}', name):
-            raise serializers.ValidationError("Finish name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).")
+            raise serializers.ValidationError("Name cannot contain repetitive characters (e.g. 4 or more identical letters in a row).")
 
         # 2. Reject unbroken tokens longer than 30 characters without spaces
         words = name.split()
         for word in words:
             if len(word) > 30:
-                raise serializers.ValidationError("Finish name contains an excessively long continuous word. Please enter a valid name.")
+                raise serializers.ValidationError("Name contains an excessively long continuous word. Please enter a valid name.")
 
         # 3. Reject repetitive alternating pattern loops (e.g. 'e2e2e2e2')
         if re.search(r'([A-Za-z0-9]{2,3})\1{3,}', name):
-            raise serializers.ValidationError("Finish name appears to be repetitive gibberish. Please enter a valid finish name.")
+            raise serializers.ValidationError("Name appears to be repetitive gibberish. Please enter a valid name.")
 
         qs = Finish.objects.filter(name__iexact=name)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(f"A finish with name '{name}' already exists.")
+            raise serializers.ValidationError(f"An item with name '{name}' already exists.")
 
         return name
 
     def validate_finish_code(self, value):
         if not value or not value.strip():
-            raise serializers.ValidationError("Finish code is required.")
+            raise serializers.ValidationError("Code is required.")
         code = value.strip().upper()
 
         if len(code) < 2:
-            raise serializers.ValidationError("Finish code must be at least 2 characters long.")
+            raise serializers.ValidationError("Code must be at least 2 characters long.")
         if len(code) > 30:
-            raise serializers.ValidationError("Finish code cannot exceed 30 characters.")
+            raise serializers.ValidationError("Code cannot exceed 30 characters.")
 
         if not re.match(r"^[A-Z0-9\-_/]+$", code):
-            raise serializers.ValidationError("Finish code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).")
+            raise serializers.ValidationError("Code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).")
 
         if re.search(r'(.)\1{3,}', code):
-            raise serializers.ValidationError("Finish code cannot contain repetitive characters (e.g. 4 or more identical characters in a row).")
+            raise serializers.ValidationError("Code cannot contain repetitive characters (e.g. 4 or more identical characters in a row).")
 
         qs = Finish.objects.filter(finish_code__iexact=code)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(f"Finish Code '{code}' is already present.")
+            raise serializers.ValidationError(f"Code '{code}' is already present.")
 
         return code
 
@@ -271,22 +284,54 @@ class FinishSerializer(serializers.ModelSerializer):
         if not value:
             return None
         wood = str(value).strip()
-        if not wood:
+        return wood if wood else None
+
+    def validate_metal_type(self, value):
+        if not value:
             return None
+        val = str(value).strip()
+        return val if val else None
 
-        if len(wood) < 2 or len(wood) > 60:
-            raise serializers.ValidationError("Please enter a valid wood type.")
+    def validate_coating_type(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
 
-        if not re.match(r"^[A-Za-z0-9\s\-/,'()]+$", wood):
-            raise serializers.ValidationError("Wood type contains invalid characters.")
+    def validate_marble_type(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
 
-        return wood
+    def validate_surface_treatment(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
+
+    def validate_material_type(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
+
+    def validate_pattern(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
 
 
 class FinishDropdownSerializer(serializers.ModelSerializer):
     class Meta:
         model = Finish
-        fields = ['id', 'name', 'finish_code', 'color', 'wood_type', 'image']
+        fields = [
+            'id', 'category', 'name', 'finish_code', 'color',
+            'wood_type', 'metal_type', 'coating_type',
+            'marble_type', 'surface_treatment',
+            'material_type', 'pattern', 'image'
+        ]
 
 
 class SampleImageSerializer(serializers.ModelSerializer):

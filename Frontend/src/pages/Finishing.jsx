@@ -224,7 +224,19 @@ function Finishing() {
   const fetchCounts = useCallback(() => {
     api.get('/finishes/counts/')
       .then(res => setCategoryCounts(res.data))
-      .catch(err => console.error('Error fetching finish counts:', err));
+      .catch(err => {
+        console.error('Error fetching finish counts, calculating locally:', err);
+        api.get('/finishes/', { params: { page_size: 100 } })
+          .then(r => {
+            const list = r.data.results || r.data || [];
+            const w = list.filter(i => !i.category || i.category === 'wood').length;
+            const m = list.filter(i => i.category === 'metal').length;
+            const mb = list.filter(i => i.category === 'marble').length;
+            const f = list.filter(i => i.category === 'fabric').length;
+            setCategoryCounts({ wood: w, metal: m, marble: mb, fabric: f, total: list.length });
+          })
+          .catch(() => {});
+      });
   }, []);
 
   useEffect(() => {
@@ -494,9 +506,12 @@ function Finishing() {
       .then(res => {
         const data = res.data.results || res.data || [];
         const mapped = data.map(item => ({ ...item, isDraft: false }));
-        setFinishes(mapped);
+        // Safeguard: Ensure only items belonging to activeTab are shown in current tab
+        // Any legacy item without a category field belongs to 'wood'
+        const tabFiltered = mapped.filter(item => (item.category || 'wood') === activeTab);
+        setFinishes(tabFiltered);
         if (res.data.count !== undefined) {
-          setTotalPages(Math.ceil(res.data.count / 20) || 1);
+          setTotalPages(Math.max(1, Math.ceil(tabFiltered.length / 20)));
         } else {
           setTotalPages(1);
         }
@@ -1833,7 +1848,7 @@ function Finishing() {
             const imgSrc = finish.image_url || finish.image;
             const isSelected = selectedFinishIds.has(finish.id);
             const isRecentlyVisited = String(finish.id) === String(lastVisitedId);
-            const itemCatObj = FINISH_CATEGORIES.find(c => c.id === (finish.category || activeTab)) || activeCategory;
+            const itemCatObj = FINISH_CATEGORIES.find(c => c.id === (finish.category || 'wood')) || activeCategory;
             const ItemCatIcon = itemCatObj.icon;
 
             return (
@@ -2021,7 +2036,7 @@ function Finishing() {
 
                   {/* Category-Specific Row */}
                   {(() => {
-                    const cat = finish.category || activeTab || 'wood';
+                    const cat = finish.category || 'wood';
                     let label = 'Wood Type';
                     let icon = <DotGridIcon size={16} color="#9a5323" />;
                     let val = finish.wood_type || '—';

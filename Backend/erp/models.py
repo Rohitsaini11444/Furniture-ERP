@@ -111,12 +111,34 @@ class User(AbstractUser):
 
 # ────────────────────────── Finish / Polish Catalog Model ───────────────────────────────────────────
 
+class FinishCategory(models.TextChoices):
+    WOOD = 'wood', 'Wood Finish'
+    METAL = 'metal', 'Metal Finish'
+    MARBLE = 'marble', 'Marble Finish'
+    FABRIC = 'fabric', 'Fabric Type'
+
+
 class Finish(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    category = models.CharField(
+        max_length=20,
+        choices=FinishCategory.choices,
+        default=FinishCategory.WOOD,
+        verbose_name="Category"
+    )
     name = models.CharField(max_length=150, verbose_name="Finish Name")
     finish_code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Finish Code")
     color = models.CharField(max_length=100, blank=True, null=True, verbose_name="Color")
+    
+    # Category-specific fields (simple, concise attributes)
     wood_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Wood Type")
+    metal_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Metal Type")
+    coating_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Coating / Process")
+    marble_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Marble Type")
+    surface_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Surface Treatment")
+    material_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Fabric Material")
+    pattern = models.CharField(max_length=100, blank=True, null=True, verbose_name="Pattern / Texture")
+    
     image = models.ImageField(upload_to='finishes/', blank=True, null=True, verbose_name="Finish Image")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -128,7 +150,7 @@ class Finish(models.Model):
 
     def __str__(self):
         code_str = f" ({self.finish_code})" if self.finish_code else ""
-        return f"{self.name}{code_str}"
+        return f"[{self.get_category_display()}] {self.name}{code_str}"
 
 
 # ────────────────────────── Existing ERP Models ──────────────────────────────────────────────────────
@@ -922,7 +944,7 @@ class POSupplierHistory(models.Model):
         return f"PO {self.supplier_po.po_number} transferred from {self.previous_supplier} to {self.new_supplier}"
 
 
-# ─── Supplier Tax Invoice (Multi-PO Dispatch Inward) ──────────────────────────
+# ───────────────────────────── Supplier Tax Invoice (Multi-PO Dispatch Inward) ──────────────────────────
 
 class SupplierTaxInvoice(models.Model):
     """
@@ -981,7 +1003,7 @@ class SupplierTaxInvoiceItem(models.Model):
         return f"{self.description} ({self.quantity} {self.unit})"
 
 
-# ─── Store Management Module Models ───────────────────────────────────────────
+# ───────────────────────────── Store Management Module Models ───────────────────────────────────────────
 
 class StoreItemCategory(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -1398,7 +1420,7 @@ class StoreStockAdjustment(models.Model):
 
 
 
-# ─── Global Enterprise Audit Trail Model ──────────────────────────────────────
+# ───────────────────────────── Global Enterprise Audit Trail Model ──────────────────────────────────────
 
 class AuditAction(models.TextChoices):
     CREATE = 'CREATE', 'Created Record'

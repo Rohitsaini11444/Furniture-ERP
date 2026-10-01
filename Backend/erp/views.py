@@ -350,6 +350,7 @@ class FinishViewSet(viewsets.ModelViewSet):
     """
     Finishes / Polish Catalog ViewSet.
     Accessible to all authenticated users. Admins can CRUD.
+    Supports category tabs: wood, metal, marble, fabric.
     """
     permission_classes = [IsAuthenticated]
 
@@ -360,9 +361,22 @@ class FinishViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Finish.objects.all().order_by('-created_at')
+        category = self.request.query_params.get('category')
         q = self.request.query_params.get('search')
         wood_type = self.request.query_params.get('wood_type')
+        metal_type = self.request.query_params.get('metal_type')
+        coating_type = self.request.query_params.get('coating_type')
+        marble_type = self.request.query_params.get('marble_type')
+        surface_treatment = self.request.query_params.get('surface_treatment')
+        material_type = self.request.query_params.get('material_type')
+        pattern = self.request.query_params.get('pattern')
         color = self.request.query_params.get('color')
+
+        if category:
+            if category == 'wood':
+                qs = qs.filter(Q(category='wood') | Q(category__isnull=True) | Q(category=''))
+            else:
+                qs = qs.filter(category=category)
 
         if q:
             q = q.strip()
@@ -370,10 +384,28 @@ class FinishViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=q) |
                 Q(finish_code__icontains=q) |
                 Q(color__icontains=q) |
-                Q(wood_type__icontains=q)
+                Q(wood_type__icontains=q) |
+                Q(metal_type__icontains=q) |
+                Q(coating_type__icontains=q) |
+                Q(marble_type__icontains=q) |
+                Q(surface_treatment__icontains=q) |
+                Q(material_type__icontains=q) |
+                Q(pattern__icontains=q)
             )
         if wood_type:
             qs = qs.filter(wood_type__icontains=wood_type)
+        if metal_type:
+            qs = qs.filter(metal_type__icontains=metal_type)
+        if coating_type:
+            qs = qs.filter(coating_type__icontains=coating_type)
+        if marble_type:
+            qs = qs.filter(marble_type__icontains=marble_type)
+        if surface_treatment:
+            qs = qs.filter(surface_treatment__icontains=surface_treatment)
+        if material_type:
+            qs = qs.filter(material_type__icontains=material_type)
+        if pattern:
+            qs = qs.filter(pattern__icontains=pattern)
         if color:
             qs = qs.filter(color__icontains=color)
 
@@ -381,6 +413,16 @@ class FinishViewSet(viewsets.ModelViewSet):
         if ordering:
             qs = qs.order_by(ordering)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='counts')
+    def counts(self, request):
+        return Response({
+            'wood': Finish.objects.filter(Q(category='wood') | Q(category__isnull=True) | Q(category='')).count(),
+            'metal': Finish.objects.filter(category='metal').count(),
+            'marble': Finish.objects.filter(category='marble').count(),
+            'fabric': Finish.objects.filter(category='fabric').count(),
+            'total': Finish.objects.count(),
+        })
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
@@ -4846,12 +4888,17 @@ class SampleExcelExportView(APIView):
 class FinishExcelExportView(APIView):
     """
     Exports selected (or filtered) finishes to Excel with centered embedded images.
+    Supports wood, metal, marble, and fabric categories.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         finish_ids = request.data.get('finish_ids', [])
+        category = request.data.get('category')
         qs = Finish.objects.all()
+
+        if category:
+            qs = qs.filter(category=category)
 
         if finish_ids:
             qs = qs.filter(id__in=finish_ids)
@@ -4862,7 +4909,13 @@ class FinishExcelExportView(APIView):
                     Q(name__icontains=q) |
                     Q(finish_code__icontains=q) |
                     Q(color__icontains=q) |
-                    Q(wood_type__icontains=q)
+                    Q(wood_type__icontains=q) |
+                    Q(metal_type__icontains=q) |
+                    Q(coating_type__icontains=q) |
+                    Q(marble_type__icontains=q) |
+                    Q(surface_treatment__icontains=q) |
+                    Q(material_type__icontains=q) |
+                    Q(pattern__icontains=q)
                 )
 
         wb = openpyxl.Workbook()
@@ -4870,7 +4923,16 @@ class FinishExcelExportView(APIView):
         ws.title = "Finishing_Catalog"
         ws.views.sheetView[0].showGridLines = True
 
-        headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Wood Type", "Created Date"]
+        if category == 'wood':
+            headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Wood Type", "Created Date"]
+        elif category == 'metal':
+            headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Metal Type", "Coating / Process", "Created Date"]
+        elif category == 'marble':
+            headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Marble Type", "Surface Treatment", "Created Date"]
+        elif category == 'fabric':
+            headers = ["S.No.", "Picture", "Fabric Code", "Fabric Name", "Color", "Material", "Pattern / Texture", "Created Date"]
+        else:
+            headers = ["S.No.", "Picture", "Category", "Finish Code", "Finish Name", "Color", "Material / Type", "Process / Treatment / Pattern", "Created Date"]
 
         ws.row_dimensions[1].height = 28
         header_font = Font(bold=True, color='FFFFFF', size=11)
@@ -4884,10 +4946,10 @@ class FinishExcelExportView(APIView):
         align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
         align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
-        col_widths = {1: 8, 2: 18, 3: 16, 4: 24, 5: 18, 6: 20, 7: 16}
-        for col_idx, width in col_widths.items():
+        col_widths = {1: 8, 2: 18, 3: 16, 4: 24, 5: 18, 6: 20, 7: 20, 8: 16, 9: 16}
+        for col_idx in range(1, len(headers) + 1):
             col_letter = get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = width
+            ws.column_dimensions[col_letter].width = col_widths.get(col_idx, 18)
 
         for col_idx, h_text in enumerate(headers, start=1):
             cell = ws.cell(row=1, column=col_idx, value=h_text)
@@ -4902,20 +4964,68 @@ class FinishExcelExportView(APIView):
         for idx, finish in enumerate(qs, start=1):
             ws.row_dimensions[curr_row].height = 65
 
-            row_data = [
-                idx,
-                "", # Image placeholder in col 2
-                finish.finish_code or "",
-                finish.name,
-                finish.color or "",
-                finish.wood_type or "",
-                finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
-            ]
+            if category == 'wood':
+                row_data = [
+                    idx,
+                    "", # Image placeholder in col 2
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    finish.wood_type or "",
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
+            elif category == 'metal':
+                row_data = [
+                    idx,
+                    "",
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    finish.metal_type or "",
+                    finish.coating_type or "",
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
+            elif category == 'marble':
+                row_data = [
+                    idx,
+                    "",
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    finish.marble_type or "",
+                    finish.surface_treatment or "",
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
+            elif category == 'fabric':
+                row_data = [
+                    idx,
+                    "",
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    finish.material_type or "",
+                    finish.pattern or "",
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
+            else:
+                attr1 = finish.wood_type or finish.metal_type or finish.marble_type or finish.material_type or ""
+                attr2 = finish.coating_type or finish.surface_treatment or finish.pattern or ""
+                row_data = [
+                    idx,
+                    "",
+                    finish.get_category_display(),
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    attr1,
+                    attr2,
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
 
             for c_idx, val in enumerate(row_data, start=1):
                 c = ws.cell(row=curr_row, column=c_idx, value=val)
                 c.border = border_thin
-                if c_idx in (1, 3, 7):
+                if c_idx in (1, 3, len(row_data)):
                     c.alignment = align_center
                 else:
                     c.alignment = align_left
@@ -4939,8 +5049,9 @@ class FinishExcelExportView(APIView):
 
             curr_row += 1
 
+        cat_suffix = f"_{category.capitalize()}" if category else ""
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename="Finishing_Catalog.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="Finishing_Catalog{cat_suffix}.xlsx"'
         wb.save(response)
 
         for f in temp_files:
@@ -4955,6 +5066,7 @@ class FinishExcelExportView(APIView):
 class FinishExcelImportView(APIView):
     """
     Imports Finishes from uploaded .xlsx or .csv file into the database.
+    Supports wood, metal, marble, and fabric categories.
     """
     permission_classes = [AllowAny]
 
@@ -4962,6 +5074,10 @@ class FinishExcelImportView(APIView):
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        default_cat = request.data.get('category', 'wood').strip().lower()
+        if default_cat not in ['wood', 'metal', 'marble', 'fabric']:
+            default_cat = 'wood'
 
         file_name = file_obj.name.lower()
         imported_count = 0
@@ -4986,10 +5102,17 @@ class FinishExcelImportView(APIView):
                                 return idx
                     return -1
 
-                code_col = find_idx(['finish code', 'code', 'finish_code'])
-                name_col = find_idx(['finish name', 'name', 'finish_name', 'title'])
+                cat_col = find_idx(['category', 'finish category'])
+                code_col = find_idx(['finish code', 'code', 'finish_code', 'fabric code'])
+                name_col = find_idx(['finish name', 'name', 'finish_name', 'title', 'fabric name'])
                 color_col = find_idx(['color', 'finish color', 'shade'])
-                wood_col = find_idx(['wood type', 'wood', 'material'])
+                wood_col = find_idx(['wood type', 'wood'])
+                metal_col = find_idx(['metal type', 'metal'])
+                coating_col = find_idx(['coating', 'process', 'coating type'])
+                marble_col = find_idx(['marble type', 'marble', 'stone'])
+                surface_col = find_idx(['surface', 'treatment', 'surface treatment'])
+                material_col = find_idx(['material', 'fabric material', 'composition'])
+                pattern_col = find_idx(['pattern', 'texture'])
 
                 row_images = {}
                 if hasattr(ws, '_images'):
@@ -5008,7 +5131,20 @@ class FinishExcelImportView(APIView):
                     name_val = str(r[name_col] or '').strip() if (name_col != -1 and name_col < len(r)) else ''
                     code_val = str(r[code_col] or '').strip() if (code_col != -1 and code_col < len(r)) else ''
                     color_val = str(r[color_col] or '').strip() if (color_col != -1 and color_col < len(r)) else ''
+                    cat_val = str(r[cat_col] or '').strip().lower() if (cat_col != -1 and cat_col < len(r)) else default_cat
+                    if 'metal' in cat_val: cat_val = 'metal'
+                    elif 'marb' in cat_val: cat_val = 'marble'
+                    elif 'fab' in cat_val: cat_val = 'fabric'
+                    elif 'wood' in cat_val: cat_val = 'wood'
+                    else: cat_val = default_cat
+
                     wood_val = str(r[wood_col] or '').strip() if (wood_col != -1 and wood_col < len(r)) else ''
+                    metal_val = str(r[metal_col] or '').strip() if (metal_col != -1 and metal_col < len(r)) else ''
+                    coating_val = str(r[coating_col] or '').strip() if (coating_col != -1 and coating_col < len(r)) else ''
+                    marble_val = str(r[marble_col] or '').strip() if (marble_col != -1 and marble_col < len(r)) else ''
+                    surface_val = str(r[surface_col] or '').strip() if (surface_col != -1 and surface_col < len(r)) else ''
+                    material_val = str(r[material_col] or '').strip() if (material_col != -1 and material_col < len(r)) else ''
+                    pattern_val = str(r[pattern_col] or '').strip() if (pattern_col != -1 and pattern_col < len(r)) else ''
 
                     if not name_val and not code_val:
                         continue
@@ -5024,20 +5160,33 @@ class FinishExcelImportView(APIView):
 
                     if finish_obj:
                         finish_obj.name = name_val
+                        finish_obj.category = cat_val
                         if code_val:
                             finish_obj.finish_code = code_val
                         if color_val:
                             finish_obj.color = color_val
-                        if wood_val:
-                            finish_obj.wood_type = wood_val
+                        if wood_val: finish_obj.wood_type = wood_val
+                        if metal_val: finish_obj.metal_type = metal_val
+                        if coating_val: finish_obj.coating_type = coating_val
+                        if marble_val: finish_obj.marble_type = marble_val
+                        if surface_val: finish_obj.surface_treatment = surface_val
+                        if material_val: finish_obj.material_type = material_val
+                        if pattern_val: finish_obj.pattern = pattern_val
                         finish_obj.save()
                         updated_count += 1
                     else:
                         finish_obj = Finish.objects.create(
                             name=name_val,
+                            category=cat_val,
                             finish_code=code_val or None,
                             color=color_val or None,
-                            wood_type=wood_val or None
+                            wood_type=wood_val or None,
+                            metal_type=metal_val or None,
+                            coating_type=coating_val or None,
+                            marble_type=marble_val or None,
+                            surface_treatment=surface_val or None,
+                            material_type=material_val or None,
+                            pattern=pattern_val or None,
                         )
                         imported_count += 1
 
@@ -5060,10 +5209,23 @@ class FinishExcelImportView(APIView):
                 csv_reader = csv.DictReader(io.StringIO(decoded_file))
 
                 for row in csv_reader:
-                    name_val = row.get('Finish Name') or row.get('name') or row.get('Name') or ''
-                    code_val = row.get('Finish Code') or row.get('code') or row.get('Code') or ''
+                    name_val = row.get('Finish Name') or row.get('name') or row.get('Name') or row.get('Fabric Name') or ''
+                    code_val = row.get('Finish Code') or row.get('code') or row.get('Code') or row.get('Fabric Code') or ''
                     color_val = row.get('Color') or row.get('color') or ''
+                    cat_val = (row.get('Category') or row.get('category') or default_cat).strip().lower()
+                    if 'metal' in cat_val: cat_val = 'metal'
+                    elif 'marb' in cat_val: cat_val = 'marble'
+                    elif 'fab' in cat_val: cat_val = 'fabric'
+                    elif 'wood' in cat_val: cat_val = 'wood'
+                    else: cat_val = default_cat
+
                     wood_val = row.get('Wood Type') or row.get('wood_type') or ''
+                    metal_val = row.get('Metal Type') or row.get('metal_type') or ''
+                    coating_val = row.get('Coating') or row.get('coating_type') or ''
+                    marble_val = row.get('Marble Type') or row.get('marble_type') or ''
+                    surface_val = row.get('Surface Treatment') or row.get('surface_treatment') or ''
+                    material_val = row.get('Material') or row.get('material_type') or ''
+                    pattern_val = row.get('Pattern') or row.get('pattern') or ''
 
                     name_val = name_val.strip()
                     code_val = code_val.strip()
@@ -5082,20 +5244,33 @@ class FinishExcelImportView(APIView):
 
                     if finish_obj:
                         finish_obj.name = name_val
+                        finish_obj.category = cat_val
                         if code_val:
                             finish_obj.finish_code = code_val
                         if color_val:
                             finish_obj.color = color_val
-                        if wood_val:
-                            finish_obj.wood_type = wood_val
+                        if wood_val: finish_obj.wood_type = wood_val
+                        if metal_val: finish_obj.metal_type = metal_val
+                        if coating_val: finish_obj.coating_type = coating_val
+                        if marble_val: finish_obj.marble_type = marble_val
+                        if surface_val: finish_obj.surface_treatment = surface_val
+                        if material_val: finish_obj.material_type = material_val
+                        if pattern_val: finish_obj.pattern = pattern_val
                         finish_obj.save()
                         updated_count += 1
                     else:
                         Finish.objects.create(
                             name=name_val,
+                            category=cat_val,
                             finish_code=code_val or None,
                             color=color_val or None,
-                            wood_type=wood_val or None
+                            wood_type=wood_val or None,
+                            metal_type=metal_val or None,
+                            coating_type=coating_val or None,
+                            marble_type=marble_val or None,
+                            surface_treatment=surface_val or None,
+                            material_type=material_val or None,
+                            pattern=pattern_val or None,
                         )
                         imported_count += 1
 
@@ -5109,7 +5284,6 @@ class FinishExcelImportView(APIView):
                 'updated_count': updated_count,
                 'images_extracted': images_extracted
             }, status=status.HTTP_200_OK)
-
 
         except Exception as e:
             return Response({'error': f'Failed to process file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)

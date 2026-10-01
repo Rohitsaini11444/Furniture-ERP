@@ -132,9 +132,9 @@ class ProductionUnitAdmin(BaseModelAdmin):
 # ──────────────────────────────────── Finish Catalog ──────────────────────────────────────────
 @admin.register(Finish)
 class FinishAdmin(BaseModelAdmin):
-    list_display = ['finish_image_thumbnail', 'finish_code', 'name', 'color', 'wood_type', 'created_at']
-    list_filter = ['wood_type', 'color']
-    search_fields = ['name', 'finish_code', 'color', 'wood_type']
+    list_display = ['finish_image_thumbnail', 'category', 'finish_code', 'name', 'color', 'wood_type', 'metal_type', 'marble_type', 'material_type', 'created_at']
+    list_filter = ['category', 'wood_type', 'metal_type', 'marble_type', 'material_type', 'color']
+    search_fields = ['name', 'finish_code', 'color', 'wood_type', 'metal_type', 'marble_type', 'material_type']
 
     def finish_image_thumbnail(self, obj):
         if obj.image:
