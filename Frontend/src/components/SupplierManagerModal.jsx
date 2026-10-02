@@ -21,7 +21,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
   });
 
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const fetchSuppliers = async () => {
     setLoading(true);
@@ -41,6 +41,21 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
     }
   }, [isOpen]);
 
+  const handleInputChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    if (fieldErrors[field] || fieldErrors.general) {
+      setFieldErrors(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        const remainingFieldErrors = Object.keys(copy).filter(k => k !== 'general');
+        if (remainingFieldErrors.length === 0) {
+          delete copy.general;
+        }
+        return copy;
+      });
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingId(null);
     setForm({
@@ -52,7 +67,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
       cartage_ledger_name: 'PUR. CARTAGE GST @ 18% -  3 %',
       address: '',
     });
-    setError('');
+    setFieldErrors({});
     setIsFormOpen(true);
   };
 
@@ -67,7 +82,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
       cartage_ledger_name: sup.cartage_ledger_name || 'PUR. CARTAGE GST @ 18% -  3 %',
       address: sup.address || '',
     });
-    setError('');
+    setFieldErrors({});
     setIsFormOpen(true);
   };
 
@@ -87,28 +102,56 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      setError('Supplier Name is required.');
+      setFieldErrors({ name: 'Supplier Name is required.', general: 'Please correct the highlighted errors below.' });
       return;
     }
 
     setSaving(true);
-    setError('');
+    setFieldErrors({});
 
     try {
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        gstin: form.gstin.trim().toUpperCase(),
+        state_name: form.state_name.trim(),
+        cartage_ledger_name: form.cartage_ledger_name.trim(),
+        address: form.address.trim(),
+      };
+
       let savedSup = null;
       if (editingId) {
-        const res = await api.put(`/suppliers/${editingId}/`, form);
+        const res = await api.put(`/suppliers/${editingId}/`, payload);
         savedSup = res.data;
       } else {
-        const res = await api.post('/suppliers/', form);
+        const res = await api.post('/suppliers/', payload);
         savedSup = res.data;
       }
       setIsFormOpen(false);
       fetchSuppliers();
       if (onUpdated) onUpdated(savedSup);
     } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.detail || 'Failed to save supplier details.');
+      console.error('Failed to save supplier:', err);
+      const data = err.response?.data;
+      if (data && typeof data === 'object') {
+        const newErrors = {};
+        Object.entries(data).forEach(([k, v]) => {
+          newErrors[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+        if (data.detail) {
+          newErrors.general = data.detail;
+        } else if (data.non_field_errors) {
+          newErrors.general = Array.isArray(data.non_field_errors) ? data.non_field_errors.join(' ') : data.non_field_errors;
+        } else if (Object.keys(newErrors).length > 0) {
+          newErrors.general = 'Please correct the highlighted errors below.';
+        } else {
+          newErrors.general = 'Failed to save supplier details. Please check your inputs.';
+        }
+        setFieldErrors(newErrors);
+      } else {
+        setFieldErrors({ general: 'Failed to save supplier details. Please check your inputs.' });
+      }
     } finally {
       setSaving(false);
     }
@@ -150,47 +193,163 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                 </button>
               </div>
 
-              {error && (
-                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.65rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', marginBottom: '1rem' }}>
-                  ⚠️ {error}
+              {fieldErrors.general && (
+                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '0.65rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                  <span>{fieldErrors.general}</span>
                 </div>
               )}
 
               <div className="form-grid-2" style={{ gap: '1rem', marginBottom: '1rem' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 700 }}>Supplier Name *</label>
-                  <input required type="text" className="form-input" placeholder="e.g. Pinkcity Handicrafts"
-                    value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                  <input
+                    required
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Pinkcity Handicrafts"
+                    style={{
+                      borderColor: fieldErrors.name ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.name ? '#fff5f5' : undefined
+                    }}
+                    value={form.name}
+                    onChange={e => handleInputChange('name', e.target.value)}
+                  />
+                  {fieldErrors.name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.name}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Phone Number</label>
-                  <input type="text" className="form-input" placeholder="e.g. 9829012345"
-                    value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. 9829012345"
+                    style={{
+                      borderColor: fieldErrors.phone ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.phone ? '#fff5f5' : undefined
+                    }}
+                    value={form.phone}
+                    onChange={e => handleInputChange('phone', e.target.value)}
+                  />
+                  {fieldErrors.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.phone}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">GSTIN / UIN</label>
-                  <input type="text" className="form-input" placeholder="e.g. 08ABCDE1234F1Z5"
-                    value={form.gstin} onChange={e => setForm({...form, gstin: e.target.value})} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. 08ABCDE1234F1Z5"
+                    style={{
+                      borderColor: fieldErrors.gstin ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.gstin ? '#fff5f5' : undefined
+                    }}
+                    value={form.gstin}
+                    onChange={e => handleInputChange('gstin', e.target.value.toUpperCase())}
+                  />
+                  {fieldErrors.gstin && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.gstin}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">State Name</label>
-                  <input type="text" className="form-input" placeholder="e.g. Rajasthan"
-                    value={form.state_name} onChange={e => setForm({...form, state_name: e.target.value})} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Rajasthan"
+                    style={{
+                      borderColor: fieldErrors.state_name ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.state_name ? '#fff5f5' : undefined
+                    }}
+                    value={form.state_name}
+                    onChange={e => handleInputChange('state_name', e.target.value)}
+                  />
+                  {fieldErrors.state_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.state_name}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Cartage GST Rate (%)</label>
-                  <input type="number" step="0.01" min="0" className="form-input" placeholder="18.00"
-                    value={form.cartage_gst_rate} onChange={e => setForm({...form, cartage_gst_rate: e.target.value})} />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    className="form-input"
+                    placeholder="18.00"
+                    style={{
+                      borderColor: fieldErrors.cartage_gst_rate ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.cartage_gst_rate ? '#fff5f5' : undefined
+                    }}
+                    value={form.cartage_gst_rate}
+                    onChange={e => handleInputChange('cartage_gst_rate', e.target.value)}
+                  />
+                  {fieldErrors.cartage_gst_rate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.cartage_gst_rate}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Cartage Ledger Name</label>
-                  <input type="text" className="form-input" placeholder="PUR. CARTAGE GST @ 18% -  3 %"
-                    value={form.cartage_ledger_name} onChange={e => setForm({...form, cartage_ledger_name: e.target.value})} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="PUR. CARTAGE GST @ 18% -  3 %"
+                    style={{
+                      borderColor: fieldErrors.cartage_ledger_name ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.cartage_ledger_name ? '#fff5f5' : undefined
+                    }}
+                    value={form.cartage_ledger_name}
+                    onChange={e => handleInputChange('cartage_ledger_name', e.target.value)}
+                  />
+                  {fieldErrors.cartage_ledger_name && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.cartage_ledger_name}</span>
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label className="form-label">Full Address</label>
-                  <textarea rows={2} className="form-input" placeholder="Enter supplier factory/office address..."
-                    value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+                  <textarea
+                    rows={2}
+                    className="form-input"
+                    placeholder="Enter supplier factory/office address..."
+                    style={{
+                      borderColor: fieldErrors.address ? '#dc2626' : undefined,
+                      backgroundColor: fieldErrors.address ? '#fff5f5' : undefined
+                    }}
+                    value={form.address}
+                    onChange={e => handleInputChange('address', e.target.value)}
+                  />
+                  {fieldErrors.address && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.address}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
