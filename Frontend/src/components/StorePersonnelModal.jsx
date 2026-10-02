@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api/axios';
 import {
   X, User, Users, Briefcase, Hammer, Phone, Mail, Factory,
@@ -16,12 +16,21 @@ export default function StorePersonnelModal({
   isOpen,
   onClose,
   onSuccess,
+  onSaved,
   initialData = null,
   defaultRole = 'contractor',
-  supervisorsList = [],
-  unitsList = []
+  supervisorsList,
+  supervisors,
+  unitsList,
+  units
 }) {
+  const finalUnits = unitsList || units || [];
+  const finalSupervisors = supervisorsList || supervisors || [];
+  const handleSuccess = onSuccess || onSaved;
+
   const isEdit = Boolean(initialData?.id);
+  const prevIsOpenRef = useRef(false);
+  const prevInitialIdRef = useRef(null);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -33,91 +42,129 @@ export default function StorePersonnelModal({
     production_unit: '',
     supervisor: '',
     batch_category: '',
-    worker_person: '',
     password: '',
     is_active: true
   });
 
+  const [userCustomizedUsername, setUserCustomizedUsername] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [existingWorkerPersonId, setExistingWorkerPersonId] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
+  // Initialize form data strictly when modal opens or initialData changes
   useEffect(() => {
     if (isOpen) {
-      if (initialData) {
-        setFormData({
-          username: initialData.username || '',
-          first_name: initialData.first_name || '',
-          last_name: initialData.last_name || '',
-          email: initialData.email || '',
-          phone: initialData.phone || '',
-          role: initialData.role || defaultRole,
-          production_unit: initialData.production_unit || '',
-          supervisor: initialData.supervisor || '',
-          batch_category: initialData.batch_category || '',
-          worker_person: initialData.worker_person || initialData.workerPersonName || '',
-          password: '',
-          is_active: initialData.is_active !== undefined ? initialData.is_active : true
-        });
-        setExistingWorkerPersonId(initialData.worker_person_id || null);
-      } else {
-        const genUser = `staff_${Date.now().toString().slice(-5)}`;
-        setFormData({
-          username: genUser,
-          first_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-          role: defaultRole,
-          production_unit: unitsList.length > 0 ? unitsList[0].id : '',
-          supervisor: supervisorsList.length > 0 ? supervisorsList[0].id : '',
-          batch_category: 'sanding',
-          worker_person: '',
-          password: 'Password@123',
-          is_active: true
-        });
-        setExistingWorkerPersonId(null);
+      const isNewOpen = !prevIsOpenRef.current;
+      const isDifferentInitial = (initialData?.id || null) !== prevInitialIdRef.current;
+
+      if (isNewOpen || isDifferentInitial) {
+        prevInitialIdRef.current = initialData?.id || null;
+        setUserCustomizedUsername(false);
+        setFieldErrors({});
+        setError(null);
+
+        if (initialData) {
+          setFormData({
+            username: initialData.username || '',
+            first_name: initialData.first_name || '',
+            last_name: initialData.last_name || '',
+            email: initialData.email || '',
+            phone: initialData.phone || '',
+            role: initialData.role || defaultRole,
+            production_unit: initialData.production_unit || '',
+            supervisor: initialData.supervisor || '',
+            batch_category: initialData.batch_category || '',
+            password: '',
+            is_active: initialData.is_active !== undefined ? initialData.is_active : true
+          });
+        } else {
+          const genUser = `staff_${Math.floor(10000 + Math.random() * 90000)}`;
+          setFormData({
+            username: genUser,
+            first_name: '',
+            last_name: '',
+            email: '',
+            phone: '',
+            role: defaultRole,
+            production_unit: finalUnits.length > 0 ? finalUnits[0].id : '',
+            supervisor: finalSupervisors.length > 0 ? finalSupervisors[0].id : '',
+            batch_category: 'sanding',
+            password: 'Password@123',
+            is_active: true
+          });
+        }
       }
-      setError(null);
     }
-  }, [isOpen, initialData, defaultRole, unitsList, supervisorsList]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, initialData?.id, defaultRole]);
+
+  // If units or supervisors load after modal opened, fill default if empty
+  useEffect(() => {
+    if (isOpen && !initialData && finalUnits.length > 0) {
+      setFormData(prev => prev.production_unit ? prev : { ...prev, production_unit: finalUnits[0].id });
+    }
+  }, [isOpen, initialData, finalUnits.length]);
+
+  useEffect(() => {
+    if (isOpen && !initialData && finalSupervisors.length > 0 && formData.role === 'contractor') {
+      setFormData(prev => prev.supervisor ? prev : { ...prev, supervisor: finalSupervisors[0].id });
+    }
+  }, [isOpen, initialData, finalSupervisors.length, formData.role]);
 
   if (!isOpen) return null;
 
   const handleChange = (field, val) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: val };
-      // Auto generate username from name if new
-      if (!isEdit && (field === 'first_name' || field === 'last_name')) {
+
+      if (field === 'username') {
+        setUserCustomizedUsername(true);
+      }
+
+      // Auto generate username from first/last name if user hasn't explicitly entered a custom username
+      if (!isEdit && !userCustomizedUsername && (field === 'first_name' || field === 'last_name')) {
         const fn = field === 'first_name' ? val : prev.first_name;
         const ln = field === 'last_name' ? val : prev.last_name;
         const combined = `${fn}_${ln}`.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-        if (combined) {
+        if (combined && combined !== '_') {
           updated.username = combined;
         }
       }
+
       return updated;
     });
+
+    if (fieldErrors[field]) {
+      setFieldErrors(prev => {
+        const copy = { ...prev };
+        delete copy[field];
+        return copy;
+      });
+    }
     if (error) setError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.first_name.trim()) {
+      setFieldErrors(prev => ({ ...prev, first_name: 'First name is required.' }));
       setError('First name is required.');
       return;
     }
     if (!formData.username.trim()) {
+      setFieldErrors(prev => ({ ...prev, username: 'Username is required.' }));
       setError('Username is required.');
       return;
     }
     if (!isEdit && !formData.password) {
+      setFieldErrors(prev => ({ ...prev, password: 'Password is required for new staff accounts.' }));
       setError('Password is required for new staff accounts.');
       return;
     }
 
     setSaving(true);
     setError(null);
+    setFieldErrors({});
 
     try {
       const payload = {
@@ -152,35 +199,25 @@ export default function StorePersonnelModal({
         savedUser = res.data;
       }
 
-      // If contractor and worker_person delegate name is filled, create or update ContractorPerson
-      if (formData.role === 'contractor' && formData.worker_person.trim() && savedUser?.id) {
-        try {
-          if (existingWorkerPersonId) {
-            await api.patch(`/store/contractor-persons/${existingWorkerPersonId}/`, {
-              contractor: savedUser.id,
-              person_name: formData.worker_person.trim(),
-              phone: formData.phone.trim()
-            });
-          } else {
-            await api.post('/store/contractor-persons/', {
-              contractor: savedUser.id,
-              person_name: formData.worker_person.trim(),
-              phone: formData.phone.trim()
-            });
-          }
-        } catch (wpErr) {
-          console.warn('Worker delegate sync notice:', wpErr);
-        }
-      }
-
-      if (onSuccess) onSuccess(savedUser);
+      if (handleSuccess) handleSuccess(savedUser);
       onClose();
     } catch (err) {
       console.error('Failed to save staff:', err);
       const resData = err.response?.data;
       if (resData && typeof resData === 'object') {
-        const firstVal = Object.values(resData)[0];
-        setError(Array.isArray(firstVal) ? firstVal.join(' ') : String(firstVal));
+        const newErrs = {};
+        Object.entries(resData).forEach(([k, v]) => {
+          newErrs[k] = Array.isArray(v) ? v.join(' ') : String(v);
+        });
+        setFieldErrors(newErrs);
+        if (resData.detail) {
+          setError(resData.detail);
+        } else if (resData.non_field_errors) {
+          setError(Array.isArray(resData.non_field_errors) ? resData.non_field_errors.join(' ') : resData.non_field_errors);
+        } else {
+          const firstVal = Object.values(resData)[0];
+          setError(Array.isArray(firstVal) ? firstVal.join(' ') : String(firstVal));
+        }
       } else {
         setError(err.message || 'Server error while saving personnel details.');
       }
@@ -211,49 +248,55 @@ export default function StorePersonnelModal({
         className="modal-content"
         onClick={e => e.stopPropagation()}
         style={{
-          width: '100%',
-          maxWidth: '640px',
+          width: '95vw',
+          maxWidth: '740px',
           maxHeight: '92vh',
           backgroundColor: '#ffffff',
-          borderRadius: '16px',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
+          borderRadius: '18px',
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.28)',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          padding: 0
         }}
       >
         {/* Header */}
         <div style={{
-          padding: '1.25rem 1.5rem',
+          padding: '1.35rem 1.75rem',
+          backgroundColor: isContractor ? '#f0fdf4' : '#faf5ff',
           borderBottom: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          backgroundColor: isContractor ? '#f0fdf4' : '#faf5ff'
+          flexShrink: 0
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
             <div style={{
-              width: '40px',
-              height: '40px',
+              width: '42px',
+              height: '42px',
               borderRadius: '10px',
               backgroundColor: isContractor ? '#22c55e' : '#a855f7',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
             }}>
               {isContractor ? <Hammer size={22} /> : <Briefcase size={22} />}
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>
-                {isEdit ? `Edit ${isContractor ? 'Contractor' : 'Supervisor'}` : `Add New ${isContractor ? 'Contractor' : 'Supervisor'}`}
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                {isEdit
+                  ? `Edit ${isContractor ? 'Contractor' : 'Supervisor'}`
+                  : `Add New ${isContractor ? 'Contractor' : 'Supervisor'}`}
               </h2>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>
                 Store personnel directory & manufacturing unit assignment
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: 'none',
@@ -261,7 +304,10 @@ export default function StorePersonnelModal({
               color: '#64748b',
               cursor: 'pointer',
               padding: '6px',
-              borderRadius: '8px'
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
             <X size={20} />
@@ -269,26 +315,26 @@ export default function StorePersonnelModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-          
+        <form onSubmit={handleSubmit} style={{ padding: '1.5rem 1.75rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+          {/* Top Error Alert */}
           {error && (
             <div style={{
               backgroundColor: '#fef2f2',
               border: '1px solid #fecaca',
-              borderRadius: '10px',
+              color: '#dc2626',
               padding: '0.75rem 1rem',
-              color: '#991b1b',
+              borderRadius: '8px',
               fontSize: '0.85rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
+              gap: '8px'
             }}>
-              <AlertCircle size={16} />
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Role Segment Toggle */}
+          {/* Role Switcher */}
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
               Designation / Role *
@@ -340,7 +386,7 @@ export default function StorePersonnelModal({
           {/* Names Row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.first_name ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 First Name *
               </label>
               <input
@@ -353,14 +399,21 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.first_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.first_name ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.first_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.first_name}</span>
+                </div>
+              )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.last_name ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 Last Name
               </label>
               <input
@@ -372,18 +425,25 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.last_name ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.last_name ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.last_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.last_name}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Contact Row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.phone ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 Phone Number
               </label>
               <input
@@ -395,14 +455,21 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.phone ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.phone ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.phone && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.phone}</span>
+                </div>
+              )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.email ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 Email (Optional)
               </label>
               <input
@@ -414,11 +481,18 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.email ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.email ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.email && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.email}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -442,7 +516,7 @@ export default function StorePersonnelModal({
                 }}
               >
                 <option value="">Select Factory Unit...</option>
-                {unitsList.map(u => (
+                {finalUnits.map(u => (
                   <option key={u.id} value={u.id}>{u.name} ({u.unit_code})</option>
                 ))}
               </select>
@@ -467,7 +541,7 @@ export default function StorePersonnelModal({
                   }}
                 >
                   <option value="">Unassigned</option>
-                  {supervisorsList.map(s => (
+                  {finalSupervisors.map(s => (
                     <option key={s.id} value={s.id}>
                       {s.full_name || `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.username} ({s.batch_category || 'Supervisor'})
                     </option>
@@ -500,37 +574,10 @@ export default function StorePersonnelModal({
             )}
           </div>
 
-          {/* Contractor Worker Delegate */}
-          {isContractor && (
-            <div style={{ backgroundColor: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                Worker Person Delegate (Receiver at Store)
-              </label>
-              <input
-                type="text"
-                value={formData.worker_person}
-                onChange={e => handleChange('worker_person', e.target.value)}
-                placeholder="e.g. Raju (Authorized worker for material issue collection)"
-                style={{
-                  width: '100%',
-                  padding: '0.6rem 0.8rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.88rem',
-                  backgroundColor: '#ffffff',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <span style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                Used in Daily Issue entry when this contractor sends a worker delegate to collect raw materials.
-              </span>
-            </div>
-          )}
-
           {/* Account Credentials */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.username ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 Username *
               </label>
               <input
@@ -543,14 +590,21 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.username ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.username ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.username && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.username}</span>
+                </div>
+              )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: fieldErrors.password ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                 {isEdit ? 'Change Password (Leave blank to keep)' : 'Initial Password *'}
               </label>
               <input
@@ -562,11 +616,18 @@ export default function StorePersonnelModal({
                   width: '100%',
                   padding: '0.6rem 0.8rem',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  border: fieldErrors.password ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                  backgroundColor: fieldErrors.password ? '#fff5f5' : '#ffffff',
                   fontSize: '0.88rem',
                   boxSizing: 'border-box'
                 }}
               />
+              {fieldErrors.password && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.76rem', marginTop: '4px' }}>
+                  <AlertCircle size={12} />
+                  <span>{fieldErrors.password}</span>
+                </div>
+              )}
             </div>
           </div>
 

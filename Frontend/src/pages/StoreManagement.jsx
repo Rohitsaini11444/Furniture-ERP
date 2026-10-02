@@ -29,6 +29,7 @@ import StoreExcelImportModal from '../components/StoreExcelImportModal';
 import StoreFactoryUnitModal from '../components/StoreFactoryUnitModal';
 import SupplierManagerModal from '../components/SupplierManagerModal';
 import StorePersonnelModal from '../components/StorePersonnelModal';
+import ContractorManagerModal from '../components/ContractorManagerModal';
 
 const getStoreImageUrl = (img) => {
   if (!img) return null;
@@ -213,6 +214,7 @@ export default function StoreManagement() {
 
   // Supplier & Personnel Modals State
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [isContractorManagerModalOpen, setIsContractorManagerModalOpen] = useState(false);
   const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
   const [selectedPersonnelForEdit, setSelectedPersonnelForEdit] = useState(null);
   const [personnelModalRole, setPersonnelModalRole] = useState('contractor');
@@ -1383,6 +1385,29 @@ export default function StoreManagement() {
           >
             <Building2 size={15} color="#ea580c" />
             <span>Suppliers</span>
+          </button>
+
+          <button
+            onClick={() => setIsContractorManagerModalOpen(true)}
+            className="btn-subtle-motion"
+            title="Manage Contractors & Supervisors Directory"
+            style={{
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
+              border: '1px solid #bbf7d0',
+              backgroundColor: '#f0fdf4',
+              color: '#15803d',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}
+          >
+            <Hammer size={15} color="#16a34a" />
+            <span>Contractors</span>
           </button>
         </div>
       </div>
@@ -3912,11 +3937,7 @@ export default function StoreManagement() {
               {/* Action Buttons: Add Contractor & Add Supervisor */}
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedPersonnelForEdit(null);
-                  setPersonnelModalRole('contractor');
-                  setIsPersonnelModalOpen(true);
-                }}
+                onClick={() => setIsContractorManagerModalOpen(true)}
                 style={{
                   padding: '0.42rem 0.75rem',
                   borderRadius: '8px',
@@ -3938,11 +3959,7 @@ export default function StoreManagement() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedPersonnelForEdit(null);
-                  setPersonnelModalRole('supervisor');
-                  setIsPersonnelModalOpen(true);
-                }}
+                onClick={() => setIsContractorManagerModalOpen(true)}
                 style={{
                   padding: '0.42rem 0.75rem',
                   borderRadius: '8px',
@@ -3972,7 +3989,7 @@ export default function StoreManagement() {
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Role</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Factory Unit</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Phone</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Worker Delegate / Stage</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Stage / Supervisor</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Status</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Actions</th>
                 </tr>
@@ -4000,7 +4017,6 @@ export default function StoreManagement() {
                 ) : (
                   paginatedContractors.map((c, idx) => {
                     const isContr = c.role === 'contractor';
-                    const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
                     return (
                       <tr key={c.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
@@ -4055,7 +4071,7 @@ export default function StoreManagement() {
                         <td style={{ padding: '0.85rem 1rem' }}>{c.phone || '—'}</td>
                         <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#475569' }}>
                           {isContr ? (
-                            <span>Worker: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong></span>
+                            <span>Supervisor: <strong style={{ color: '#0369a1' }}>{c.supervisor_name || 'Unassigned'}</strong></span>
                           ) : (
                             <span>Stage: <strong style={{ color: '#9333ea', textTransform: 'capitalize' }}>{c.batch_category || 'General'}</strong></span>
                           )}
@@ -4077,11 +4093,7 @@ export default function StoreManagement() {
                             <button
                               type="button"
                               onClick={() => {
-                                setSelectedPersonnelForEdit({
-                                  ...c,
-                                  worker_person: workerPerson?.person_name || '',
-                                  worker_person_id: workerPerson?.id || null
-                                });
+                                setSelectedPersonnelForEdit(c);
                                 setPersonnelModalRole(c.role || 'contractor');
                                 setIsPersonnelModalOpen(true);
                               }}
@@ -4152,7 +4164,6 @@ export default function StoreManagement() {
             ) : (
               paginatedContractors.map((c, idx) => {
                 const isContr = c.role === 'contractor';
-                const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
                 return (
                   <div key={c.id || idx} className="store-mobile-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
@@ -4181,7 +4192,7 @@ export default function StoreManagement() {
 
                     <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.65rem' }}>
                       {isContr ? (
-                        <span>Worker: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong></span>
+                        <span>Supervisor: <strong style={{ color: '#0369a1' }}>{c.supervisor_name || 'Unassigned'}</strong></span>
                       ) : (
                         <span>Stage: <strong style={{ color: '#9333ea', textTransform: 'capitalize' }}>{c.batch_category || 'General'}</strong></span>
                       )}
@@ -4191,11 +4202,7 @@ export default function StoreManagement() {
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedPersonnelForEdit({
-                            ...c,
-                            worker_person: workerPerson?.person_name || '',
-                            worker_person_id: workerPerson?.id || null
-                          });
+                          setSelectedPersonnelForEdit(c);
                           setPersonnelModalRole(c.role || 'contractor');
                           setIsPersonnelModalOpen(true);
                         }}
@@ -5027,6 +5034,21 @@ export default function StoreManagement() {
         onUpdated={() => {
           api.get('/suppliers/', { params: { nopage: true } })
             .then(r => setSuppliers(r.data.results || r.data || []));
+        }}
+      />
+
+      <ContractorManagerModal
+        isOpen={isContractorManagerModalOpen}
+        onClose={() => setIsContractorManagerModalOpen(false)}
+        unitsList={productionUnits}
+        supervisorsList={supervisorsList}
+        onUpdated={() => {
+          fetchTabData('contractors', true);
+          api.get('/users/', { params: { nopage: true } })
+            .then(r => {
+              const staff = (r.data.results || r.data || []).filter(u => u.role === 'contractor' || u.role === 'supervisor');
+              setContractors(staff.filter(u => u.role === 'contractor'));
+            });
         }}
       />
 
