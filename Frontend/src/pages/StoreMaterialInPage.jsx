@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse, FileText, X } from 'lucide-react';
+import { ArrowLeft, ArrowDownRight, Save, AlertCircle, CheckCircle, Warehouse, FileText, X, Plus } from 'lucide-react';
 import api from '../api/axios';
 import SearchableSelect from '../components/SearchableSelect';
+import SupplierManagerModal from '../components/SupplierManagerModal';
 import { FormSkeleton } from '../components/TableSkeleton';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { UnsavedChangesModal } from '../components/UnsavedChangesModal';
@@ -36,6 +37,7 @@ export default function StoreMaterialInPage() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
 
   const {
     setIsDirty,
@@ -75,9 +77,9 @@ export default function StoreMaterialInPage() {
 
   useEffect(() => {
     Promise.allSettled([
-      api.get('/store/items/'),
+      api.get('/store/items/', { params: { nopage: true } }),
       api.get('/suppliers/', { params: { nopage: true } }),
-      api.get('/production-units/')
+      api.get('/production-units/', { params: { nopage: true } })
     ])
       .then(([itemsRes, suppRes, unitRes]) => {
         const itemData = itemsRes.status === 'fulfilled' ? (itemsRes.value.data.results || itemsRes.value.data || []) : [];
@@ -89,24 +91,46 @@ export default function StoreMaterialInPage() {
         setUnits(unitData);
 
         if (suppData.length > 0) {
-          setFormData(prev => ({ ...prev, supplier: suppData[0].id }));
+          setFormData(prev => prev.supplier ? prev : ({ ...prev, supplier: suppData[0].id }));
         }
         if (itemData.length > 0) {
-          const first = itemData[0];
-          setFormData(prev => ({
-            ...prev,
-            item: first.id,
-            unit: first.unit,
-            bill_rate: first.current_rate || first.base_rate || ''
-          }));
+          setFormData(prev => {
+            if (prev.item) return prev;
+            const first = itemData[0];
+            return {
+              ...prev,
+              item: first.id,
+              unit: first.unit,
+              bill_rate: first.current_rate || first.base_rate || ''
+            };
+          });
         }
         if (unitData.length > 0) {
-          setFormData(prev => ({ ...prev, production_unit: unitData[0].id }));
+          const savedUnit = localStorage.getItem('preferred_store_unit');
+          const validSaved = savedUnit && unitData.some(u => String(u.id) === String(savedUnit));
+          const defaultUnit = validSaved ? savedUnit : unitData[0].id;
+          setFormData(prev => prev.production_unit ? prev : ({ ...prev, production_unit: defaultUnit }));
         }
       })
       .catch(err => console.error('Failed to load material in initial data:', err))
       .finally(() => setLoadingData(false));
   }, []);
+
+  const handleSupplierUpdated = async (savedSupplier) => {
+    try {
+      const suppRes = await api.get('/suppliers/', { params: { nopage: true } });
+      const suppData = suppRes.data.results || suppRes.data || [];
+      setSuppliers(suppData);
+      if (savedSupplier?.id) {
+        setFormData(prev => ({ ...prev, supplier: savedSupplier.id }));
+        if (formErrors.supplier) {
+          setFormErrors(prev => ({ ...prev, supplier: null }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to refresh suppliers:', e);
+    }
+  };
 
   const handleFieldChange = (field, value) => {
     setIsDirty(true);
@@ -451,9 +475,31 @@ export default function StoreMaterialInPage() {
           {/* Row 2: Supplier & Store Item */}
           <div className="mat-in-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                Supplier Name *
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                  Supplier Name *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierModal(true)}
+                  style={{
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: '#ea580c',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    padding: '2px 4px'
+                  }}
+                  title="Create New Supplier Profile"
+                >
+                  <Plus size={13} />
+                  <span>New Supplier</span>
+                </button>
+              </div>
               <div style={{ borderRadius: '8px', border: formErrors.supplier ? '1.5px solid #dc2626' : 'none' }}>
                 <SearchableSelect
                   options={suppliers}
@@ -588,7 +634,12 @@ export default function StoreMaterialInPage() {
               </label>
               <select
                 value={formData.production_unit}
-                onChange={(e) => handleFieldChange('production_unit', e.target.value)}
+                onChange={(e) => {
+                  handleFieldChange('production_unit', e.target.value);
+                  try {
+                    localStorage.setItem('preferred_store_unit', e.target.value);
+                  } catch (err) {}
+                }}
                 style={{
                   width: '100%',
                   padding: '0.65rem 0.85rem',
@@ -746,6 +797,12 @@ export default function StoreMaterialInPage() {
           </button>
         </div>
       )}
+      {/* Supplier Management CRUD Modal */}
+      <SupplierManagerModal
+        isOpen={showSupplierModal}
+        onClose={() => setShowSupplierModal(false)}
+        onUpdated={handleSupplierUpdated}
+      />
     </div>
   );
 }

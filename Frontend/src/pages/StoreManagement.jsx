@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, Users, FileText, Printer, CheckCircle, AlertTriangle,
   IndianRupee, Download, Eye, Layers, Shield, Tag, History, Edit, Trash2, ChevronRight, Package, Undo2,
   ShieldAlert, Check, XCircle, RotateCcw, Sparkles, ClipboardCheck, BarChart3, X, FileEdit,
-  Factory, MapPin, Gauge, LayoutGrid, List, Building2, ArrowRightLeft
+  Factory, MapPin, Gauge, LayoutGrid, List, Building2, ArrowRightLeft, Hammer, Briefcase
 } from 'lucide-react';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +27,8 @@ import StorePhysicalAuditModal from '../components/StorePhysicalAuditModal';
 import StoreAnalyticsSection from '../components/StoreAnalyticsSection';
 import StoreExcelImportModal from '../components/StoreExcelImportModal';
 import StoreFactoryUnitModal from '../components/StoreFactoryUnitModal';
+import SupplierManagerModal from '../components/SupplierManagerModal';
+import StorePersonnelModal from '../components/StorePersonnelModal';
 
 const getStoreImageUrl = (img) => {
   if (!img) return null;
@@ -208,6 +210,14 @@ export default function StoreManagement() {
   const [isPhysicalAuditModalOpen, setIsPhysicalAuditModalOpen] = useState(false);
   const [isExcelImportModalOpen, setIsExcelImportModalOpen] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Supplier & Personnel Modals State
+  const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [isPersonnelModalOpen, setIsPersonnelModalOpen] = useState(false);
+  const [selectedPersonnelForEdit, setSelectedPersonnelForEdit] = useState(null);
+  const [personnelModalRole, setPersonnelModalRole] = useState('contractor');
+  const [personnelRoleFilter, setPersonnelRoleFilter] = useState('all'); // 'all' | 'contractor' | 'supervisor'
+  const [supervisorsList, setSupervisorsList] = useState([]);
 
   // Multi-Select Bulk Actions State
   const [selectionMode, setSelectionMode] = useState(false);
@@ -406,13 +416,16 @@ export default function StoreManagement() {
         setStockAdjustmentsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'contractors' || tabKey === 'billing') {
         const p = targetPage !== undefined ? targetPage : (tabKey === 'contractors' ? pageContractors : pageBilling);
-        const [cRes, cpRes] = await Promise.all([
-          api.get('/users/', { params: { role: 'contractor', page: p, page_size: ITEMS_PER_PAGE, search: searchVal || undefined } }),
+        const roleParam = tabKey === 'billing' ? 'contractor' : (personnelRoleFilter === 'all' ? undefined : personnelRoleFilter);
+        const [cRes, cpRes, sRes] = await Promise.all([
+          api.get('/users/', { params: { role: roleParam, page: p, page_size: ITEMS_PER_PAGE, search: searchVal || undefined } }),
           api.get('/store/contractor-persons/', { params: { nopage: true } }),
+          api.get('/users/supervisors/', { params: { nopage: true } }),
         ]);
         setContractors(cRes.data.results || cRes.data || []);
         setContractorsTotalCount(cRes.data.count ?? (cRes.data.results || cRes.data || []).length);
         setContractorPersons(cpRes.data.results || cpRes.data || []);
+        setSupervisorsList(sRes.data.results || sRes.data || []);
       } else if (tabKey === 'factory-units') {
         await fetchProductionUnits();
       }
@@ -422,7 +435,7 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter, pageItemMaster, pageMaterialIn, pageDailyIssue, pageMaterialReturns, pageRequisitions, pageAdjustments, pageContractors, pageBilling]);
+  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter, personnelRoleFilter, pageItemMaster, pageMaterialIn, pageDailyIssue, pageMaterialReturns, pageRequisitions, pageAdjustments, pageContractors, pageBilling]);
 
   // Fetch categories once on mount
   const fetchCategories = useCallback(async () => {
@@ -694,6 +707,7 @@ export default function StoreManagement() {
     pageAdjustments,
     pageContractors,
     pageBilling,
+    personnelRoleFilter,
     orderItemMaster,
     orderMaterialIn,
     orderDailyIssue,
@@ -1083,7 +1097,7 @@ export default function StoreManagement() {
             { id: 'material-returns', label: 'Returns', icon: Undo2, color: '#d97706' },
             { id: 'requisitions', label: 'Requisitions', icon: Plus, color: '#0284c7' },
             { id: 'adjustments', label: 'Adjustments', icon: ShieldAlert, color: '#d97706' },
-            { id: 'contractors', label: 'Contractors', icon: Users, color: '#475569' },
+            { id: 'contractors', label: 'Contractors & Staff', icon: Users, color: '#475569' },
             { id: 'billing', label: 'Billing', icon: FileText, color: '#8b5a2b' },
             { id: 'factory-units', label: 'Factory Units', icon: Factory, color: '#0284c7' },
           ].map(chip => {
@@ -1346,6 +1360,29 @@ export default function StoreManagement() {
           >
             <Factory size={15} color="#0284c7" />
             <span>Factory Unit</span>
+          </button>
+
+          <button
+            onClick={() => setIsSupplierModalOpen(true)}
+            className="btn-subtle-motion"
+            title="Manage Suppliers Directory"
+            style={{
+              padding: '0.42rem 0.8rem',
+              borderRadius: '8px',
+              border: '1px solid #fed7aa',
+              backgroundColor: '#fff7ed',
+              color: '#c2410c',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}
+          >
+            <Building2 size={15} color="#ea580c" />
+            <span>Suppliers</span>
           </button>
         </div>
       </div>
@@ -2091,7 +2128,7 @@ export default function StoreManagement() {
           }}
         >
           <Users size={14} />
-          <span>Contractors Directory (Sheet 3)</span>
+          <span>Contractors & Supervisors (Sheet 3)</span>
         </button>
 
         <button
@@ -3806,19 +3843,57 @@ export default function StoreManagement() {
         </div>
       )}
 
-      {/* TAB 5: CONTRACTORS & WORKERS DIRECTORY */}
+      {/* TAB 5: CONTRACTORS & SUPERVISORS MANAGEMENT */}
       {activeTab === 'contractors' && (
         <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
-              Contractors & Worker Delegate Directory (Excel Sheet 3)
-            </h3>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
+                Contractors & Supervisors Management (Sheet 3)
+              </h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                Manage factory contractors, delegates, and manufacturing stage supervisors
+              </p>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '300px', flex: 1 }}>
+              {/* Role filter pills */}
+              <div style={{ display: 'flex', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                {[
+                  { id: 'all', label: 'All Staff' },
+                  { id: 'contractor', label: 'Contractors' },
+                  { id: 'supervisor', label: 'Supervisors' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setPersonnelRoleFilter(tab.id);
+                      setPageContractors(1);
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: personnelRoleFilter === tab.id ? '#ffffff' : 'transparent',
+                      color: personnelRoleFilter === tab.id ? '#0f172a' : '#64748b',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      boxShadow: personnelRoleFilter === tab.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search bar */}
+              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '240px', flex: 1 }}>
                 <Search size={16} color="#94a3b8" />
                 <input
                   type="text"
-                  placeholder="Search contractor name, phone..."
+                  placeholder="Search name, phone..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
@@ -3833,6 +3908,59 @@ export default function StoreManagement() {
                   </button>
                 )}
               </div>
+
+              {/* Action Buttons: Add Contractor & Add Supervisor */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPersonnelForEdit(null);
+                  setPersonnelModalRole('contractor');
+                  setIsPersonnelModalOpen(true);
+                }}
+                style={{
+                  padding: '0.42rem 0.75rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)'
+                }}
+              >
+                <Plus size={14} />
+                <span>New Contractor</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPersonnelForEdit(null);
+                  setPersonnelModalRole('supervisor');
+                  setIsPersonnelModalOpen(true);
+                }}
+                style={{
+                  padding: '0.42rem 0.75rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#9333ea',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  boxShadow: '0 2px 4px rgba(147, 51, 234, 0.2)'
+                }}
+              >
+                <Plus size={14} />
+                <span>New Supervisor</span>
+              </button>
             </div>
           </div>
 
@@ -3840,22 +3968,24 @@ export default function StoreManagement() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                 <tr>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Contractor Name</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Role / Designation</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Staff / Name</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Role</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Factory Unit</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Phone</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Registered Worker Person</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Worker Delegate / Stage</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Status</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={5} />
+                  <TableSkeleton rows={8} cols={7} />
                 ) : paginatedContractors.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                         <Users size={32} color="#cbd5e1" />
-                        <span style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</span>
+                        <span style={{ fontWeight: 600 }}>No personnel found{searchQuery ? ` matching "${searchQuery}"` : ''}</span>
                         {searchQuery && (
                           <button
                             onClick={() => setSearchQuery('')}
@@ -3869,24 +3999,130 @@ export default function StoreManagement() {
                   </tr>
                 ) : (
                   paginatedContractors.map((c, idx) => {
+                    const isContr = c.role === 'contractor';
                     const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
                     return (
                       <tr key={c.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
-                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: '8px',
+                              backgroundColor: isContr ? '#f0fdf4' : '#faf5ff',
+                              color: isContr ? '#16a34a' : '#9333ea',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0
+                            }}>
+                              {isContr ? <Hammer size={16} /> : <Briefcase size={16} />}
+                            </div>
+                            <div>
+                              <div>{c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}</div>
+                              <div style={{ fontSize: '0.74rem', color: '#64748b' }}>@{c.username}</div>
+                            </div>
+                          </div>
                         </td>
-                        <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>Contractor</td>
-                        <td style={{ padding: '0.85rem 1rem' }}>{c.phone || '-'}</td>
-                        <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#8b5a2b' }}>
-                          {workerPerson ? workerPerson.person_name : 'Self'}
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            backgroundColor: isContr ? '#dcfce7' : '#f3e8ff',
+                            color: isContr ? '#15803d' : '#7e22ce'
+                          }}>
+                            {isContr ? 'Contractor' : 'Supervisor'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>
+                          {c.production_unit_name ? (
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: '#e0f2fe',
+                              color: '#0369a1',
+                              fontSize: '0.75rem',
+                              fontWeight: 700
+                            }}>
+                              {c.production_unit_name}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Unassigned</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem' }}>{c.phone || '—'}</td>
+                        <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#475569' }}>
+                          {isContr ? (
+                            <span>Worker: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong></span>
+                          ) : (
+                            <span>Stage: <strong style={{ color: '#9333ea', textTransform: 'capitalize' }}>{c.batch_category || 'General'}</strong></span>
+                          )}
                         </td>
                         <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                          <button
-                            onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                            style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <FileText size={14} /> Generate Bill
-                          </button>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            backgroundColor: c.is_active ? '#f0fdf4' : '#fef2f2',
+                            color: c.is_active ? '#16a34a' : '#dc2626'
+                          }}>
+                            {c.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPersonnelForEdit({
+                                  ...c,
+                                  worker_person: workerPerson?.person_name || '',
+                                  worker_person_id: workerPerson?.id || null
+                                });
+                                setPersonnelModalRole(c.role || 'contractor');
+                                setIsPersonnelModalOpen(true);
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #cbd5e1',
+                                backgroundColor: '#ffffff',
+                                color: '#334155',
+                                fontWeight: 700,
+                                fontSize: '0.76rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <Edit size={12} /> Edit
+                            </button>
+                            {isContr && (
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fed7aa',
+                                  backgroundColor: '#fff7ed',
+                                  color: '#c2410c',
+                                  fontWeight: 700,
+                                  fontSize: '0.76rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <FileText size={12} /> Bill
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -3896,14 +4132,14 @@ export default function StoreManagement() {
             </table>
           </div>
 
-          {/* Mobile Contractors Directory List */}
+          {/* Mobile Contractors & Supervisors Directory List */}
           <div className="mobile-only" style={{ padding: '0.85rem' }}>
             {loading ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>Loading contractors...</div>
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>Loading personnel...</div>
             ) : paginatedContractors.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', backgroundColor: '#ffffff', borderRadius: '12px' }}>
                 <Users size={30} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
-                <div style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</div>
+                <div style={{ fontWeight: 600 }}>No personnel found{searchQuery ? ` matching "${searchQuery}"` : ''}</div>
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
@@ -3915,31 +4151,68 @@ export default function StoreManagement() {
               </div>
             ) : (
               paginatedContractors.map((c, idx) => {
+                const isContr = c.role === 'contractor';
                 const workerPerson = contractorPersons.find(p => String(p.contractor) === String(c.id));
                 return (
                   <div key={c.id || idx} className="store-mobile-card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
-                      <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Users size={20} />
+                      <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: isContr ? '#f0fdf4' : '#faf5ff', color: isContr ? '#16a34a' : '#9333ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isContr ? <Hammer size={20} /> : <Briefcase size={20} />}
                       </div>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
-                        </h4>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                            {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                          </h4>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            backgroundColor: isContr ? '#dcfce7' : '#f3e8ff',
+                            color: isContr ? '#15803d' : '#7e22ce'
+                          }}>
+                            {isContr ? 'Contractor' : 'Supervisor'}
+                          </span>
+                        </div>
                         <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</span>
                       </div>
                     </div>
 
                     <div style={{ fontSize: '0.78rem', color: '#64748b', backgroundColor: '#fafafa', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.65rem' }}>
-                      Worker Delegate: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong>
+                      {isContr ? (
+                        <span>Worker: <strong style={{ color: '#8b5a2b' }}>{workerPerson ? workerPerson.person_name : 'Self'}</strong></span>
+                      ) : (
+                        <span>Stage: <strong style={{ color: '#9333ea', textTransform: 'capitalize' }}>{c.batch_category || 'General'}</strong></span>
+                      )}
                     </div>
 
-                    <button
-                      onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                      style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                    >
-                      <FileText size={15} /> Generate Monthly Bill
-                    </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: isContr ? '1fr 1fr' : '1fr', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPersonnelForEdit({
+                            ...c,
+                            worker_person: workerPerson?.person_name || '',
+                            worker_person_id: workerPerson?.id || null
+                          });
+                          setPersonnelModalRole(c.role || 'contractor');
+                          setIsPersonnelModalOpen(true);
+                        }}
+                        style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#334155', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                      >
+                        <Edit size={14} /> Edit Staff
+                      </button>
+                      {isContr && (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                          style={{ padding: '0.5rem', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        >
+                          <FileText size={14} /> Bill
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -4746,6 +5019,27 @@ export default function StoreManagement() {
         onClose={() => setIsReorderIndentModalOpen(false)}
         lowStockItems={lowStockItems}
         onSuccess={fetchBaselineData}
+      />
+
+      <SupplierManagerModal
+        isOpen={isSupplierModalOpen}
+        onClose={() => setIsSupplierModalOpen(false)}
+        onUpdated={() => {
+          api.get('/suppliers/', { params: { nopage: true } })
+            .then(r => setSuppliers(r.data.results || r.data || []));
+        }}
+      />
+
+      <StorePersonnelModal
+        isOpen={isPersonnelModalOpen}
+        onClose={() => setIsPersonnelModalOpen(false)}
+        initialData={selectedPersonnelForEdit}
+        defaultRole={personnelModalRole}
+        supervisorsList={supervisorsList}
+        unitsList={productionUnits}
+        onSuccess={() => {
+          fetchTabData('contractors', true);
+        }}
       />
 
       <StorePhysicalAuditModal

@@ -95,14 +95,17 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
     setError('');
 
     try {
+      let savedSup = null;
       if (editingId) {
-        await api.put(`/suppliers/${editingId}/`, form);
+        const res = await api.put(`/suppliers/${editingId}/`, form);
+        savedSup = res.data;
       } else {
-        await api.post('/suppliers/', form);
+        const res = await api.post('/suppliers/', form);
+        savedSup = res.data;
       }
       setIsFormOpen(false);
       fetchSuppliers();
-      if (onUpdated) onUpdated();
+      if (onUpdated) onUpdated(savedSup);
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to save supplier details.');

@@ -101,9 +101,9 @@ export default function StoreMaterialReturnPage() {
 
   useEffect(() => {
     Promise.allSettled([
-      api.get('/store/items/'),
-      api.get('/users/', { params: { role: 'contractor' } }),
-      api.get('/production-units/')
+      api.get('/store/items/', { params: { nopage: true } }),
+      api.get('/users/', { params: { role: 'contractor', nopage: true } }),
+      api.get('/production-units/', { params: { nopage: true } })
     ])
       .then(([itemsRes, contrRes, unitRes]) => {
         const itemData = itemsRes.status === 'fulfilled' ? (itemsRes.value.data.results || itemsRes.value.data || []) : [];
@@ -115,23 +115,30 @@ export default function StoreMaterialReturnPage() {
         setUnits(unitData);
 
         if (contrData.length > 0) {
-          setFormData(prev => ({ ...prev, contractor: contrData[0].id }));
+          setFormData(prev => prev.contractor ? prev : ({ ...prev, contractor: contrData[0].id }));
         }
 
         if (itemData.length > 0) {
-          const firstI = itemData[0];
-          setSelectedItemObj(firstI);
-          setFormData(prev => ({
-            ...prev,
-            item: firstI.id,
-            unit: firstI.unit,
-            rate: firstI.current_rate || firstI.base_rate || '',
-            status: firstI.default_status || 'charge'
-          }));
+          setFormData(prev => {
+            if (prev.item) {
+              const matched = itemData.find(i => String(i.id) === String(prev.item));
+              if (matched) setSelectedItemObj(matched);
+              return prev;
+            }
+            const firstI = itemData[0];
+            setSelectedItemObj(firstI);
+            return {
+              ...prev,
+              item: firstI.id,
+              unit: firstI.unit,
+              rate: firstI.current_rate || firstI.base_rate || '',
+              status: firstI.default_status || 'charge'
+            };
+          });
         }
 
         if (unitData.length > 0) {
-          setFormData(prev => ({ ...prev, production_unit: unitData[0].id }));
+          setFormData(prev => prev.production_unit ? prev : ({ ...prev, production_unit: unitData[0].id }));
         }
       })
       .catch(err => console.error('Failed to load store return initial data:', err))

@@ -1631,11 +1631,11 @@ function AppLayout() {
             <Route path="/buyer-masters/buyer/:buyerId" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
             <Route path="/buyer-masters/edit/:buyerId" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
             <Route path="/buyer-masters/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
-            <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><POs /></ProtectedRoute>} />
-            <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><POs /></ProtectedRoute>} />
-            <Route path="/vendor-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><VendorManagement /></ProtectedRoute>} />
-            <Route path="/vendor-management/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><VendorManagement /></ProtectedRoute>} />
-            <Route path="/record-tax-invoice" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><RecordTaxInvoice /></ProtectedRoute>} />
+            <Route path="/pos" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+            <Route path="/pos/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><POs /></ProtectedRoute>} />
+            <Route path="/vendor-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
+            <Route path="/vendor-management/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><VendorManagement /></ProtectedRoute>} />
+            <Route path="/record-tax-invoice" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><RecordTaxInvoice /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><SupplierManagement /></ProtectedRoute>} />
             
             {/* Gate Entry, Store & Stock */}
@@ -1645,8 +1645,8 @@ function AppLayout() {
             <Route path="/store-management/material-return" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreMaterialReturnPage /></ProtectedRoute>} />
             <Route path="/store-management/item-master/new" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
             <Route path="/store-management/item-master/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
-            <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><GateEntry /></ProtectedRoute>} />
-            <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><GateEntry /></ProtectedRoute>} />
+            <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
+            <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><Stock /></ProtectedRoute>} />
             <Route path="/stock/details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StockDetails /></ProtectedRoute>} />
             <Route path="/stock-details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StockDetails /></ProtectedRoute>} />

@@ -6,6 +6,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { FormSkeleton } from '../components/TableSkeleton';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { UnsavedChangesModal } from '../components/UnsavedChangesModal';
+import StorePersonnelModal from '../components/StorePersonnelModal';
 
 export default function StoreDailyIssuePage() {
   const navigate = useNavigate();
@@ -64,6 +65,18 @@ export default function StoreDailyIssuePage() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
+  const [showPersonnelModal, setShowPersonnelModal] = useState(false);
+
+  const handlePersonnelSaved = (newPersonnel) => {
+    if (newPersonnel) {
+      setContractors(prev => {
+        const exists = prev.find(c => c.id === newPersonnel.id);
+        if (exists) return prev.map(c => c.id === newPersonnel.id ? newPersonnel : c);
+        return [newPersonnel, ...prev];
+      });
+      handleContractorChange(newPersonnel.id);
+    }
+  };
 
   // Auto-dismiss toast after 4 seconds
   useEffect(() => {
@@ -164,9 +177,9 @@ export default function StoreDailyIssuePage() {
   // Initial mount: load contractors, workers, units
   useEffect(() => {
     Promise.allSettled([
-      api.get('/users/', { params: { role: 'contractor' } }),
-      api.get('/store/contractor-persons/'),
-      api.get('/production-units/')
+      api.get('/users/', { params: { role: 'contractor', nopage: true } }),
+      api.get('/store/contractor-persons/', { params: { nopage: true } }),
+      api.get('/production-units/', { params: { nopage: true } })
     ])
       .then(([contrRes, persRes, unitRes]) => {
         const contrData = contrRes.status === 'fulfilled' ? (contrRes.value.data.results || contrRes.value.data || []) : [];
@@ -672,9 +685,31 @@ export default function StoreDailyIssuePage() {
           {/* Row 2: Contractor & Receiving Worker */}
           <div className="issue-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor ? '#dc2626' : '#334155', marginBottom: '6px' }}>
-                Target Contractor / Supervisor *
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor ? '#dc2626' : '#334155', margin: 0 }}>
+                  Target Contractor / Supervisor *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPersonnelModal(true)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #fed7aa',
+                    backgroundColor: '#fff7ed',
+                    color: '#ea580c',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  + New Contractor
+                </button>
+              </div>
               <SearchableSelect
                 options={contractors.map(c => ({ ...c, name: c.full_name || c.username }))}
                 value={formData.contractor}
@@ -1042,6 +1077,15 @@ export default function StoreDailyIssuePage() {
           </button>
         </div>
       )}
+
+      <StorePersonnelModal
+        isOpen={showPersonnelModal}
+        onClose={() => setShowPersonnelModal(false)}
+        onSaved={handlePersonnelSaved}
+        units={units}
+        supervisors={contractors.filter(c => c.role === 'supervisor')}
+        defaultRole="contractor"
+      />
     </div>
   );
 }

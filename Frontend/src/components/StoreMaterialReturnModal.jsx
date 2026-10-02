@@ -31,9 +31,9 @@ export default function StoreMaterialReturnModal({ isOpen, onClose, onSuccess, i
     if (isOpen && (initialContractors.length === 0 || initialItems.length === 0)) {
       setLoadingOptions(true);
       Promise.allSettled([
-        api.get('/store/items/'),
-        api.get('/users/', { params: { role: 'contractor' } }),
-        api.get('/production-units/')
+        api.get('/store/items/', { params: { nopage: true } }),
+        api.get('/users/', { params: { role: 'contractor', nopage: true } }),
+        api.get('/production-units/', { params: { nopage: true } })
       ]).then(([itemsRes, contrRes, unitRes]) => {
         const itemData = itemsRes.status === 'fulfilled' ? (itemsRes.value.data.results || itemsRes.value.data || []) : [];
         const contrData = contrRes.status === 'fulfilled' ? (contrRes.value.data.results || contrRes.value.data || []) : [];

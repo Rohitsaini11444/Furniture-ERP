@@ -63,7 +63,8 @@ from .models import (
 from .pagination import OptionalPagination
 from .permissions import (
     IsAdmin, IsAdminOrSandingSupervisor, IsAdminOrSupervisor,
-    IsContractor, IsSandingSupervisor, IsSupervisor, IsSupplierManager
+    IsContractor, IsSandingSupervisor, IsSupervisor, IsSupplierManager,
+    IsStorePersonnelManager
 )
 from .presentation_generator import (
     find_image_path, generate_brand_pptx_presentation,
@@ -272,24 +273,29 @@ class ActiveDevicesView(APIView):
 
 class UserViewSet(viewsets.ModelViewSet):
     """
-    Admin-only CRUD for managing all users.
+    CRUD for managing users.
+    Supports Admin, Store Manager, and Supervisor management of staff.
     GET /api/users/?role=supervisor  — filter by role
     """
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ['role', 'first_name', 'username']
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'supervisors', 'contractors'):
             return [IsAuthenticated()]
-        return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated(), IsStorePersonnelManager()]
 
     def get_queryset(self):
         user = self.request.user
         qs = User.objects.all().order_by('role', 'username')
         role = self.request.query_params.get('role')
         search = self.request.query_params.get('search')
+        production_unit_id = self.request.query_params.get('production_unit')
         if role:
             qs = qs.filter(role=role)
+        if production_unit_id:
+            qs = qs.filter(production_unit_id=production_unit_id)
         supervisor_id = self.request.query_params.get('supervisor')
         if supervisor_id:
             qs = qs.filter(supervisor_id=supervisor_id)
@@ -310,7 +316,20 @@ class UserViewSet(viewsets.ModelViewSet):
             ).distinct()
         return qs
 
+    def perform_create(self, serializer):
+        user = self.request.user
+        target_role = serializer.validated_data.get('role', 'contractor')
+        if user.role != 'admin' and target_role not in ('contractor', 'supervisor'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Store managers and supervisors can only create contractors or supervisors.")
+        serializer.save()
+
     def perform_update(self, serializer):
+        user = self.request.user
+        target_role = serializer.validated_data.get('role')
+        if user.role != 'admin' and target_role and target_role not in ('contractor', 'supervisor'):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Store managers and supervisors can only manage contractors or supervisors.")
         instance = serializer.save()
         if 'is_active' in serializer.validated_data and not serializer.validated_data['is_active']:
             UserSession.objects.filter(user=instance, is_active=True).update(is_active=False)
@@ -4621,6 +4640,7 @@ class ProductionUnitViewSet(viewsets.ModelViewSet):
     queryset = ProductionUnit.objects.all()
     serializer_class = ProductionUnitSerializer
     permission_classes = [AllowAny]
+    ordering = ['-created_at']
 
     def get_queryset(self):
         sup_sub = Subquery(
@@ -5353,6 +5373,7 @@ class StoreItemViewSet(viewsets.ModelViewSet):
     queryset = StoreItem.objects.select_related('category').prefetch_related('rate_history').all()
     serializer_class = StoreItemSerializer
     permission_classes = [IsAuthenticated]
+    ordering = ['item_code']
 
     def get_queryset(self):
         inward_sub = Subquery(
