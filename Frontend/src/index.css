@@ -2889,6 +2889,13 @@ select[multiple] option:checked {
   max-width: 880px !important;
 }
 
+.modal-content.modal-content-xl,
+.modal-content-xl,
+.supplier-modal-content {
+  max-width: 1140px !important;
+  width: 95vw !important;
+}
+
 @keyframes modalPopIn {
   0% {
     opacity: 0;
