@@ -72,7 +72,14 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
   useEffect(() => {
     if (isOpen) {
       const vno = `VCH-${Math.floor(100 + Math.random() * 900)}`;
-      const defaultUnit = units && units.length > 0 ? units[0].id : '';
+      const sortedUnits = [...(units || [])].sort((a, b) => {
+        if (a.created_at && b.created_at) {
+          const diff = new Date(a.created_at) - new Date(b.created_at);
+          if (diff !== 0) return diff;
+        }
+        return String(a.unit_code || a.name || '').localeCompare(String(b.unit_code || b.name || ''), undefined, { numeric: true });
+      });
+      const defaultUnit = sortedUnits.length > 0 ? sortedUnits[0].id : '';
       const defaultContractor = contractors && contractors.length > 0 ? contractors[0] : null;
 
       setFormData({
@@ -80,8 +87,8 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
         issue_date: new Date().toISOString().split('T')[0],
         month_year: 'Jul-26',
         contractor: defaultContractor ? defaultContractor.id : '',
-        contractor_person: '',
-        contractor_person_name: defaultContractor ? (defaultContractor.full_name || defaultContractor.username) : '',
+        contractor_person: null,
+        contractor_person_name: '',
         item: '',
         qty: '',
         unit: 'pcs',
@@ -117,14 +124,10 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
 
   const handleContractorChange = (e) => {
     const cId = e.target.value;
-    const selectedContractor = contractors.find(c => String(c.id) === String(cId));
-    const cName = selectedContractor ? (selectedContractor.full_name || selectedContractor.username) : '';
-
     setFormData(prev => ({
       ...prev,
       contractor: cId,
-      contractor_person: '',
-      contractor_person_name: cName
+      contractor_person: null
     }));
   };
 
@@ -362,32 +365,16 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                  Contractor's Worker / Delegate Person
+                  Authorized Worker / Delegate (Optional)
                 </label>
-                <select
-                  value={formData.contractor_person}
-                  onChange={handlePersonSelectChange}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}
-                >
-                  <option value="">Self (Contractor Him/Herself)</option>
-                  {contractorPersonsList.map(p => (
-                    <option key={p.id} value={p.id}>Worker: {p.person_name}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={formData.contractor_person_name}
+                  onChange={(e) => setFormData({ ...formData, contractor_person_name: e.target.value })}
+                  placeholder="Enter worker or delegate name (optional)..."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a' }}
+                />
               </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Issued To Name Format (e.g., xyz-contractor's person abc)
-              </label>
-              <input
-                type="text"
-                value={formData.contractor_person_name}
-                onChange={(e) => setFormData({ ...formData, contractor_person_name: e.target.value })}
-                placeholder="e.g. Pappu 4.NO - worker Raju"
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', fontWeight: 600, color: '#0f172a' }}
-              />
             </div>
           </div>
 

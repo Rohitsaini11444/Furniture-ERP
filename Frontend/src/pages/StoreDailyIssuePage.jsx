@@ -23,9 +23,8 @@ export default function StoreDailyIssuePage() {
   const [loadingData, setLoadingData] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [unitNotice, setUnitNotice] = useState(null);
-
   const [selectedItemObj, setSelectedItemObj] = useState(null);
-  const [contractorPersonsList, setContractorPersonsList] = useState([]);
+
 
   // Auto-calculate month_year string (e.g. "Aug-26") from date string
   const getMonthYearFromDate = (dateStr) => {
@@ -166,25 +165,35 @@ export default function StoreDailyIssuePage() {
     Promise.allSettled([
       api.get('/users/', { params: { role: 'contractor', nopage: true } }),
       api.get('/store/contractor-persons/', { params: { nopage: true } }),
-      api.get('/production-units/', { params: { nopage: true } })
+      api.get('/production-units/', { params: { nopage: true, ordering: 'created_at' } })
     ])
       .then(([contrRes, persRes, unitRes]) => {
         const contrData = contrRes.status === 'fulfilled' ? (contrRes.value.data.results || contrRes.value.data || []) : [];
         const persData = persRes.status === 'fulfilled' ? (persRes.value.data.results || persRes.value.data || []) : [];
         const unitData = unitRes.status === 'fulfilled' ? (unitRes.value.data.results || unitRes.value.data || []) : [];
 
+        // Sort units chronologically (oldest / first added first, e.g. Unit #1)
+        const sortedUnits = [...unitData].sort((a, b) => {
+          if (a.created_at && b.created_at) {
+            const diff = new Date(a.created_at) - new Date(b.created_at);
+            if (diff !== 0) return diff;
+          }
+          return String(a.unit_code || a.name || '').localeCompare(String(b.unit_code || b.name || ''), undefined, { numeric: true });
+        });
+
         setContractors(contrData);
         setPersons(persData);
-        setUnits(unitData);
+        setUnits(sortedUnits);
 
-        const activeUnit = urlUnit || (unitData.length > 0 ? unitData[0].id : '');
+        const oldestUnitId = sortedUnits.length > 0 ? sortedUnits[0].id : '';
+        const activeUnit = urlUnit || oldestUnitId;
         const defaultContractor = contrData.length > 0 ? contrData[0] : null;
 
         setFormData(prev => ({
           ...prev,
-          production_unit: activeUnit,
+          production_unit: prev.production_unit || activeUnit,
           contractor: defaultContractor ? defaultContractor.id : prev.contractor,
-          contractor_person_name: defaultContractor ? (defaultContractor.full_name || defaultContractor.username) : prev.contractor_person_name,
+          contractor_person_name: prev.contractor_person_name || '',
           qty: urlQty || prev.qty
         }));
 
@@ -196,14 +205,6 @@ export default function StoreDailyIssuePage() {
       .finally(() => setLoadingData(false));
   }, []);
 
-  useEffect(() => {
-    if (formData.contractor) {
-      const filtered = persons.filter(p => String(p.contractor) === String(formData.contractor));
-      setContractorPersonsList(filtered);
-    } else {
-      setContractorPersonsList([]);
-    }
-  }, [formData.contractor, persons]);
 
   const handleFieldChange = (field, val) => {
     setIsDirty(true);
@@ -255,49 +256,16 @@ export default function StoreDailyIssuePage() {
   const handleContractorChange = (val) => {
     setIsDirty(true);
     const cId = typeof val === 'object' ? val.id : val;
-    const selectedContractor = contractors.find(c => String(c.id) === String(cId));
-    const cName = selectedContractor ? (selectedContractor.full_name || selectedContractor.username) : '';
 
     setFormData(prev => ({
       ...prev,
       contractor: cId,
-      contractor_person: '',
-      contractor_person_name: cName
+      contractor_person: null
     }));
     if (formErrors.contractor) {
       setFormErrors(prev => {
         const copy = { ...prev };
         delete copy.contractor;
-        return copy;
-      });
-    }
-    if (error) setError(null);
-  };
-
-  const handlePersonSelectChange = (val) => {
-    setIsDirty(true);
-    const pId = typeof val === 'object' ? val.id : val;
-    const selectedP = contractorPersonsList.find(p => String(p.id) === String(pId));
-    const contractorObj = contractors.find(c => String(c.id) === String(formData.contractor));
-    const cName = contractorObj ? (contractorObj.full_name || contractorObj.username) : '';
-
-    if (selectedP) {
-      setFormData(prev => ({
-        ...prev,
-        contractor_person: pId,
-        contractor_person_name: `${cName} - Worker ${selectedP.person_name}`
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        contractor_person: '',
-        contractor_person_name: cName
-      }));
-    }
-    if (formErrors.contractor_person) {
-      setFormErrors(prev => {
-        const copy = { ...prev };
-        delete copy.contractor_person;
         return copy;
       });
     }
@@ -695,27 +663,27 @@ export default function StoreDailyIssuePage() {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: formErrors.contractor_person ? '#dc2626' : '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 Authorized Worker / Delegate (Optional)
               </label>
-              <SearchableSelect
-                options={contractorPersonsList.map(p => ({ ...p, name: `${p.person_name} (${p.role || 'Worker'})` }))}
-                value={formData.contractor_person}
-                onChange={handlePersonSelectChange}
-                placeholder="Issued Directly to Contractor"
-                searchPlaceholder="Search worker name..."
-                idKey="id"
-                titleKey="name"
-                pageSize={15}
-                disabled={!formData.contractor}
-                hasError={Boolean(formErrors.contractor_person)}
+              <input
+                type="text"
+                id="authorized-worker-input"
+                value={formData.contractor_person_name || ''}
+                onChange={(e) => handleFieldChange('contractor_person_name', e.target.value)}
+                placeholder="Enter worker or delegate name (optional)..."
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  fontSize: '0.875rem',
+                  color: '#0f172a',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
               />
-              {formErrors.contractor_person && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
-                  <AlertCircle size={13} />
-                  <span>{formErrors.contractor_person}</span>
-                </div>
-              )}
             </div>
           </div>
 

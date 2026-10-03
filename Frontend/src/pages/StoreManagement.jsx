@@ -921,7 +921,7 @@ export default function StoreManagement() {
             draftData: d.data,
             voucher_no: d.data?.voucher_no || 'DRAFT',
             contractor_name: contrObj?.full_name || contrObj?.username || 'Contractor',
-            contractor_person_name: personObj?.name || 'Self',
+            contractor_person_name: d.data?.contractor_person_name || personObj?.name || 'Self',
             item_name: itemObj?.item_name || 'Draft Item',
             qty: d.data?.qty || 0,
             unit: d.data?.unit || itemObj?.unit || 'pcs',

@@ -2747,6 +2747,10 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
             for key in ['contractor_person', 'production_unit', 'issued_by', 'qty', 'rate']:
                 if data.get(key) == '':
                     data[key] = None
+            if 'contractor_person_name' in data:
+                val = data.get('contractor_person_name')
+                if val is not None:
+                    data['contractor_person_name'] = str(val).strip()[:150]
         return super().to_internal_value(data)
 
     def validate(self, attrs):

@@ -4640,7 +4640,7 @@ class ProductionUnitViewSet(viewsets.ModelViewSet):
     queryset = ProductionUnit.objects.all()
     serializer_class = ProductionUnitSerializer
     permission_classes = [AllowAny]
-    ordering = ['-created_at']
+    ordering = ['created_at']
 
     def get_queryset(self):
         sup_sub = Subquery(
@@ -4664,11 +4664,15 @@ class ProductionUnitViewSet(viewsets.ModelViewSet):
             .values('total')[:1],
             output_field=DecimalField(max_digits=12, decimal_places=2)
         )
-        return super().get_queryset().annotate(
+        qs = super().get_queryset().annotate(
             annotated_supervisor_count=Coalesce(sup_sub, Value(0)),
             annotated_contractor_count=Coalesce(con_sub, Value(0)),
             annotated_stock_count=Coalesce(stk_sub, Value(Decimal('0.00'), output_field=DecimalField(max_digits=12, decimal_places=2)))
         )
+        ordering_param = self.request.query_params.get('ordering')
+        if ordering_param:
+            qs = qs.order_by(ordering_param)
+        return qs
 
 
 class BuyerUnitAllocationViewSet(viewsets.ModelViewSet):
