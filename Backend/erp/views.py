@@ -5818,6 +5818,200 @@ class StoreMaterialInViewSet(viewsets.ModelViewSet):
                 link="/store-management/material-in" if u.role == 'store_manager' else "/store-management"
             )
 
+    @action(detail=False, methods=['post'], url_path='bulk-inward')
+    @transaction.atomic
+    def bulk_inward(self, request):
+        data = request.data
+        if not isinstance(data, dict):
+            return Response({'detail': 'Invalid payload format. Expected JSON object.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        bill_no = (data.get('bill_no') or '').strip()
+        supplier_id = data.get('supplier')
+        inward_date = data.get('inward_date')
+        production_unit_id = data.get('production_unit')
+        remark = (data.get('remark') or '').strip()
+        voucher_prefix = (data.get('voucher_no') or '').strip()
+        items_data = data.get('items') or []
+
+        errors = {}
+
+        if not bill_no:
+            errors['bill_no'] = ['Supplier Bill / Invoice # is required.']
+        elif len(bill_no) > 100:
+            errors['bill_no'] = ['Supplier Bill # cannot exceed 100 characters.']
+
+        if not supplier_id:
+            errors['supplier'] = ['Supplier is required.']
+        else:
+            try:
+                supplier = Supplier.objects.get(id=supplier_id)
+            except (Supplier.DoesNotExist, ValueError):
+                errors['supplier'] = ['Selected supplier does not exist.']
+                supplier = None
+
+        if not production_unit_id:
+            errors['production_unit'] = ['Factory Unit / Destination is required.']
+        else:
+            try:
+                production_unit = ProductionUnit.objects.get(id=production_unit_id)
+            except (ProductionUnit.DoesNotExist, ValueError):
+                errors['production_unit'] = ['Selected factory unit does not exist.']
+                production_unit = None
+
+        if not inward_date:
+            errors['inward_date'] = ['Inward date is required.']
+        else:
+            try:
+                if isinstance(inward_date, str):
+                    inward_date_obj = datetime.strptime(inward_date, '%Y-%m-%d').date()
+                else:
+                    inward_date_obj = inward_date
+                month_year_str = inward_date_obj.strftime('%b-%y')
+            except Exception:
+                errors['inward_date'] = ['Invalid date format. Expected YYYY-MM-DD.']
+                inward_date_obj = None
+                month_year_str = None
+
+        if not items_data or not isinstance(items_data, list) or len(items_data) == 0:
+            errors['items'] = ['At least one item must be added to the invoice receipt.']
+
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+
+        row_errors = []
+        validated_items = []
+
+        for idx, row in enumerate(items_data):
+            r_err = {}
+            item_id = row.get('item')
+            s_item = None
+            if not item_id:
+                r_err['item'] = 'Store item is required.'
+            else:
+                try:
+                    s_item = StoreItem.objects.get(id=item_id)
+                except (StoreItem.DoesNotExist, ValueError):
+                    r_err['item'] = 'Selected store item does not exist.'
+
+            qty_raw = row.get('qty')
+            qty = None
+            try:
+                qty = Decimal(str(qty_raw))
+                if qty <= Decimal('0'):
+                    r_err['qty'] = 'Quantity must be greater than 0.'
+                elif qty > Decimal('10000000'):
+                    r_err['qty'] = 'Quantity exceeds maximum limit (10,000,000).'
+            except Exception:
+                r_err['qty'] = 'Valid quantity is required.'
+
+            rate_raw = row.get('bill_rate')
+            rate = None
+            try:
+                rate = Decimal(str(rate_raw))
+                if rate < Decimal('0'):
+                    r_err['bill_rate'] = 'Bill rate cannot be negative.'
+            except Exception:
+                r_err['bill_rate'] = 'Valid bill rate is required.'
+
+            if r_err:
+                row_errors.append({'row': idx + 1, 'errors': r_err})
+            elif s_item:
+                validated_items.append({
+                    'item': s_item,
+                    'qty': qty,
+                    'rate': rate,
+                    'unit': row.get('unit') or s_item.unit or 'pcs',
+                    'voucher_no': (row.get('voucher_no') or '').strip(),
+                    'remark': (row.get('remark') or '').strip()
+                })
+
+        if row_errors:
+            return Response({'detail': 'Validation failed for some items.', 'row_errors': row_errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        year = timezone.now().strftime('%Y')
+        created_records = []
+        is_multiple = len(validated_items) > 1
+
+        for idx, v_item in enumerate(validated_items):
+            s_item = v_item['item']
+            qty = v_item['qty']
+            rate = v_item['rate']
+            unit = v_item['unit']
+            row_remark = v_item['remark'] or remark
+
+            candidate_vch = v_item['voucher_no']
+            if candidate_vch and not StoreMaterialIn.objects.filter(voucher_no=candidate_vch).exists():
+                final_vch = candidate_vch
+            elif voucher_prefix:
+                suffix = f"-{idx + 1}" if is_multiple else ""
+                candidate = f"{voucher_prefix}{suffix}"
+                if not StoreMaterialIn.objects.filter(voucher_no=candidate).exists():
+                    final_vch = candidate
+                else:
+                    final_vch = f"{voucher_prefix}-{random.randint(100, 999)}{suffix}"
+            else:
+                rand_num = random.randint(1000, 9999)
+                suffix = f"-{idx + 1}" if is_multiple else ""
+                final_vch = f"ST-IN-{year}-{rand_num}{suffix}"
+
+            while StoreMaterialIn.objects.filter(voucher_no=final_vch).exists():
+                rand_num = random.randint(1000, 9999)
+                final_vch = f"ST-IN-{year}-{rand_num}-{idx + 1}"
+
+            inward_record = StoreMaterialIn.objects.create(
+                voucher_no=final_vch,
+                inward_date=inward_date_obj,
+                month_year=month_year_str,
+                bill_no=bill_no,
+                supplier=supplier,
+                item=s_item,
+                qty=qty,
+                unit=unit,
+                bill_rate=rate,
+                total_amount=qty * rate,
+                production_unit=production_unit,
+                received_by=request.user,
+                remark=row_remark
+            )
+            created_records.append(inward_record)
+
+            if rate > Decimal('0.00') and rate != s_item.current_rate:
+                old_rate = s_item.current_rate or s_item.base_rate
+                diff = rate - s_item.base_rate
+                pct_change = round((diff / s_item.base_rate * 100), 2) if s_item.base_rate > 0 else Decimal('0.00')
+
+                StoreItemRateHistory.objects.create(
+                    item=s_item,
+                    old_rate=old_rate,
+                    new_rate=rate,
+                    rate_difference=diff,
+                    percentage_change=pct_change,
+                    supplier_name=supplier.name,
+                    po_reference=bill_no,
+                    revision_reason=f"Auto-updated from Inward Bill #{bill_no} (Vch #{final_vch})",
+                    updated_by=request.user
+                )
+                s_item.current_rate = rate
+                s_item.save(update_fields=['current_rate'])
+
+        store_recipients = get_store_notification_recipients()
+        total_qty_sum = sum(rec.qty for rec in created_records)
+        for u in store_recipients:
+            Notification.objects.create(
+                user=u,
+                title=f"Material Inward Recorded: Bill #{bill_no}",
+                message=f"Bill #{bill_no}: Received {len(created_records)} items ({total_qty_sum} total units) from {supplier.name} at {production_unit.name}.",
+                category="inventory",
+                link="/store-management"
+            )
+
+        serializer = StoreMaterialInSerializer(created_records, many=True)
+        return Response({
+            'message': f"Successfully recorded inward receipt for {len(created_records)} items under Bill #{bill_no}.",
+            'count': len(created_records),
+            'records': serializer.data
+        }, status=status.HTTP_201_CREATED)
+
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response({'detail': 'Only Admin users are authorized to void or delete store material in vouchers.'}, status=status.HTTP_403_FORBIDDEN)
@@ -5918,6 +6112,242 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
             request=request
         )
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'], url_path='bulk-issue')
+    def bulk_issue(self, request):
+        """
+        Atomic multi-item daily outward issue for contractors.
+        Accepts:
+        {
+            "voucher_no": "VCH-2026-1024",
+            "issue_date": "2026-10-03",
+            "contractor": <contractor_id>,
+            "contractor_person": <optional_id>,
+            "contractor_person_name": "worker Dinesh",
+            "production_unit": <production_unit_id>,
+            "remark": "Issued for Dining Table order",
+            "items": [
+                {
+                    "item": <item_id>,
+                    "qty": 50,
+                    "unit": "pcs",
+                    "rate": 12.50,
+                    "status": "charge", // 'charge' or 'free'
+                    "remark": ""
+                }, ...
+            ]
+        }
+        """
+        data = request.data
+        if not isinstance(data, dict):
+            return Response({'detail': 'Invalid payload format. Expected JSON object.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        contractor_id = data.get('contractor')
+        contractor_person_id = data.get('contractor_person')
+        contractor_person_name = (data.get('contractor_person_name') or '').strip()[:150]
+        production_unit_id = data.get('production_unit')
+        issue_date = data.get('issue_date')
+        remark = (data.get('remark') or '').strip()
+        voucher_prefix = (data.get('voucher_no') or '').strip()
+        items_data = data.get('items') or []
+
+        errors = {}
+
+        if not contractor_id:
+            errors['contractor'] = ['Target Contractor / Supervisor is required.']
+        else:
+            try:
+                contractor = User.objects.get(id=contractor_id)
+            except (User.DoesNotExist, ValueError):
+                errors['contractor'] = ['Selected contractor does not exist.']
+                contractor = None
+
+        if not production_unit_id:
+            errors['production_unit'] = ['Factory Unit / Workshop is required.']
+        else:
+            try:
+                production_unit = ProductionUnit.objects.get(id=production_unit_id)
+            except (ProductionUnit.DoesNotExist, ValueError):
+                errors['production_unit'] = ['Selected factory unit does not exist.']
+                production_unit = None
+
+        if not issue_date:
+            errors['issue_date'] = ['Issue date is required.']
+
+        if not items_data or not isinstance(items_data, list) or len(items_data) == 0:
+            errors['items'] = ['At least one item must be added to the issue voucher.']
+
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+
+        contractor_person = None
+        if contractor_person_id:
+            try:
+                contractor_person = ContractorPerson.objects.get(id=contractor_person_id)
+            except (ContractorPerson.DoesNotExist, ValueError):
+                contractor_person = None
+
+        try:
+            if isinstance(issue_date, str):
+                issue_date_obj = datetime.strptime(issue_date, '%Y-%m-%d').date()
+            else:
+                issue_date_obj = issue_date
+            month_year_str = issue_date_obj.strftime('%b-%y')
+        except Exception:
+            return Response({'issue_date': ['Invalid date format. Expected YYYY-MM-DD.']}, status=status.HTTP_400_BAD_REQUEST)
+
+        row_errors = []
+        validated_items = []
+        accumulated_qty = {}
+
+        for idx, row in enumerate(items_data):
+            r_err = {}
+            item_id = row.get('item')
+            s_item = None
+            if not item_id:
+                r_err['item'] = 'Store item is required.'
+            else:
+                try:
+                    s_item = StoreItem.objects.get(id=item_id)
+                except (StoreItem.DoesNotExist, ValueError):
+                    r_err['item'] = 'Selected store item does not exist.'
+
+            if s_item and production_unit:
+                if not s_item.has_material_in_for_unit(production_unit.id):
+                    r_err['item'] = f"Item '{s_item.item_name}' was never received in {production_unit.name}."
+
+            qty_raw = row.get('qty')
+            qty_dec = Decimal('0.00')
+            if qty_raw is None or str(qty_raw).strip() == '':
+                r_err['qty'] = 'Issued quantity is required.'
+            else:
+                try:
+                    qty_dec = Decimal(str(qty_raw).strip())
+                    if qty_dec <= 0:
+                        r_err['qty'] = 'Quantity must be greater than 0.'
+                    elif qty_dec > 10000000:
+                        r_err['qty'] = 'Quantity exceeds maximum allowable limit.'
+                except Exception:
+                    r_err['qty'] = 'Invalid quantity number format.'
+
+            if s_item and production_unit and 'qty' not in r_err and 'item' not in r_err:
+                current_accum = accumulated_qty.get(str(s_item.id), Decimal('0.00')) + qty_dec
+                accumulated_qty[str(s_item.id)] = current_accum
+                avail = s_item.get_stock_balance_for_unit(production_unit.id)
+                if current_accum > avail:
+                    r_err['qty'] = f"Insufficient balance in {production_unit.name}. Available: {avail} {s_item.unit}, Total Requested: {current_accum}."
+
+            rate_raw = row.get('rate')
+            rate_dec = Decimal('0.00')
+            if rate_raw is not None and str(rate_raw).strip() != '':
+                try:
+                    rate_dec = Decimal(str(rate_raw).strip())
+                    if rate_dec < 0:
+                        r_err['rate'] = 'Rate cannot be negative.'
+                except Exception:
+                    r_err['rate'] = 'Invalid rate format.'
+            elif s_item:
+                rate_dec = Decimal(str(s_item.current_rate or s_item.base_rate or 0))
+
+            status_val = (row.get('status') or 'charge').strip().lower()
+            if status_val not in ['charge', 'free']:
+                status_val = 'charge'
+
+            unit_val = (row.get('unit') or (s_item.unit if s_item else 'pcs')).strip() or 'pcs'
+            row_remark = (row.get('remark') or '').strip()
+
+            row_errors.append(r_err)
+            validated_items.append({
+                'item_obj': s_item,
+                'qty': qty_dec,
+                'unit': unit_val,
+                'rate': rate_dec,
+                'status': status_val,
+                'remark': row_remark
+            })
+
+        has_row_errors = any(bool(r) for r in row_errors)
+        if has_row_errors:
+            return Response({'row_errors': row_errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not voucher_prefix:
+            ts = int(timezone.now().timestamp() % 100000)
+            voucher_prefix = f"VCH-{timezone.now().year}-{ts}"
+
+        created_issues = []
+        low_stock_items = []
+
+        with transaction.atomic():
+            total_count = len(validated_items)
+            for idx, item_entry in enumerate(validated_items):
+                s_item = item_entry['item_obj']
+                qty_dec = item_entry['qty']
+                unit_val = item_entry['unit']
+                rate_dec = item_entry['rate']
+                status_val = item_entry['status']
+                row_remark = item_entry['remark']
+
+                vch_no = voucher_prefix if total_count == 1 else f"{voucher_prefix}-{idx + 1}"
+
+                issue_inst = StoreDailyIssue.objects.create(
+                    voucher_no=vch_no,
+                    issue_date=issue_date_obj,
+                    month_year=month_year_str,
+                    contractor=contractor,
+                    contractor_person=contractor_person,
+                    contractor_person_name=contractor_person_name,
+                    item=s_item,
+                    qty=qty_dec,
+                    unit=unit_val,
+                    rate=rate_dec,
+                    status=status_val,
+                    production_unit=production_unit,
+                    issued_by=request.user,
+                    remark=row_remark or remark
+                )
+                created_issues.append(issue_inst)
+
+                s_item.refresh_from_db()
+                if s_item.balance_stock_qty <= s_item.reorder_level:
+                    low_stock_items.append(s_item)
+
+        store_recipients = get_store_notification_recipients()
+        c_disp = contractor_person_name or (contractor.get_full_name() or contractor.username)
+
+        for l_item in set(low_stock_items):
+            for u in store_recipients:
+                Notification.objects.create(
+                    user=u,
+                    title=f"Low Stock Alert: {l_item.item_name} ({l_item.item_code})",
+                    message=f"Store balance for {l_item.item_name} dropped to {l_item.balance_stock_qty} {l_item.unit} (Reorder Level: {l_item.reorder_level} {l_item.unit}).",
+                    category="inventory",
+                    link="/store-management"
+                )
+
+        for u in store_recipients:
+            Notification.objects.create(
+                user=u,
+                title="Material Outward Issue",
+                message=f"Voucher #{voucher_prefix}: Issued {len(created_issues)} items to {c_disp} at {production_unit.name}.",
+                category="inventory",
+                link="/store-management/daily-issue" if u.role == 'store_manager' else "/store-management"
+            )
+
+        total_qty = sum(i.qty for i in created_issues)
+        total_chargeable = sum(i.chargeable_total for i in created_issues)
+        total_non_chargeable = sum(i.non_chargeable_total for i in created_issues)
+        grand_total = sum(i.total_amount for i in created_issues)
+
+        return Response({
+            'message': f"Successfully issued {len(created_issues)} items to {c_disp}.",
+            'voucher_no': voucher_prefix,
+            'total_items': len(created_issues),
+            'total_qty': str(total_qty),
+            'total_chargeable': str(total_chargeable),
+            'total_non_chargeable': str(total_non_chargeable),
+            'grand_total': str(grand_total),
+            'issues': StoreDailyIssueSerializer(created_issues, many=True).data
+        }, status=status.HTTP_201_CREATED)
 
 
 class StoreMaterialReturnViewSet(viewsets.ModelViewSet):

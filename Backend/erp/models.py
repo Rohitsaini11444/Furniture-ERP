@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, date
 from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser
@@ -1243,8 +1244,14 @@ class StoreMaterialIn(models.Model):
     def save(self, *args, **kwargs):
         if hasattr(self.inward_date, 'date'):
             self.inward_date = self.inward_date.date()
+        elif isinstance(self.inward_date, str):
+            try:
+                self.inward_date = datetime.strptime(self.inward_date, '%Y-%m-%d').date()
+            except Exception:
+                pass
         if not self.month_year and self.inward_date:
-            self.month_year = self.inward_date.strftime('%b-%y')
+            if hasattr(self.inward_date, 'strftime'):
+                self.month_year = self.inward_date.strftime('%b-%y')
         if not self.total_amount:
             self.total_amount = self.qty * self.bill_rate
         super().save(*args, **kwargs)
@@ -1289,8 +1296,14 @@ class StoreDailyIssue(models.Model):
     def save(self, *args, **kwargs):
         if hasattr(self.issue_date, 'date'):
             self.issue_date = self.issue_date.date()
+        elif isinstance(self.issue_date, str):
+            try:
+                self.issue_date = datetime.strptime(self.issue_date, '%Y-%m-%d').date()
+            except Exception:
+                pass
         if not self.month_year and self.issue_date:
-            self.month_year = self.issue_date.strftime('%b-%y')
+            if hasattr(self.issue_date, 'strftime'):
+                self.month_year = self.issue_date.strftime('%b-%y')
         self.total_amount = self.qty * self.rate
         if self.status == StoreItemStatus.CHARGE:
             self.chargeable_total = self.total_amount
@@ -1337,8 +1350,14 @@ class StoreMaterialReturn(models.Model):
     def save(self, *args, **kwargs):
         if hasattr(self.return_date, 'date'):
             self.return_date = self.return_date.date()
+        elif isinstance(self.return_date, str):
+            try:
+                self.return_date = datetime.strptime(self.return_date, '%Y-%m-%d').date()
+            except Exception:
+                pass
         if not self.month_year and self.return_date:
-            self.month_year = self.return_date.strftime('%b-%y')
+            if hasattr(self.return_date, 'strftime'):
+                self.month_year = self.return_date.strftime('%b-%y')
         self.total_amount = self.qty * self.rate
         if self.status == StoreItemStatus.CHARGE:
             self.chargeable_total = self.total_amount

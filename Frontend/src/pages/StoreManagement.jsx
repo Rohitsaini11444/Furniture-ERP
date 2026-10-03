@@ -873,6 +873,27 @@ export default function StoreManagement() {
           return bill.includes(q);
         })
         .map(d => {
+          if (Array.isArray(d.data?.items) && d.data.items.length > 0) {
+            const firstItemObj = itemsList.find(i => String(i.id) === String(d.data.items[0]?.item));
+            const suppObj = suppliers.find(s => String(s.id) === String(d.data?.supplier));
+            const totalQty = d.data.items.reduce((sum, it) => sum + (parseFloat(it.qty) || 0), 0);
+            const totalAmt = d.data.items.reduce((sum, it) => sum + ((parseFloat(it.qty) || 0) * (parseFloat(it.bill_rate) || 0)), 0);
+            return {
+              id: d.id,
+              isDraft: true,
+              draftData: d.data,
+              month_year: d.data?.month_year || 'Draft',
+              inward_date: d.data?.inward_date || (d.savedAt ? new Date(d.savedAt).toISOString().split('T')[0] : 'Draft'),
+              bill_no: d.data?.bill_no || d.data?.voucher_no || 'DRAFT',
+              supplier_name: suppObj?.name || (typeof d.data?.supplier === 'object' ? d.data?.supplier?.name : '') || 'Unspecified',
+              item_code: d.data.items.length > 1 ? `${d.data.items.length} Items` : (firstItemObj?.item_code || '—'),
+              item_name: d.data.items.length > 1 ? `${d.data.items.length} items (Incl. ${firstItemObj?.item_name || 'Item 1'})` : (firstItemObj?.item_name || 'Draft Item'),
+              qty: totalQty,
+              unit: d.data.items.length > 1 ? 'items' : (d.data.items[0]?.unit || firstItemObj?.unit || 'pcs'),
+              bill_rate: d.data.items.length === 1 ? (d.data.items[0]?.bill_rate || 0) : '—',
+              total_amount: totalAmt,
+            };
+          }
           const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
           const suppObj = suppliers.find(s => String(s.id) === String(d.data?.supplier));
           const qty = parseFloat(d.data?.qty || 0);
@@ -907,6 +928,38 @@ export default function StoreManagement() {
           return vch.includes(q);
         })
         .map(d => {
+          if (Array.isArray(d.data?.items) && d.data.items.length > 0) {
+            const firstItemObj = itemsList.find(i => String(i.id) === String(d.data.items[0]?.item));
+            const contrObj = contractors.find(c => String(c.id) === String(d.data?.contractor));
+            const unitObj = productionUnits.find(u => String(u.id) === String(d.data?.production_unit));
+            const totalQty = d.data.items.reduce((sum, it) => sum + (parseFloat(it.qty) || 0), 0);
+            const totalChargeable = d.data.items.reduce((sum, it) => {
+              const isCh = (it.status || 'charge') === 'charge';
+              const amt = (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0);
+              return isCh ? sum + amt : sum;
+            }, 0);
+            const totalNonChargeable = d.data.items.reduce((sum, it) => {
+              const isCh = (it.status || 'charge') === 'charge';
+              const amt = (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0);
+              return !isCh ? sum + amt : sum;
+            }, 0);
+            return {
+              id: d.id,
+              isDraft: true,
+              draftData: d.data,
+              voucher_no: d.data?.voucher_no || 'DRAFT',
+              contractor_name: contrObj?.full_name || contrObj?.username || 'Contractor',
+              contractor_person_name: d.data?.contractor_person_name || 'Self',
+              item_name: d.data.items.length > 1 ? `${d.data.items.length} items (Incl. ${firstItemObj?.item_name || 'Item 1'})` : (firstItemObj?.item_name || 'Draft Item'),
+              qty: totalQty,
+              unit: d.data.items.length > 1 ? 'items' : (d.data.items[0]?.unit || firstItemObj?.unit || 'pcs'),
+              rate: d.data.items.length === 1 ? (d.data.items[0]?.rate || 0) : '—',
+              status: d.data.items.length > 1 ? 'Multiple' : (d.data.items[0]?.status || 'charge'),
+              chargeable_total: totalChargeable,
+              non_chargeable_total: totalNonChargeable,
+              production_unit_name: unitObj?.name || '-',
+            };
+          }
           const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
           const contrObj = contractors.find(c => String(c.id) === String(d.data?.contractor));
           const personObj = contractorPersons.find(p => String(p.id) === String(d.data?.contractor_person));
@@ -2215,14 +2268,51 @@ export default function StoreManagement() {
           <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
             <div style={{ padding: '0.5rem 0.85rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: '340px', border: '1px solid #cbd5e1', borderRadius: '7px', padding: '0.3rem 0.65rem' }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search store items by code or name..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPageStockSummary(1);
+                  }}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.84rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setPageStockSummary(1);
+                    }}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#94a3b8',
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                      transition: 'color 150ms ease, background-color 150ms ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = '#0f172a';
+                      e.currentTarget.style.backgroundColor = '#f1f5f9';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = '#94a3b8';
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <button
                 className="btn-subtle-motion"
@@ -2458,7 +2548,7 @@ export default function StoreManagement() {
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search item code or name..."
@@ -2466,6 +2556,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <OrderBySelect
                 value={orderItemMaster}
@@ -2797,7 +2898,7 @@ export default function StoreManagement() {
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search voucher, bill, supplier, item..."
@@ -2805,6 +2906,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <OrderBySelect
                 value={orderMaterialIn}
@@ -3052,7 +3164,7 @@ export default function StoreManagement() {
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search voucher, contractor, worker, item..."
@@ -3060,6 +3172,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <OrderBySelect
                 value={orderDailyIssue}
@@ -3350,7 +3473,7 @@ export default function StoreManagement() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search voucher, contractor, item..."
@@ -3358,6 +3481,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <OrderBySelect
                 value={orderMaterialReturns}
@@ -3537,7 +3671,7 @@ export default function StoreManagement() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search MRN #, item, requester..."
@@ -3545,6 +3679,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setIsRequisitionModalOpen(true)}
@@ -3710,7 +3855,7 @@ export default function StoreManagement() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" />
+                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Search adjustment #, item, reason..."
@@ -3718,6 +3863,17 @@ export default function StoreManagement() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setIsAdjustmentModalOpen(true)}
