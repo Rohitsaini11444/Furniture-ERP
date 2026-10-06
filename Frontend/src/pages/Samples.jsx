@@ -64,6 +64,118 @@ const emptyForm = {
   size_height: '',
 };
 
+// ─── Formatters & Finish Extractor for Compact Table ──────────────────────────
+const formatCbm = (val) => {
+  if (val === null || val === undefined || val === '') return '—';
+  const n = parseFloat(val);
+  return isNaN(n) ? String(val) : n.toFixed(4);
+};
+
+const formatUsd = (val) => {
+  if (val === null || val === undefined || val === '' || Number(val) === 0) return '—';
+  const n = parseFloat(val);
+  return isNaN(n) ? `$${val}` : `$${n.toFixed(2)}`;
+};
+
+const formatDimVal = (val) => {
+  if (val === null || val === undefined || val === '') return null;
+  const n = parseFloat(val);
+  if (isNaN(n) || n === 0) return null;
+  return n.toFixed(2);
+};
+
+const formatSizeCm = (s) => {
+  const l = formatDimVal(s.size_length);
+  const b = formatDimVal(s.size_breadth);
+  const h = formatDimVal(s.size_height);
+  const dims = [l, b, h].filter(Boolean);
+  if (dims.length === 0) return '—';
+  return dims.join(' × ');
+};
+
+const formatSizeInch = (s) => {
+  let l = formatDimVal(s.size_length_inch);
+  if (!l && s.size_length) {
+    const n = parseFloat(s.size_length) / 2.54;
+    if (!isNaN(n) && n > 0) l = n.toFixed(2);
+  }
+
+  let b = formatDimVal(s.size_breadth_inch);
+  if (!b && s.size_breadth) {
+    const n = parseFloat(s.size_breadth) / 2.54;
+    if (!isNaN(n) && n > 0) b = n.toFixed(2);
+  }
+
+  let h = formatDimVal(s.size_height_inch);
+  if (!h && s.size_height) {
+    const n = parseFloat(s.size_height) / 2.54;
+    if (!isNaN(n) && n > 0) h = n.toFixed(2);
+  }
+
+  const dims = [l, b, h].filter(Boolean);
+  if (dims.length === 0) return '—';
+  return dims.join(' × ');
+};
+
+const extractSampleFinishPills = (s, finishesOptions = []) => {
+  const pills = [];
+
+  const addCatValues = (catKey, valString) => {
+    if (!valString) return;
+    const parts = String(valString).split(/\s*[\/,]\s*/).map(p => p.trim()).filter(Boolean);
+    parts.forEach(part => {
+      const cfg = FINISH_CATEGORIES_CONFIG[catKey] || FINISH_CATEGORIES_CONFIG.wood;
+      pills.push({
+        cat: catKey,
+        label: cfg.shortLabel || catKey,
+        fullLabel: part
+      });
+    });
+  };
+
+  addCatValues('wood', s.wood_finish);
+  addCatValues('metal', s.metal_finish);
+  addCatValues('marble', s.marble_finish);
+  addCatValues('fabric', s.fabric_type);
+  addCatValues('plastic', s.plastic_type);
+
+  if (pills.length === 0 && s.finish_color) {
+    const parts = String(s.finish_color).split(/\s*[\/,]\s*/).map(p => p.trim()).filter(Boolean);
+    parts.forEach(part => {
+      const cat = detectFinishCategory(part, finishesOptions);
+      const cfg = FINISH_CATEGORIES_CONFIG[cat] || FINISH_CATEGORIES_CONFIG.wood;
+      pills.push({
+        cat,
+        label: cfg.shortLabel || cat,
+        fullLabel: part
+      });
+    });
+  }
+
+  if (pills.length === 0 && s.finish_detail) {
+    const cat = s.finish_detail.category || detectFinishCategory(s.finish_detail.name, finishesOptions);
+    const cfg = FINISH_CATEGORIES_CONFIG[cat] || FINISH_CATEGORIES_CONFIG.wood;
+    pills.push({
+      cat,
+      label: cfg.shortLabel || cat,
+      fullLabel: s.finish_detail.name,
+      code: s.finish_detail.finish_code
+    });
+  }
+
+  if (pills.length === 0 && s.finish) {
+    const cat = detectFinishCategory(s.finish, finishesOptions);
+    const cfg = FINISH_CATEGORIES_CONFIG[cat] || FINISH_CATEGORIES_CONFIG.wood;
+    pills.push({
+      cat,
+      label: cfg.shortLabel || cat,
+      fullLabel: s.finish
+    });
+  }
+
+  return pills;
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SizeGroup({ label, prefix, values, onChange, errors = {} }) {
@@ -280,6 +392,27 @@ function Samples() {
       }
     ];
   }, [drafts]);
+
+  const buyerOptions = useMemo(() => [
+    { value: '', label: 'All Buyers' },
+    ...buyers.map(b => ({ value: b.id, label: b.name }))
+  ], [buyers]);
+
+  const materialOptions = useMemo(() => {
+    const set = new Set();
+    samples.forEach(s => {
+      if (s.material && typeof s.material === 'string') {
+        s.material.split(/[\/,]/).forEach(m => {
+          const trimmed = m.trim();
+          if (trimmed) set.add(trimmed);
+        });
+      }
+    });
+    return [
+      { value: '', label: 'All Materials' },
+      ...Array.from(set).sort().map(m => ({ value: m, label: m }))
+    ];
+  }, [samples]);
 
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('samples', id, currentPage);
 
@@ -2254,15 +2387,15 @@ function Samples() {
                 transform: selectionMode ? 'translateY(-10px)' : 'translateY(0)',
                 transition: 'opacity 180ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)',
               }}>
-                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Package size={28} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.45rem', fontWeight: 700, color: '#0f172a' }}>
+                  <Package size={26} color="#dc2626" style={{ flexShrink: 0 }} /> Samples Catalog
                 </h2>
-                <div className="samples-header-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="samples-header-actions" style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     onClick={enterSelectionMode}
                     className="btn-secondary"
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, cursor: 'pointer', borderRadius: '10px', backgroundColor: '#f8fafc', borderColor: '#cbd5e1', color: '#334155' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', borderRadius: '8px', backgroundColor: '#ffffff', borderColor: '#cbd5e1', color: '#1e293b', height: '36px', padding: '0 0.9rem' }}
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-5"/></svg>
                     Select Samples
@@ -2270,12 +2403,16 @@ function Samples() {
                   <button
                     type="button"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsImportModalOpen(true); setImportError(''); setImportSuccess(''); setImportFile(null); }}
-                    className="btn-secondary"
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#fdf4e7', borderColor: '#d6c7b2', color: '#8b5a2b', fontWeight: 600, cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', backgroundColor: '#fdf4e7', border: '1px solid #ebdccb', color: '#8b5a2b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', borderRadius: '8px', height: '36px', padding: '0 0.9rem' }}
                   >
-                    <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
+                    <FileSpreadsheet size={15} color="#8b5a2b" /> Import Excel
                   </button>
-                  <button onClick={openCreateModal} className="btn-primary">+ Create New</button>
+                  <button
+                    onClick={openCreateModal}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', backgroundColor: '#8c532b', border: 'none', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', borderRadius: '8px', height: '36px', padding: '0 1rem' }}
+                  >
+                    + Create New
+                  </button>
                 </div>
               </div>
             </div>
@@ -2283,22 +2420,23 @@ function Samples() {
 
           {/* Filter Bar */}
           <div className="filter-bar">
-            <div className="filter-bar-inner samples-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <div className="filter-bar-inner samples-filter-bar-inner" style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
               {/* Search input */}
-              <div className="samples-filter-search-wrap" style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '0 0.75rem', backgroundColor: '#ffffff', flex: '1 1 240px', maxWidth: '380px', height: '42px', boxSizing: 'border-box' }}>
-                <Search size={16} style={{ color: 'var(--text-muted)', marginRight: '0.4rem', flexShrink: 0 }} />
+              <div className="samples-filter-search-wrap" style={{ display: 'flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0 0.75rem', backgroundColor: '#ffffff', flex: '1 1 240px', maxWidth: '340px', height: '38px', boxSizing: 'border-box' }}>
+                <Search size={15} style={{ color: '#94a3b8', marginRight: '0.45rem', flexShrink: 0 }} />
                 <input
                   type="text"
-                  style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: '0.875rem' }}
-                  placeholder="Search by style or product..."
+                  style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: '0.84rem', color: '#1e293b' }}
+                  placeholder="Search by style no. or product name..."
                   value={filterSearch}
                   onChange={e => { setFilterSearch(e.target.value); setCurrentPage(1); }}
                 />
               </div>
 
-              <div className="samples-filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <Filter size={16} className="filter-icon" />
-                <span className="filter-label">Filter</span>
+              <div className="samples-filter-dropdowns-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: '#64748b', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  <Filter size={15} style={{ color: '#64748b' }} /> FILTER
+                </span>
                 <CustomSelect
                   value={filterBuyer}
                   onChange={e => {
@@ -2306,20 +2444,20 @@ function Samples() {
                     setFilterBuyer(val);
                     setCurrentPage(1);
                   }}
-                  options={[
-                    { value: '', label: 'All Buyers...' },
-                    ...buyers.map(b => ({ value: b.id, label: b.name }))
-                  ]}
-                  placeholder="All Buyers..."
-                  style={{ minWidth: '160px' }}
+                  options={buyerOptions}
+                  placeholder="All Buyers"
+                  style={{ minWidth: '150px' }}
                 />
-                <input
-                  type="text"
-                  className="filter-input"
-                  placeholder="Material..."
+                <CustomSelect
                   value={filterMaterial}
-                  onChange={e => { setFilterMaterial(e.target.value); setCurrentPage(1); }}
-                  style={{ minWidth: '110px', width: '130px', borderRadius: '10px' }}
+                  onChange={e => {
+                    const val = e.target ? e.target.value : e;
+                    setFilterMaterial(val);
+                    setCurrentPage(1);
+                  }}
+                  options={materialOptions}
+                  placeholder="All Materials"
+                  style={{ minWidth: '150px' }}
                 />
                 {(filterBuyer || filterMaterial || filterSearch) && (
                   <button
@@ -2336,7 +2474,7 @@ function Samples() {
                   options={orderOptions}
                   value={ordering}
                   onChange={setOrdering}
-                  width="200px"
+                  width="190px"
                 />
               </div>
             </div>
@@ -2344,7 +2482,7 @@ function Samples() {
 
           {/* Table (Desktop) */}
           <div className="table-container desktop-only">
-            <table className="data-table table-fade-slide-up">
+            <table className="data-table samples-catalog-table table-fade-slide-up">
               <thead>
                 <tr>
                   {selectionMode && (
@@ -2353,31 +2491,30 @@ function Samples() {
                         type="checkbox"
                         checked={filtered.length > 0 && selectedRowIds.size === filtered.length}
                         onChange={toggleSelectAll}
-                        style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+                        style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563eb' }}
                       />
                     </th>
                   )}
-                  <th>Images</th>
-                  <th>Style No.</th>
-                  <th>Product Name</th>
-                  <th>Status</th>
-                  <th>Buyer</th>
-                  <th>Material</th>
-                  <th>Finish/Color</th>
+                  <th style={{ width: '56px' }}>IMG</th>
+                  <th>STYLE NO.</th>
+                  <th>PRODUCT NAME</th>
+                  <th>STATUS</th>
+                  <th>BUYER</th>
+                  <th>MATERIAL</th>
+                  <th>FINISH/COLOR</th>
                   <th>CBM</th>
                   <th>USD ($)</th>
-                  <th>Vendor</th>
-                  <th>Size (cm)</th>
-                  <th>Size (in)</th>
-                  {ordering === 'draft' && <th style={{ width: '80px', textAlign: 'center' }}>Action</th>}
+                  <th>SIZE (CM)</th>
+                  <th>SIZE (IN)</th>
+                  {ordering === 'draft' && <th style={{ width: '60px', textAlign: 'center' }}>ACTION</th>}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton rows={8} cols={ordering === 'draft' ? 13 : 12} hasImage={true} />
+                  <TableSkeleton rows={8} cols={selectionMode ? (ordering === 'draft' ? 13 : 12) : (ordering === 'draft' ? 12 : 11)} hasImage={true} compact={true} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={ordering === 'draft' ? 13 : 12} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                    <td colSpan={selectionMode ? (ordering === 'draft' ? 13 : 12) : (ordering === 'draft' ? 12 : 11)} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
                       {ordering === 'draft'
                         ? 'No draft samples found. When you save a sample as draft, it will appear here.'
                         : 'No samples found.'}
@@ -2386,6 +2523,14 @@ function Samples() {
                 ) : (
                   filtered.map((s, idx) => {
                     const isRecentlyVisited = String(s.id) === String(lastVisitedId);
+                    const primaryImg = (s.images && s.images.length > 0) ? s.images[0].image_url : null;
+                    const pills = extractSampleFinishPills(s, finishesOptions);
+                    const maxVisible = 3;
+                    const visiblePills = pills.slice(0, maxVisible);
+                    const hiddenPills = pills.slice(maxVisible);
+                    const remainingCount = hiddenPills.length;
+                    const remainingTooltip = hiddenPills.map(p => p.fullLabel || p.label).join(', ');
+
                     return (
                       <tr
                         key={s.id}
@@ -2405,7 +2550,7 @@ function Samples() {
                           transition: 'background 0.15s',
                           animationDelay: `${Math.min(idx * 30, 300)}ms`
                         }}
-                        className={`table-row-stagger table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
+                        className={`samples-catalog-row table-row-stagger table-fade-slide-up ${isRecentlyVisited ? 'row-recently-visited' : ''}`}
                       >
                         {selectionMode && (
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -2413,152 +2558,116 @@ function Samples() {
                               type="checkbox"
                               checked={selectedRowIds.has(s.id)}
                               onChange={e => toggleSelectRow(s.id, e)}
-                              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#2563eb' }}
+                              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#2563eb' }}
                             />
                           </td>
                         )}
+
+                        {/* IMG */}
                         <td>
-                          <div className="table-image-stack">
-                            {(s.images || []).slice(0, 3).map((img, idx) => (
+                          <div className="sample-img-container">
+                            {primaryImg ? (
                               <img
-                                key={img.id}
-                                src={img.image_url}
-                                alt={s.product_name}
-                                className="table-thumb"
-                                style={{ zIndex: 3 - idx, marginLeft: idx ? '-10px' : 0 }}
+                                src={primaryImg}
+                                alt={s.product_name || s.style_no}
+                                className="sample-thumb-img"
+                                loading="lazy"
                               />
-                            ))}
-                            {(s.images || []).length === 0 && (
-                              <div className="table-no-img"><ImageIcon size={14} /></div>
-                            )}
-                            {(s.images || []).length > 3 && (
-                              <div className="table-more-imgs">+{s.images.length - 3}</div>
+                            ) : (
+                              <div className="sample-thumb-placeholder">
+                                <ImageIcon size={16} />
+                              </div>
                             )}
                           </div>
                         </td>
+
+                        {/* STYLE NO. */}
                         <td>
-                          <strong>{s.style_no || s.id}</strong>
+                          <span className="sample-cell-style-no">{s.style_no || s.id}</span>
                         </td>
-                        <td><strong>{s.product_name}</strong></td>
+
+                        {/* PRODUCT NAME */}
+                        <td>
+                          <span className="sample-cell-product-name">{s.product_name || '—'}</span>
+                        </td>
+
+                        {/* STATUS */}
                         <td>
                           {s.isDraft ? (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              fontSize: '0.73rem',
-                              fontWeight: 700,
-                              backgroundColor: '#fef3c7',
-                              color: '#92400e',
-                              border: '1px solid #fde68a'
-                            }}>
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+                            <span className="sample-status-pill sample-status-draft">
+                              <span className="sample-status-dot sample-status-dot-draft" />
                               Draft
                             </span>
                           ) : (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              padding: '3px 10px',
-                              borderRadius: '12px',
-                              fontSize: '0.73rem',
-                              fontWeight: 700,
-                              backgroundColor: '#ecfdf5',
-                              color: '#065f46',
-                              border: '1px solid #a7f3d0'
-                            }}>
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                            <span className="sample-status-pill sample-status-saved">
+                              <span className="sample-status-dot sample-status-dot-saved" />
                               Saved
                             </span>
                           )}
                         </td>
-                        <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                        <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+
+                        {/* BUYER */}
                         <td>
-                          {(() => {
-                            const pills = [];
-                            if (s.wood_finish) pills.push({ cat: 'wood', label: s.wood_finish });
-                            if (s.metal_finish) pills.push({ cat: 'metal', label: s.metal_finish });
-                            if (s.marble_finish) pills.push({ cat: 'marble', label: s.marble_finish });
-                            if (s.fabric_type) pills.push({ cat: 'fabric', label: s.fabric_type });
-                            if (s.plastic_type) pills.push({ cat: 'plastic', label: s.plastic_type });
-
-                            if (pills.length === 0 && s.finish_color) {
-                              const rawParts = s.finish_color.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
-                              rawParts.forEach(p => {
-                                pills.push({ cat: detectFinishCategory(p, finishesOptions), label: p });
-                              });
-                            }
-
-                            if (pills.length === 0 && s.finish_detail) {
-                              pills.push({ cat: s.finish_detail.category || 'wood', label: s.finish_detail.name, code: s.finish_detail.finish_code });
-                            }
-
-                            if (pills.length === 0) {
-                              return <span style={{ color: 'var(--text-muted)' }}>—</span>;
-                            }
-
-                            return (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                {pills.map((pill, pIdx) => {
-                                  const cfg = FINISH_CATEGORIES_CONFIG[pill.cat] || FINISH_CATEGORIES_CONFIG.wood;
-                                  const Icon = cfg.icon;
-                                  return (
-                                    <div key={pIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem' }}>
-                                      <span style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                        padding: '1px 6px',
-                                        borderRadius: '4px',
-                                        fontSize: '0.68rem',
-                                        fontWeight: 750,
-                                        backgroundColor: cfg.bg,
-                                        color: cfg.color,
-                                        border: `1px solid ${cfg.border}`,
-                                        whiteSpace: 'nowrap'
-                                      }}>
-                                        <Icon size={10} />
-                                        {cfg.shortLabel}
-                                      </span>
-                                      {pill.code && (
-                                        <span style={{
-                                          fontSize: '0.68rem',
-                                          fontWeight: 700,
-                                          backgroundColor: '#f1f5f9',
-                                          color: '#475569',
-                                          padding: '1px 5px',
-                                          borderRadius: '3px'
-                                        }}>
-                                          {pill.code}
-                                        </span>
-                                      )}
-                                      <span style={{ fontWeight: 600, color: '#1e293b' }}>{pill.label}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()}
+                          <span className="sample-cell-text">{s.buyer_detail?.name || s.buyer_name || s.buyer || '—'}</span>
                         </td>
-                        <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                        <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                        <td>{s.vendor_name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
+
+                        {/* MATERIAL */}
                         <td>
-                          {s.size_length && s.size_breadth && s.size_height
-                            ? `${s.size_length} × ${s.size_breadth} × ${s.size_height}`
-                            : <span style={{color:'var(--text-muted)'}}>—</span>
-                          }
+                          <span className="sample-cell-text">{s.material || '—'}</span>
                         </td>
+
+                        {/* FINISH/COLOR */}
                         <td>
-                          {s.size_length_inch && s.size_breadth_inch && s.size_height_inch
-                            ? `${s.size_length_inch} × ${s.size_breadth_inch} × ${s.size_height_inch}`
-                            : <span style={{color:'var(--text-muted)'}}>—</span>
-                          }
+                          {pills.length === 0 ? (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          ) : (
+                            <div className="sample-finish-chips-wrap">
+                              {visiblePills.map((pill, pIdx) => {
+                                const cfg = FINISH_CATEGORIES_CONFIG[pill.cat] || FINISH_CATEGORIES_CONFIG.wood;
+                                const Icon = cfg.icon;
+                                return (
+                                  <span
+                                    key={pIdx}
+                                    className={`sample-finish-chip sample-finish-chip-${pill.cat}`}
+                                    title={pill.fullLabel ? `${cfg.shortLabel}: ${pill.fullLabel}` : cfg.shortLabel}
+                                  >
+                                    <Icon size={10} className="sample-finish-chip-icon" />
+                                    <span>{cfg.shortLabel}</span>
+                                  </span>
+                                );
+                              })}
+                              {remainingCount > 0 && (
+                                <span
+                                  className="sample-finish-more-badge"
+                                  title={`Additional finishes: ${remainingTooltip}`}
+                                >
+                                  +{remainingCount}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
+
+                        {/* CBM */}
+                        <td>
+                          <span className="sample-cell-text">{formatCbm(s.cbm)}</span>
+                        </td>
+
+                        {/* USD ($) */}
+                        <td>
+                          <span className="sample-cell-text">{formatUsd(s.usd)}</span>
+                        </td>
+
+                        {/* SIZE (CM) */}
+                        <td>
+                          <span className="sample-cell-text sample-cell-dims">{formatSizeCm(s)}</span>
+                        </td>
+
+                        {/* SIZE (IN) */}
+                        <td>
+                          <span className="sample-cell-text sample-cell-dims">{formatSizeInch(s)}</span>
+                        </td>
+
                         {ordering === 'draft' && (
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <button
@@ -2570,21 +2679,9 @@ function Samples() {
                                   deleteDraft(s.id);
                                 }
                               }}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                padding: '5px 8px',
-                                borderRadius: '6px',
-                                color: '#ef4444',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}
-                              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fee2e2'}
-                              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                              className="sample-action-discard-btn"
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={15} />
                             </button>
                           </td>
                         )}

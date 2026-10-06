@@ -309,7 +309,7 @@ class BuyerMaster(models.Model):
     price_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Price (USD)')
     fob_city = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='FOB CITY (Price per Unit)')
     units = models.IntegerField(default=1, verbose_name='Units')
-    ctn = models.IntegerField(null=True, blank=True, verbose_name='CTN (Units per Box)')
+    ctn = models.CharField(max_length=150, null=True, blank=True, verbose_name='CTN (Units per Box)')
     total_cbm = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True, verbose_name='Total CBM')
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Total Amount')
 

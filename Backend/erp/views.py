@@ -943,8 +943,13 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 Q(finish_color__icontains=search)
             )
         ordering = self.request.query_params.get('ordering')
-        if ordering:
-            qs = qs.order_by(ordering)
+        if ordering and ordering != 'draft':
+            clean_field = ordering.lstrip('-')
+            valid_fields = {f.name for f in BuyerMaster._meta.get_fields()}
+            if clean_field in valid_fields:
+                qs = qs.order_by(ordering)
+            else:
+                qs = qs.order_by('-created_at')
         else:
             qs = qs.order_by('-created_at')
         return qs

@@ -491,13 +491,6 @@ class BuyerDropdownSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code']
 
 
-class SampleDropdownSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Sample
-        fields = ['id', 'sample_id', 'style_no', 'product_name']
-
-
-
 class SampleSerializer(serializers.ModelSerializer):
     images = SampleImageSerializer(many=True, read_only=True)
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
@@ -699,13 +692,13 @@ class BuyerCodeSerializer(serializers.ModelSerializer):
         fields = ['code']
 
 class SampleDropdownSerializer(serializers.ModelSerializer):
-    buyer_detail = BuyerCodeSerializer(source='buyer', read_only=True)
+    buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
     finish_detail = FinishDropdownSerializer(source='finish', read_only=True)
 
     class Meta:
         model = Sample
         fields = [
-            'id', 'sample_id', 'style_no', 'buyer_detail', 'product_name',
+            'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
             'material', 'finish', 'finish_detail', 'finish_color',
             'wood_finish', 'metal_finish', 'marble_finish', 'fabric_type', 'plastic_type',
             'description', 'remark',
@@ -968,14 +961,11 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
             'invalid': 'Enter a valid price for FOB CITY.'
         }
     )
-    ctn = serializers.IntegerField(
-        min_value=0,
+    ctn = serializers.CharField(
+        max_length=150,
         required=False,
-        allow_null=True,
-        error_messages={
-            'min_value': 'CTN (Units per Box) cannot be negative.',
-            'invalid': 'CTN must be a valid whole number.'
-        }
+        allow_blank=True,
+        allow_null=True
     )
     leg_color = serializers.CharField(max_length=150, required=False, allow_blank=True)
     table_top_color = serializers.CharField(max_length=150, required=False, allow_blank=True)

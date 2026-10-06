@@ -6,7 +6,10 @@ class IsAdmin(BasePermission):
     message = "Access restricted to Admin users only."
 
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == 'admin')
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        return bool(user.role == 'admin' or user.is_superuser or user.is_staff)
 
 
 class IsSupervisor(BasePermission):
@@ -30,10 +33,13 @@ class IsAdminOrSupervisor(BasePermission):
     message = "Access restricted to Admin or Supervisor users."
 
     def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role in ('admin', 'supervisor')
+            user.role in ('admin', 'supervisor') or
+            user.is_superuser or
+            user.is_staff
         )
 
 
@@ -58,7 +64,7 @@ class IsAdminOrSandingSupervisor(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
-        if user.role == 'admin':
+        if user.role == 'admin' or user.is_superuser or user.is_staff:
             return True
         return user.role == 'supervisor' and user.batch_category == 'sanding'
 
@@ -68,10 +74,13 @@ class IsStoreManager(BasePermission):
     message = "Access restricted to Admin or Store Manager users."
 
     def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role in ('admin', 'store_manager')
+            user.role in ('admin', 'store_manager') or
+            user.is_superuser or
+            user.is_staff
         )
 
 
@@ -80,10 +89,13 @@ class IsMerchant(BasePermission):
     message = "Access restricted to Admin or Merchant users."
 
     def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role in ('admin', 'merchant')
+            user.role in ('admin', 'merchant') or
+            user.is_superuser or
+            user.is_staff
         )
 
 
@@ -92,10 +104,13 @@ class IsSupplierManager(BasePermission):
     message = "Access restricted to Admin, Store Manager, or Supervisor users."
 
     def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role in ('admin', 'store_manager', 'supervisor')
+            user.role in ('admin', 'store_manager', 'supervisor') or
+            user.is_superuser or
+            user.is_staff
         )
 
 
@@ -104,10 +119,13 @@ class IsStorePersonnelManager(BasePermission):
     message = "Access restricted to Admin, Store Manager, or Supervisor users."
 
     def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
         return bool(
-            request.user and
-            request.user.is_authenticated and
-            request.user.role in ('admin', 'store_manager', 'supervisor')
+            user.role in ('admin', 'store_manager', 'supervisor') or
+            user.is_superuser or
+            user.is_staff
         )
 
 

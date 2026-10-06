@@ -188,14 +188,9 @@ const validateBuyerMaster = (data) => {
   // FOB CITY (Price per Unit) (max 10 whole, 2 decimals, max 12 total)
   validateDecimal(data.fob_city, 'fob_city', 'FOB CITY', 10, 2, 12);
 
-  // CTN (Units per Box)
-  if (data.ctn !== '' && data.ctn !== null && data.ctn !== undefined) {
-    const cNum = Number(data.ctn);
-    if (isNaN(cNum) || !Number.isInteger(cNum)) {
-      errs.ctn = 'CTN (Units per Box) must be a valid whole number.';
-    } else if (cNum < 0) {
-      errs.ctn = 'CTN cannot be negative.';
-    }
+  // CTN (Units per Box) - accepts strings and numbers (e.g. "Box 1 - Top", 1)
+  if (data.ctn && String(data.ctn).length > 150) {
+    errs.ctn = 'CTN (Units per Box) cannot exceed 150 characters.';
   }
 
   // Leg Color
@@ -468,15 +463,19 @@ function BuyerMasters() {
   const fetchData = () => {
     setLoading(true);
     if (!isNewFormMode) {
-      const params = { nopage: true, ordering: ordering };
-      if (debouncedSearch) params.search = debouncedSearch;
-      api.get('/buyer-masters/', { params })
-        .then(res => {
-          const data = res.data.results || res.data || [];
-          setBuyerMasters(data);
-        })
-        .catch(err => console.error(err))
-        .finally(() => setLoading(false));
+      if (ordering === 'draft') {
+        setLoading(false);
+      } else {
+        const params = { nopage: true, ordering: ordering };
+        if (debouncedSearch) params.search = debouncedSearch;
+        api.get('/buyer-masters/', { params })
+          .then(res => {
+            const data = res.data.results || res.data || [];
+            setBuyerMasters(data);
+          })
+          .catch(err => console.error(err))
+          .finally(() => setLoading(false));
+      }
     } else {
       setLoading(false);
     }
@@ -520,6 +519,7 @@ function BuyerMasters() {
   // ── Multi-Style Queue (new-form mode) ──
   const [selectedStyleIds, setSelectedStyleIds] = useState([]); // selected sample ids in multi-picker
   const [globalBuyerId, setGlobalBuyerId] = useState('');       // buyer selected in top control bar
+  const [globalBuyerError, setGlobalBuyerError] = useState(''); // error message if buyer not selected
   const [styleQueue, setStyleQueue] = useState([]);              // [{ sampleId, formData, materialsList, finishesList, status: 'unsaved'|'editing'|'saved' }]
   const [activeStyleIdx, setActiveStyleIdx] = useState(0);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -618,18 +618,19 @@ function BuyerMasters() {
   // Build an empty style form data for a given sample
   const buildStyleFromSample = (sampleId, buyerId) => {
     const s = samples.find(x => x.id === sampleId);
-    const buyer = buyers.find(b => b.id === buyerId);
     if (!s) return null;
+    const effectiveBuyerId = buyerId || s.buyer || s.buyer_detail?.id || '';
+    const buyer = buyers.find(b => String(b.id) === String(effectiveBuyerId));
     const cbmVal = parseFloat(s.cbm) || 0;
     const priceVal = parseFloat(s.usd) || 0;
     const unitsVal = 1;
     return {
       sampleId,
       formData: {
-        buyer: buyerId || '',
+        buyer: effectiveBuyerId,
         sample: sampleId,
         style_no: s.style_no || '',
-        buyer_code: s.buyer_detail?.code || buyer?.code || '',
+        buyer_code: buyer?.code || s.buyer_detail?.code || '',
         product_name: s.product_name || '',
         description: s.description || '',
         wood_type: s.material || '',
@@ -684,6 +685,13 @@ function BuyerMasters() {
         const toKeep = prev.filter(q => selectedStyleIds.includes(q.sampleId) || q.status === 'saved');
         const newEntries = toAdd.map(sid => buildStyleFromSample(sid, globalBuyerId)).filter(Boolean);
         const merged = [...toKeep, ...newEntries];
+
+        // If no global buyer selected yet, auto-select from first added sample if available
+        if (!globalBuyerId && newEntries.length > 0 && newEntries[0].formData.buyer) {
+          setGlobalBuyerId(newEntries[0].formData.buyer);
+          setGlobalBuyerError('');
+        }
+
         // Clamp active idx
         setActiveStyleIdx(idx => Math.min(idx, Math.max(0, merged.length - 1)));
         return merged;
@@ -695,9 +703,14 @@ function BuyerMasters() {
   const handleGlobalBuyerChange = (e) => {
     const buyerId = e.target ? e.target.value : e;
     setGlobalBuyerId(buyerId);
-    const buyer = buyers.find(b => b.id === buyerId);
+    setGlobalBuyerError('');
+    setBatchError('');
+    const buyer = buyers.find(b => String(b.id) === String(buyerId));
     setStyleQueue(prev => prev.map(q => q.status !== 'saved' ? {
       ...q,
+      status: q.status === 'error' && q.fieldErrors?.buyer && Object.keys(q.fieldErrors).length === 1 ? 'unsaved' : q.status,
+      error: q.fieldErrors?.buyer && Object.keys(q.fieldErrors).length === 1 ? '' : q.error,
+      fieldErrors: q.fieldErrors ? { ...q.fieldErrors, buyer: undefined } : {},
       formData: { ...q.formData, buyer: buyerId, buyer_code: buyer?.code || q.formData.buyer_code }
     } : q));
     // Also update single-style edit mode formData
@@ -781,14 +794,32 @@ function BuyerMasters() {
     const item = styleQueue[idx];
     if (!item) return false;
 
+    const effectiveBuyerId = String(item.formData.buyer || globalBuyerId || '').trim();
+    if (!effectiveBuyerId) {
+      setGlobalBuyerError('Buyer selection is required.');
+      setStyleQueue(prev => {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          status: 'error',
+          error: 'Buyer is required. Please select a Buyer in the top control bar above.',
+          fieldErrors: { buyer: 'Buyer selection is required.' }
+        };
+        return next;
+      });
+      return false;
+    }
+
+    const bObj = buyers.find(b => String(b.id) === effectiveBuyerId);
+    const effectiveBuyerCode = (item.formData.buyer_code || bObj?.code || '').trim();
+
     // Duplicate check per buyer
     const styleNo = item.formData.style_no?.trim();
-    const itemBuyerId = String(item.formData.buyer || globalBuyerId || '');
-    if (styleNo && itemBuyerId) {
+    if (styleNo && effectiveBuyerId) {
       const dup = buyerMasters.find(bm => {
         const bmBuyerId = String(bm.buyer?.id || bm.buyer || bm.buyer_detail?.id || '');
         return (
-          bmBuyerId === itemBuyerId &&
+          bmBuyerId === effectiveBuyerId &&
           bm.style_no &&
           bm.style_no.trim().toLowerCase() === styleNo.toLowerCase() &&
           String(bm.id) !== String(item.existingId || '')
@@ -804,7 +835,6 @@ function BuyerMasters() {
       }
     }
 
-
     const woodTypeJoined = item.materialsList.map(m => m.trim()).filter(Boolean).join('/');
     const woodJoined = (item.finishesList || []).filter(f => (typeof f === 'object' ? f.category === 'wood' : true)).map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
     const metalJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'metal')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
@@ -813,9 +843,31 @@ function BuyerMasters() {
     const plasticJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'plastic')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
     const finishJoined = (item.finishesList || []).map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
 
+    // Pre-validate queue item before preparing network payload
+    const valErrs = validateBuyerMaster({
+      ...item.formData,
+      buyer: effectiveBuyerId,
+      buyer_code: effectiveBuyerCode,
+    });
+    if (Object.keys(valErrs).length > 0) {
+      setStyleQueue(prev => {
+        const next = [...prev];
+        next[idx] = {
+          ...next[idx],
+          status: 'error',
+          error: 'Please correct highlighted errors for this style.',
+          fieldErrors: valErrs
+        };
+        return next;
+      });
+      return false;
+    }
+
     const fd = new FormData();
     Object.keys(item.formData).forEach(key => {
       let val = item.formData[key];
+      if (key === 'buyer') val = effectiveBuyerId;
+      if (key === 'buyer_code') val = effectiveBuyerCode;
       if (key === 'wood_type') val = woodTypeJoined;
       if (key === 'finish_color') val = finishJoined;
       if (key === 'wood_finish') val = woodJoined;
@@ -834,22 +886,6 @@ function BuyerMasters() {
     const isEdit = !!item.existingId;
     const url = isEdit ? `/buyer-masters/${item.existingId}/` : '/buyer-masters/';
     const method = isEdit ? 'put' : 'post';
-
-    // Pre-validate queue item
-    const valErrs = validateBuyerMaster({ ...item.formData, buyer: globalBuyerId });
-    if (Object.keys(valErrs).length > 0) {
-      setStyleQueue(prev => {
-        const next = [...prev];
-        next[idx] = {
-          ...next[idx],
-          status: 'error',
-          error: 'Please correct highlighted errors for this style.',
-          fieldErrors: valErrs
-        };
-        return next;
-      });
-      return false;
-    }
 
     try {
       await api[method](url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -878,11 +914,27 @@ function BuyerMasters() {
   };
 
   const handleSaveCurrentStyle = async () => {
+    const curBuyer = String(styleQueue[activeStyleIdx]?.formData?.buyer || globalBuyerId || '').trim();
+    if (!curBuyer) {
+      setGlobalBuyerError('Buyer selection is required.');
+      setBatchError('Please select a Buyer in the top control bar above before saving this style.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setGlobalBuyerError('');
     const ok = await saveQueueItem(activeStyleIdx);
     if (ok) fetchData();
   };
 
   const handleSaveAllStyles = async () => {
+    const effectiveGlobalBuyer = String(globalBuyerId || (styleQueue[0]?.formData?.buyer) || '').trim();
+    if (!effectiveGlobalBuyer) {
+      setGlobalBuyerError('Buyer selection is required.');
+      setBatchError('Please select a Buyer in the top control bar above before saving styles.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setGlobalBuyerError('');
     setBatchSaving(true);
     setBatchError('');
     setBatchSuccess('');
@@ -2328,10 +2380,9 @@ function BuyerMasters() {
                         <div className="form-group">
                           <label className="form-label" style={{ fontWeight: 600 }}>CTN (Units per Box)</label>
                           <input
-                            type="number"
-                            min="1"
-                            step="1"
+                            type="text"
                             name="ctn"
+                            maxLength={150}
                             className="form-input"
                             style={{
                               borderColor: errors.ctn ? '#dc2626' : undefined,
@@ -2339,7 +2390,7 @@ function BuyerMasters() {
                             }}
                             value={formData.ctn || ''}
                             onChange={handleChange}
-                            placeholder="e.g. 1 or 2"
+                            placeholder='e.g. 1, 2, "Box 1 - Top"'
                           />
                           {errors.ctn && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
@@ -2403,14 +2454,26 @@ function BuyerMasters() {
               <div className="bm-top-control-bar">
                 {/* Buyer */}
                 <div className="bm-top-buyer-field form-group">
-                  <label className="form-label">Buyer *</label>
-                  <CustomSelect
-                    name="buyer"
-                    value={globalBuyerId}
-                    onChange={handleGlobalBuyerChange}
-                    options={[{ value: '', label: 'Select Buyer...' }, ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))]}
-                    placeholder="Select Buyer..."
-                  />
+                  <label className="form-label" style={{ fontWeight: 600 }}>Buyer *</label>
+                  <div style={{
+                    border: globalBuyerError ? '1.5px solid #dc2626' : undefined,
+                    borderRadius: '8px',
+                    boxShadow: globalBuyerError ? '0 0 0 3px rgba(220, 38, 38, 0.12)' : undefined
+                  }}>
+                    <CustomSelect
+                      name="buyer"
+                      value={globalBuyerId}
+                      onChange={handleGlobalBuyerChange}
+                      options={[{ value: '', label: 'Select Buyer...' }, ...buyers.map(b => ({ value: b.id, label: b.code ? `${b.name} (${b.code})` : b.name }))]}
+                      placeholder="Select Buyer..."
+                    />
+                  </div>
+                  {globalBuyerError && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{globalBuyerError}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Style Numbers Multi-Select */}
@@ -3257,9 +3320,8 @@ function BuyerMasters() {
                               <div className="form-group">
                                 <label className="form-label" style={{ fontWeight: 600 }}>CTN (Units per Box)</label>
                                 <input
-                                  type="number"
-                                  min="1"
-                                  step="1"
+                                  type="text"
+                                  maxLength={150}
                                   className="form-input"
                                   style={{
                                     borderColor: activeItem.fieldErrors?.ctn ? '#dc2626' : undefined,
@@ -3267,7 +3329,7 @@ function BuyerMasters() {
                                   }}
                                   value={activeItem.formData.ctn || ''}
                                   onChange={e => updateActiveField('ctn', e.target.value)}
-                                  placeholder="e.g. 1 or 2"
+                                  placeholder='e.g. 1, 2, "Box 1 - Top"'
                                 />
                                 {activeItem.fieldErrors?.ctn && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>

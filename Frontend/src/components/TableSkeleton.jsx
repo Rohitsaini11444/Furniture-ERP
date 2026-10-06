@@ -3,21 +3,25 @@ import React from 'react';
 /**
  * Hollow Skeleton Loader for Tables Listing
  */
-export function TableSkeleton({ rows = 6, cols = 7, hasImage = false }) {
+export function TableSkeleton({ rows = 6, cols = 7, hasImage = false, compact = false }) {
   return (
     <>
       {Array.from({ length: rows }).map((_, rIdx) => (
-        <tr key={rIdx} className="skeleton-row">
+        <tr key={rIdx} className="skeleton-row" style={compact ? { height: '52px' } : undefined}>
           {Array.from({ length: cols }).map((_, cIdx) => (
-            <td key={cIdx} style={{ padding: '0.9rem 1rem', verticalAlign: 'middle' }}>
+            <td key={cIdx} style={{ padding: compact ? '6px 14px' : '0.9rem 1rem', verticalAlign: 'middle' }}>
               {cIdx === 0 && hasImage ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div className="skeleton-thumb" style={{ width: '40px', height: '40px', borderRadius: '8px' }} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 }}>
-                    <div className="skeleton-box" style={{ width: '75%', height: '1em' }} />
-                    <div className="skeleton-box" style={{ width: '45%', height: '0.8em' }} />
+                compact ? (
+                  <div className="skeleton-thumb" style={{ width: '38px', height: '38px', borderRadius: '6px' }} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div className="skeleton-thumb" style={{ width: '40px', height: '40px', borderRadius: '8px' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1 }}>
+                      <div className="skeleton-box" style={{ width: '75%', height: '1em' }} />
+                      <div className="skeleton-box" style={{ width: '45%', height: '0.8em' }} />
+                    </div>
                   </div>
-                </div>
+                )
               ) : (
                 <div
                   className="skeleton-box"
