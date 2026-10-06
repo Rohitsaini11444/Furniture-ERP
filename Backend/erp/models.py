@@ -117,6 +117,7 @@ class FinishCategory(models.TextChoices):
     METAL = 'metal', 'Metal Finish'
     MARBLE = 'marble', 'Marble Finish'
     FABRIC = 'fabric', 'Fabric Type'
+    PLASTIC = 'plastic', 'Plastic Type'
 
 
 class Finish(models.Model):
@@ -139,6 +140,8 @@ class Finish(models.Model):
     surface_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Surface Treatment")
     material_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Fabric Material")
     pattern = models.CharField(max_length=100, blank=True, null=True, verbose_name="Pattern / Texture")
+    plastic_type = models.CharField(max_length=100, blank=True, null=True, verbose_name="Plastic / Polymer Type")
+    plastic_finish = models.CharField(max_length=100, blank=True, null=True, verbose_name="Surface / Transparency")
     
     image = models.ImageField(upload_to='finishes/', blank=True, null=True, verbose_name="Finish Image")
     created_at = models.DateTimeField(default=timezone.now)
@@ -165,6 +168,12 @@ class Sample(models.Model):
     material = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material')
     finish = models.ForeignKey('Finish', on_delete=models.SET_NULL, null=True, blank=True, related_name='samples', verbose_name='Finish / Color Catalog')
     finish_color = models.CharField(max_length=255, blank=True, null=True)
+    wood_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Wood Finish')
+    metal_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Metal Finish')
+    marble_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Marble Finish')
+    fabric_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Fabric Type')
+    plastic_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Plastic Type')
+    description = models.TextField(blank=True, null=True, verbose_name="Description")
     remark = models.TextField(blank=True, null=True)
 
     # New fields
@@ -199,6 +208,19 @@ class Sample(models.Model):
             self.size_height_inch = round(Decimal(str(self.size_height)) / Decimal('2.54'), 2)
         else:
             self.size_height_inch = None
+
+        finishes_parts = [
+            self.wood_finish,
+            self.metal_finish,
+            self.marble_finish,
+            self.fabric_type,
+            self.plastic_type
+        ]
+        active_parts = [p.strip() for p in finishes_parts if p and p.strip()]
+        if active_parts:
+            self.finish_color = " / ".join(active_parts)
+        elif not self.finish_color and self.finish:
+            self.finish_color = self.finish.name
 
         super().save(*args, **kwargs)
 
@@ -268,8 +290,16 @@ class BuyerMaster(models.Model):
     style_no = models.CharField(max_length=100)
     buyer_code = models.CharField(max_length=50)
     product_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True, verbose_name='Description')
     wood_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Material / Wood Type')
     finish_color = models.CharField(max_length=255, blank=True, null=True, verbose_name='Finish Color')
+    wood_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Wood Finish')
+    metal_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Metal Finish')
+    marble_finish = models.CharField(max_length=255, blank=True, null=True, verbose_name='Marble Finish')
+    fabric_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Fabric Type')
+    plastic_type = models.CharField(max_length=255, blank=True, null=True, verbose_name='Plastic Type')
+    leg_color = models.CharField(max_length=150, blank=True, null=True, verbose_name='Leg Color')
+    table_top_color = models.CharField(max_length=150, blank=True, null=True, verbose_name='Table Top Colour')
     size_length = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Length (cm)')
     size_breadth = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Breadth (cm)')
     size_height = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Size Height (cm)')
@@ -277,7 +307,9 @@ class BuyerMaster(models.Model):
 
     # Price & Quantity details
     price_usd = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='Price (USD)')
+    fob_city = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, verbose_name='FOB CITY (Price per Unit)')
     units = models.IntegerField(default=1, verbose_name='Units')
+    ctn = models.IntegerField(null=True, blank=True, verbose_name='CTN (Units per Box)')
     total_cbm = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True, verbose_name='Total CBM')
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True, verbose_name='Total Amount')
 
@@ -297,6 +329,17 @@ class BuyerMaster(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     def save(self, *args, **kwargs):
+        finishes_parts = [
+            self.wood_finish,
+            self.metal_finish,
+            self.marble_finish,
+            self.fabric_type,
+            self.plastic_type
+        ]
+        active_parts = [p.strip() for p in finishes_parts if p and p.strip()]
+        if active_parts:
+            self.finish_color = " / ".join(active_parts)
+
         if self.units is not None and self.cbm is not None:
             self.total_cbm = round(Decimal(str(self.units)) * Decimal(str(self.cbm)), 4)
         if self.units is not None and self.price_usd is not None:

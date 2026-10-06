@@ -145,6 +145,7 @@ export default function StoreManagement() {
   const [suppliers, setSuppliers] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [contractorPersons, setContractorPersons] = useState([]);
+  const [billingContractors, setBillingContractors] = useState([]);
   const [productionUnits, setProductionUnits] = useState([]);
   const [materialInList, setMaterialInList] = useState([]);
   const [dailyIssuesList, setDailyIssuesList] = useState([]);
@@ -176,6 +177,8 @@ export default function StoreManagement() {
   const [requisitionsTotalCount, setRequisitionsTotalCount] = useState(0);
   const [stockAdjustmentsTotalCount, setStockAdjustmentsTotalCount] = useState(0);
   const [contractorsTotalCount, setContractorsTotalCount] = useState(0);
+  const [billingContractorsTotalCount, setBillingContractorsTotalCount] = useState(0);
+  const [billingViewMode, setBillingViewMode] = useState('cards'); // 'table' | 'cards'
 
   // Modal states
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -416,9 +419,23 @@ export default function StoreManagement() {
         });
         setStockAdjustmentsList(res.data.results || res.data || []);
         setStockAdjustmentsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
-      } else if (tabKey === 'contractors' || tabKey === 'billing') {
-        const p = targetPage !== undefined ? targetPage : (tabKey === 'contractors' ? pageContractors : pageBilling);
-        const roleParam = tabKey === 'billing' ? 'contractor' : (personnelRoleFilter === 'all' ? undefined : personnelRoleFilter);
+      } else if (tabKey === 'billing') {
+        const p = targetPage !== undefined ? targetPage : pageBilling;
+        const res = await api.get('/users/', {
+          params: {
+            role: 'contractor',
+            has_store_bills: 'true',
+            page: p,
+            page_size: ITEMS_PER_PAGE,
+            search: searchVal || undefined
+          }
+        });
+        const list = res.data.results || res.data || [];
+        setBillingContractors(list);
+        setBillingContractorsTotalCount(res.data.count ?? list.length);
+      } else if (tabKey === 'contractors') {
+        const p = targetPage !== undefined ? targetPage : pageContractors;
+        const roleParam = personnelRoleFilter === 'all' ? undefined : personnelRoleFilter;
         const [cRes, cpRes, sRes] = await Promise.all([
           api.get('/users/', { params: { role: roleParam, page: p, page_size: ITEMS_PER_PAGE, search: searchVal || undefined } }),
           api.get('/store/contractor-persons/', { params: { nopage: true } }),
@@ -798,7 +815,14 @@ export default function StoreManagement() {
   const paginatedMaterialIn = materialInList;
   const paginatedDailyIssues = dailyIssuesList;
   const paginatedContractors = contractors;
-  const paginatedBillingContractors = contractors;
+  const paginatedBillingContractors = React.useMemo(() => {
+    return (billingContractors || []).filter(c => {
+      if (c.store_issues_count !== undefined && c.store_issues_count !== null) {
+        return Number(c.store_issues_count) > 0;
+      }
+      return true;
+    });
+  }, [billingContractors]);
   const paginatedMaterialReturns = materialReturnsList;
   const paginatedRequisitions = requisitionsList;
   const paginatedAdjustments = stockAdjustmentsList;
@@ -4396,9 +4420,20 @@ export default function StoreManagement() {
       {activeTab === 'billing' && (
         <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
-              Monthly Contractor Settlement & Store Material Deduction Bills
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#8b5a2b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={18} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 700, color: '#0f172a' }}>
+                  Monthly Contractor Settlement & Store Material Deduction Bills
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Contractors with recorded store material issues & deduction bills ({billingContractorsTotalCount || paginatedBillingContractors.length})
+                </span>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
               <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '300px', flex: 1 }}>
                 <Search size={16} color="#94a3b8" />
@@ -4419,60 +4454,349 @@ export default function StoreManagement() {
                   </button>
                 )}
               </div>
+
+              {/* Table / Cards View Mode Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setBillingViewMode('table')}
+                  title="Table View"
+                  style={{
+                    padding: '0.4rem 0.65rem',
+                    border: 'none',
+                    backgroundColor: billingViewMode === 'table' ? '#e0f2fe' : '#ffffff',
+                    color: billingViewMode === 'table' ? '#0369a1' : '#64748b',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <List size={14} />
+                  <span>Table</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingViewMode('cards')}
+                  title="Cards Grid View"
+                  style={{
+                    padding: '0.4rem 0.65rem',
+                    border: 'none',
+                    borderLeft: '1px solid #cbd5e1',
+                    backgroundColor: billingViewMode === 'cards' ? '#e0f2fe' : '#ffffff',
+                    color: billingViewMode === 'cards' ? '#0369a1' : '#64748b',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <LayoutGrid size={14} />
+                  <span>Cards</span>
+                </button>
+              </div>
+
+              {/* Refresh Button */}
+              <button
+                type="button"
+                onClick={() => fetchTabData('billing', true)}
+                title="Refresh Billing List"
+                style={{
+                  padding: '0.42rem 0.65rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+              >
+                <RefreshCw size={14} />
+                <span>Refresh</span>
+              </button>
             </div>
           </div>
 
-          <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.25rem' }}>
-            {loading ? (
-              <CardSkeleton count={6} />
-            ) : paginatedBillingContractors.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
-                <Users size={32} color="#cbd5e1" style={{ marginBottom: '0.5rem' }} />
-                <div style={{ fontWeight: 600 }}>No contractors found{searchQuery ? ` matching "${searchQuery}"` : ''}</div>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    style={{ border: 'none', background: 'none', color: '#ea580c', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, marginTop: '0.5rem', textDecoration: 'underline' }}
-                  >
-                    Clear Search
-                  </button>
-                )}
+          {/* CONTENT: Cards View vs Table View */}
+          {loading ? (
+            billingViewMode === 'table' ? (
+              <div style={{ padding: '1rem', overflowX: 'auto' }}>
+                <TableSkeleton rows={6} cols={8} />
               </div>
             ) : (
-              paginatedBillingContractors.map((c, idx) => (
-                <div key={c.id || idx} style={{ padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '1.25rem' }}>
+                <CardSkeleton count={6} />
+              </div>
+            )
+          ) : paginatedBillingContractors.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: '#64748b' }}>
+              <FileText size={40} color="#cbd5e1" style={{ marginBottom: '0.65rem' }} />
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>
+                No contractors with billing data found{searchQuery ? ` matching "${searchQuery}"` : ''}
+              </div>
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                {searchQuery
+                  ? 'Try clearing the search query or searching for a different contractor.'
+                  : 'Contractors will automatically appear here once store material issues or deduction vouchers are recorded.'}
+              </p>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{ border: 'none', background: 'none', color: '#ea580c', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, marginTop: '0.75rem', textDecoration: 'underline' }}
+                >
+                  Clear Search
+                </button>
+              )}
+            </div>
+          ) : billingViewMode === 'cards' ? (
+            /* ── Cards View ── */
+            <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '1.25rem' }}>
+              {paginatedBillingContractors.map((c, idx) => (
+                <div
+                  key={c.id || idx}
+                  style={{
+                    padding: '1.25rem',
+                    borderRadius: '14px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    transition: 'transform 0.18s ease, box-shadow 0.18s ease'
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 18px rgba(0,0,0,0.06)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+                  }}
+                >
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Users size={18} />
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Users size={18} />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+                            {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                          </h4>
+                          <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</p>
+                        </div>
+                      </div>
+                      {c.production_unit_name && (
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#f0f9ff',
+                          color: '#0369a1',
+                          border: '1px solid #bae6fd',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {c.production_unit_name}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Summary Metric Chips */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: '0.5rem',
+                      padding: '0.65rem 0.85rem',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px solid #f1f5f9',
+                      marginBottom: '0.5rem'
+                    }}>
+                      <div>
+                        <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Store Issues</span>
+                        <strong style={{ fontSize: '0.92rem', color: '#0f172a', fontWeight: 700 }}>
+                          {c.store_issues_count !== undefined ? `${c.store_issues_count} Entries` : 'Active'}
+                        </strong>
                       </div>
                       <div>
-                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
-                          {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
-                        </h4>
-                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>Phone: {c.phone || 'N/A'}</p>
+                        <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Chargeable Amount</span>
+                        <strong style={{ fontSize: '0.92rem', color: '#c2410c', fontWeight: 800 }}>
+                          ₹{Number(c.chargeable_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Monthly Settlement</span>
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Monthly Settlement</span>
                     <button
+                      type="button"
                       onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
-                      style={{ padding: '6px 14px', borderRadius: '8px', border: 'none', backgroundColor: '#8b5a2b', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#8b5a2b',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: '0 2px 4px rgba(139, 90, 43, 0.25)',
+                        transition: 'background 0.15s ease'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#74471e'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = '#8b5a2b'}
                     >
-                      <FileText size={15} /> View Bill Statement
+                      <FileText size={14} /> View Bill Statement
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            /* ── Table View ── */
+            <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  <tr>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155', width: '60px' }}>#</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Contractor Name</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Phone</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#334155' }}>Factory Unit / Supervisor</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Store Issues</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#334155' }}>Chargeable Total (₹)</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Latest Issue Date</th>
+                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#334155' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedBillingContractors.map((c, idx) => (
+                    <tr
+                      key={c.id || idx}
+                      style={{ borderBottom: '1px solid #f1f5f9', transition: 'background-color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fdfbf9'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <td style={{ padding: '0.85rem 1rem', color: '#64748b', fontWeight: 600 }}>
+                        {(pageBilling - 1) * ITEMS_PER_PAGE + idx + 1}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', color: '#c2410c', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Users size={16} />
+                          </div>
+                          <div>
+                            <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.9rem' }}>
+                              {c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.username}
+                            </strong>
+                            <span style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8' }}>
+                              Username: {c.username}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', color: '#475569', fontSize: '0.85rem' }}>
+                        {c.phone || <span style={{ color: '#cbd5e1' }}>N/A</span>}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        {c.production_unit_name ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: '#f0f9ff',
+                            color: '#0369a1',
+                            fontWeight: 700,
+                            fontSize: '0.75rem',
+                            border: '1px solid #bae6fd'
+                          }}>
+                            <Factory size={11} /> {c.production_unit_name}
+                          </span>
+                        ) : c.supervisor_name ? (
+                          <span style={{ fontSize: '0.8rem', color: '#475569' }}>
+                            Sup: {c.supervisor_name}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 10px',
+                          borderRadius: '20px',
+                          backgroundColor: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          color: '#334155'
+                        }}>
+                          {c.store_issues_count !== undefined ? `${c.store_issues_count} entries` : '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                        <strong style={{ color: '#c2410c', fontSize: '0.92rem', fontWeight: 800 }}>
+                          ₹{Number(c.chargeable_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </strong>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: '#475569', fontSize: '0.82rem' }}>
+                        {c.latest_issue_date || '—'}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedContractorForBill(c); setIsBillingModalOpen(true); }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: '#8b5a2b',
+                            color: '#ffffff',
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            boxShadow: '0 2px 4px rgba(139, 90, 43, 0.25)',
+                            transition: 'background 0.15s ease'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#74471e'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = '#8b5a2b'}
+                        >
+                          <FileText size={14} /> View Statement
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
             <Pagination
               currentPage={pageBilling}
-              totalPages={Math.ceil(contractorsTotalCount / ITEMS_PER_PAGE) || 1}
+              totalPages={Math.ceil(billingContractorsTotalCount / ITEMS_PER_PAGE) || 1}
               onPageChange={setPageBilling}
             />
           </div>

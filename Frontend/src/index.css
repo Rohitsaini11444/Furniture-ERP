@@ -2083,6 +2083,85 @@ select[multiple] option:checked {
   letter-spacing: 0.05em;
 }
 
+/* ─── Finishing Catalog Swatch & Hover Effects ─── */
+.finish-swatch-box {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.finish-swatch-box.has-image {
+  cursor: zoom-in !important;
+}
+
+.finish-swatch-box.has-image:hover {
+  box-shadow: 0 8px 24px rgba(154, 83, 35, 0.22), 0 0 0 2px rgba(154, 83, 35, 0.35) !important;
+}
+
+.finish-swatch-box.has-image img {
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), filter 0.25s ease;
+}
+
+.finish-swatch-box.has-image:hover img {
+  transform: scale(1.1);
+  filter: brightness(0.92);
+}
+
+.finish-swatch-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.6) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+  border-radius: inherit;
+}
+
+.finish-swatch-box.has-image:hover .finish-swatch-overlay {
+  opacity: 1;
+}
+
+.finish-swatch-zoom-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  transform: scale(0.85);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.finish-swatch-box.has-image:hover .finish-swatch-zoom-icon {
+  transform: scale(1);
+}
+
+.finish-swatch-pill {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+
 
 /* --- Mobile Card List Styles --- */
 

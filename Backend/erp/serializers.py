@@ -21,7 +21,7 @@ from .models import (
 )
 
 
-# ─── Auth Serializers ─────────────────────────────────────────────────────────
+# ─────────────────────────────── Auth Serializers ─────────────────────────────────────────────────────────
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
@@ -55,7 +55,7 @@ class TokenResponseSerializer(serializers.Serializer):
     user = serializers.DictField()
 
 
-# ─── Production Unit & Work Allocation Serializers ─────────────────────────
+# ─────────────────────────────── Production Unit & Work Allocation Serializers ─────────────────────────
 
 class ProductionUnitSerializer(serializers.ModelSerializer):
     supervisor_count = serializers.SerializerMethodField()
@@ -105,7 +105,7 @@ class UnitWorkReallocationSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-# ─── User Serializers ─────────────────────────────────────────────────────────
+# ─────────────────────────────── User Serializers ─────────────────────────────────────────────────────────
 
 class UserSerializer(serializers.ModelSerializer):
     """Full user serializer — used by Admin for CRUD operations."""
@@ -114,6 +114,9 @@ class UserSerializer(serializers.ModelSerializer):
     contractor_count = serializers.SerializerMethodField()
     production_unit_name = serializers.CharField(source='production_unit.name', read_only=True)
     full_name = serializers.SerializerMethodField()
+    store_issues_count = serializers.SerializerMethodField()
+    chargeable_total = serializers.SerializerMethodField()
+    latest_issue_date = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -122,6 +125,7 @@ class UserSerializer(serializers.ModelSerializer):
             'role', 'batch_category', 'production_unit', 'production_unit_name',
             'supervisor', 'supervisor_name',
             'phone', 'is_active', 'password', 'contractor_count', 'profile_image',
+            'store_issues_count', 'chargeable_total', 'latest_issue_date',
         ]
         read_only_fields = ['id']
 
@@ -137,6 +141,26 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role == 'supervisor':
             return obj.contractors.filter(is_active=True).count()
         return None
+
+    def get_store_issues_count(self, obj):
+        if hasattr(obj, 'store_issues_count_annotated'):
+            return obj.store_issues_count_annotated
+        return obj.store_issues.count() if hasattr(obj, 'store_issues') else 0
+
+    def get_chargeable_total(self, obj):
+        if hasattr(obj, 'chargeable_total_annotated'):
+            return float(obj.chargeable_total_annotated or 0)
+        from erp.models import StoreItemStatus
+        from django.db.models import Sum
+        val = obj.store_issues.filter(status=StoreItemStatus.CHARGE).aggregate(s=Sum('chargeable_total'))['s'] if hasattr(obj, 'store_issues') else 0
+        return float(val or 0)
+
+    def get_latest_issue_date(self, obj):
+        if hasattr(obj, 'latest_issue_date_annotated'):
+            d = obj.latest_issue_date_annotated
+            return d.strftime('%Y-%m-%d') if d else None
+        latest = obj.store_issues.order_by('-issue_date').values_list('issue_date', flat=True).first() if hasattr(obj, 'store_issues') else None
+        return latest.strftime('%Y-%m-%d') if latest else None
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
@@ -168,7 +192,7 @@ class UserMinimalSerializer(serializers.ModelSerializer):
         return obj.get_full_name() or obj.username
 
 
-# ─── ERP Core Serializers ─────────────────────────────────────────────────────
+# ─────────────────────────────── ERP Core Serializers ─────────────────────────────────────────────────────
 
 class FinishSerializer(serializers.ModelSerializer):
 
@@ -179,6 +203,7 @@ class FinishSerializer(serializers.ModelSerializer):
             'wood_type', 'metal_type', 'coating_type',
             'marble_type', 'surface_treatment',
             'material_type', 'pattern',
+            'plastic_type', 'plastic_finish',
             'image', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -187,7 +212,7 @@ class FinishSerializer(serializers.ModelSerializer):
         if not value:
             return 'wood'
         val = str(value).strip().lower()
-        valid_cats = ['wood', 'metal', 'marble', 'fabric']
+        valid_cats = ['wood', 'metal', 'marble', 'fabric', 'plastic']
         if val not in valid_cats:
             raise serializers.ValidationError(f"Invalid category '{value}'. Allowed: {', '.join(valid_cats)}.")
         return val
@@ -322,6 +347,18 @@ class FinishSerializer(serializers.ModelSerializer):
         val = str(value).strip()
         return val if val else None
 
+    def validate_plastic_type(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
+
+    def validate_plastic_finish(self, value):
+        if not value:
+            return None
+        val = str(value).strip()
+        return val if val else None
+
 
 class FinishDropdownSerializer(serializers.ModelSerializer):
     class Meta:
@@ -330,7 +367,8 @@ class FinishDropdownSerializer(serializers.ModelSerializer):
             'id', 'category', 'name', 'finish_code', 'color',
             'wood_type', 'metal_type', 'coating_type',
             'marble_type', 'surface_treatment',
-            'material_type', 'pattern', 'image'
+            'material_type', 'pattern',
+            'plastic_type', 'plastic_finish', 'image'
         ]
 
 
@@ -469,7 +507,9 @@ class SampleSerializer(serializers.ModelSerializer):
         model = Sample
         fields = [
             'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
-            'material', 'finish', 'finish_detail', 'finish_color', 'remark',
+            'material', 'finish', 'finish_detail', 'finish_color',
+            'wood_finish', 'metal_finish', 'marble_finish', 'fabric_type', 'plastic_type',
+            'description', 'remark',
             'cbm', 'usd', 'vendor_name',
             'size_length', 'size_breadth', 'size_height',
             'size_length_inch', 'size_breadth_inch', 'size_height_inch',
@@ -666,7 +706,10 @@ class SampleDropdownSerializer(serializers.ModelSerializer):
         model = Sample
         fields = [
             'id', 'sample_id', 'style_no', 'buyer_detail', 'product_name',
-            'material', 'finish', 'finish_detail', 'finish_color', 'remark',
+            'material', 'finish', 'finish_detail', 'finish_color',
+            'wood_finish', 'metal_finish', 'marble_finish', 'fabric_type', 'plastic_type',
+            'description', 'remark',
+            'cbm', 'usd', 'vendor_name',
             'size_length', 'size_breadth', 'size_height'
         ]
 
@@ -680,6 +723,8 @@ class SampleListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sample_id', 'style_no', 'buyer', 'buyer_detail', 'product_name',
             'material', 'finish', 'finish_detail', 'finish_color',
+            'wood_finish', 'metal_finish', 'marble_finish', 'fabric_type', 'plastic_type',
+            'description', 'remark',
             'cbm', 'usd', 'vendor_name',
             'size_length', 'size_breadth', 'size_height',
             'size_length_inch', 'size_breadth_inch', 'size_height_inch',
@@ -909,6 +954,38 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
         }
     )
 
+    fob_city = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal('0.00'),
+        required=False,
+        allow_null=True,
+        error_messages={
+            'max_digits': 'FOB CITY cannot exceed 12 digits in total (up to 10 integer digits and 2 decimals).',
+            'max_whole_digits': 'FOB CITY cannot exceed 10 digits before decimal.',
+            'max_decimal_places': 'FOB CITY cannot have more than 2 decimal places.',
+            'min_value': 'FOB CITY cannot be negative.',
+            'invalid': 'Enter a valid price for FOB CITY.'
+        }
+    )
+    ctn = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        allow_null=True,
+        error_messages={
+            'min_value': 'CTN (Units per Box) cannot be negative.',
+            'invalid': 'CTN must be a valid whole number.'
+        }
+    )
+    leg_color = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    table_top_color = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    wood_finish = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    metal_finish = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    marble_finish = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    fabric_type = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    plastic_type = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
     class Meta:
         model = BuyerMaster
         fields = '__all__'
@@ -916,7 +993,7 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         data = data.copy() if hasattr(data, 'copy') else dict(data)
         numeric_fields = [
-            'price_usd', 'units', 'cbm', 'total_cbm', 'total_amount',
+            'price_usd', 'fob_city', 'units', 'ctn', 'cbm', 'total_cbm', 'total_amount',
             'size_length', 'size_breadth', 'size_height',
             'box_length', 'box_breadth', 'box_height',
             'vendor_price', 'costing', 'purchase_price',
@@ -987,9 +1064,11 @@ class BuyerMasterListSerializer(serializers.ModelSerializer):
         model = BuyerMaster
         fields = [
             'id', 'buyer', 'buyer_detail', 'sample', 'sample_detail', 'style_no', 'buyer_code', 'product_name', 
-            'wood_type', 'finish_color', 
+            'description', 'wood_type', 'finish_color', 
+            'wood_finish', 'metal_finish', 'marble_finish', 'fabric_type', 'plastic_type',
+            'leg_color', 'table_top_color',
             'size_length', 'size_breadth', 'size_height',
-            'price_usd', 'units', 'cbm', 'total_cbm', 'total_amount', 'remark',
+            'price_usd', 'fob_city', 'units', 'ctn', 'cbm', 'total_cbm', 'total_amount', 'remark',
             'box_size', 'box_length', 'box_breadth', 'box_height'
         ]
 

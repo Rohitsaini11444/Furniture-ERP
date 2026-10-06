@@ -4,8 +4,9 @@ import api from '../api/axios';
 import {
   Palette, X, Search, Filter, ArrowLeft, ChevronRight, Upload, Plus, Download,
   FileSpreadsheet, Trash2, Edit2, CheckSquare, Square, FileEdit, Sparkles, AlertCircle,
-  Shield, Gem, Scissors, Layers, Check
+  Shield, Gem, Scissors, Layers, Check, ZoomIn
 } from 'lucide-react';
+import FinishImageModal from '../components/FinishImageModal';
 import Pagination from '../components/Pagination';
 import { OrderBySelect } from '../components/OrderBySelect';
 import CustomSelect from '../components/CustomSelect';
@@ -20,6 +21,7 @@ const FINISH_CATEGORIES = [
   { id: 'metal', label: 'Metal Finish', shortLabel: 'Metal', icon: Shield, color: '#334155', bg: '#f1f5f9', border: '#cbd5e1', placeholder: 'e.g. Antique Brass Matte' },
   { id: 'marble', label: 'Marble Finish', shortLabel: 'Marble', icon: Gem, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', placeholder: 'e.g. Italian Carrara Polished' },
   { id: 'fabric', label: 'Fabric Type', shortLabel: 'Fabric', icon: Scissors, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', placeholder: 'e.g. Royal Velvet Navy' },
+  { id: 'plastic', label: 'Plastic Type', shortLabel: 'Plastic', icon: Layers, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', placeholder: 'e.g. Molded Polycarbonate Transparent' },
 ];
 
 const emptyFinishForm = {
@@ -34,6 +36,8 @@ const emptyFinishForm = {
   surface_treatment: '',
   material_type: '',
   pattern: '',
+  plastic_type: '',
+  plastic_finish: '',
 };
 
 const WOOD_TYPES = [
@@ -119,6 +123,32 @@ const FABRIC_PATTERNS = [
   'Tufted / Quilted',
   'Floral',
   'Abstract',
+  'Other'
+];
+
+const PLASTIC_TYPES = [
+  'Polycarbonate (PC)',
+  'Acrylic (PMMA / Plexiglass)',
+  'Polypropylene (PP)',
+  'High-Density Polyethylene (HDPE)',
+  'ABS (Acrylonitrile Butadiene Styrene)',
+  'PVC / Vinyl',
+  'Nylon (Polyamide)',
+  'Melamine / Resin',
+  'Fiber Reinforced Plastic (FRP)',
+  'Recycled Plastic / HDPE Lumber',
+  'Other'
+];
+
+const PLASTIC_FINISHES = [
+  'High Gloss Smooth',
+  'Matte / Frosted',
+  'Textured / Embossed',
+  'Clear / Transparent',
+  'Translucent / Tinted',
+  'Opaque Solid Color',
+  'Soft-Touch Rubberized',
+  'UV-Resistant Outdoor Grade',
   'Other'
 ];
 
@@ -220,7 +250,7 @@ function Finishing() {
   const activeCategory = FINISH_CATEGORIES.find(c => c.id === activeTab) || FINISH_CATEGORIES[0];
   const ActiveCatIcon = activeCategory.icon;
 
-  const [categoryCounts, setCategoryCounts] = useState({ wood: 0, metal: 0, marble: 0, fabric: 0, total: 0 });
+  const [categoryCounts, setCategoryCounts] = useState({ wood: 0, metal: 0, marble: 0, fabric: 0, plastic: 0, total: 0 });
   const fetchCounts = useCallback(() => {
     api.get('/finishes/counts/')
       .then(res => setCategoryCounts(res.data))
@@ -233,7 +263,8 @@ function Finishing() {
             const m = list.filter(i => i.category === 'metal').length;
             const mb = list.filter(i => i.category === 'marble').length;
             const f = list.filter(i => i.category === 'fabric').length;
-            setCategoryCounts({ wood: w, metal: m, marble: mb, fabric: f, total: list.length });
+            const p = list.filter(i => i.category === 'plastic').length;
+            setCategoryCounts({ wood: w, metal: m, marble: mb, fabric: f, plastic: p, total: list.length });
           })
           .catch(() => {});
       });
@@ -251,6 +282,16 @@ function Finishing() {
   // Image handling
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [enlargedFinish, setEnlargedFinish] = useState(null);
+
+  const finishesWithImages = useMemo(() => {
+    return finishes.filter(f => Boolean(f.image_url || f.image));
+  }, [finishes]);
+
+  const currentImgIndex = useMemo(() => {
+    if (!enlargedFinish) return -1;
+    return finishesWithImages.findIndex(f => f.id === enlargedFinish.id);
+  }, [enlargedFinish, finishesWithImages]);
 
   // ── Unsaved Changes / Draft hook ───────────────────────────────────────────
   const {
@@ -457,6 +498,8 @@ function Finishing() {
           surface_treatment: data.surface_treatment || '',
           material_type: data.material_type || '',
           pattern: data.pattern || '',
+          plastic_type: data.plastic_type || '',
+          plastic_finish: data.plastic_finish || '',
           image: null,
           image_url: null,
           isDraft: true,
@@ -500,6 +543,7 @@ function Finishing() {
       else if (activeTab === 'metal') params.metal_type = filterSpecificType;
       else if (activeTab === 'marble') params.marble_type = filterSpecificType;
       else if (activeTab === 'fabric') params.material_type = filterSpecificType;
+      else if (activeTab === 'plastic') params.plastic_type = filterSpecificType;
     }
 
     api.get('/finishes/', { params })
@@ -587,12 +631,13 @@ function Finishing() {
     const finish_code = (formData.finish_code || '').trim();
     const color = (formData.color || '').trim();
     const isFabric = formData.category === 'fabric';
+    const isPlastic = formData.category === 'plastic';
 
-    // 1. Finish / Fabric Name
+    // 1. Finish / Fabric / Plastic Name
     if (!name) {
-      errors.name = isFabric ? 'Fabric name is required.' : 'Finish name is required.';
+      errors.name = isFabric ? 'Fabric name is required.' : isPlastic ? 'Plastic name is required.' : 'Finish name is required.';
     } else if (name.length < 2) {
-      errors.name = isFabric ? 'Fabric name must be at least 2 characters.' : 'Finish name must be at least 2 characters.';
+      errors.name = isFabric ? 'Fabric name must be at least 2 characters.' : isPlastic ? 'Plastic name must be at least 2 characters.' : 'Finish name must be at least 2 characters.';
     } else if (name.length > 100) {
       errors.name = 'Name cannot exceed 100 characters.';
     } else {
@@ -610,9 +655,9 @@ function Finishing() {
       }
     }
 
-    // 2. Finish / Fabric Code
+    // 2. Finish / Fabric / Plastic Code
     if (!finish_code) {
-      errors.finish_code = isFabric ? 'Fabric code is required.' : 'Finish code is required.';
+      errors.finish_code = isFabric ? 'Fabric code is required.' : isPlastic ? 'Plastic code is required.' : 'Finish code is required.';
     } else if (finish_code.length < 2) {
       errors.finish_code = 'Code must be at least 2 characters.';
     } else if (finish_code.length > 30) {
@@ -907,20 +952,53 @@ function Finishing() {
               <div className="form-group" style={{ marginBottom: '1.35rem' }}>
                 <label className="form-label" style={{ fontWeight: 700, color: '#1c1917' }}>Swatch / Texture Image</label>
                 <div className="finish-upload-container" style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-                  <div style={{
-                    width: '130px',
-                    height: '130px',
-                    borderRadius: '18px',
-                    backgroundColor: '#faf6f0',
-                    border: '2px dashed #e6ded3',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    flexShrink: 0
-                  }}>
+                  <div
+                    className={`finish-swatch-box ${imagePreview ? 'has-image' : ''}`}
+                    onClick={(e) => {
+                      if (imagePreview) {
+                        e.stopPropagation();
+                        setEnlargedFinish({
+                          name: formData.name || 'Finish Texture Preview',
+                          finish_code: formData.finish_code,
+                          category: formData.category,
+                          color: formData.color,
+                          wood_type: formData.wood_type,
+                          metal_type: formData.metal_type,
+                          coating_type: formData.coating_type,
+                          marble_type: formData.marble_type,
+                          surface_treatment: formData.surface_treatment,
+                          material_type: formData.material_type,
+                          pattern: formData.pattern,
+                          image: imagePreview
+                        });
+                      }
+                    }}
+                    title={imagePreview ? "Click to inspect & enlarge finish texture" : undefined}
+                    style={{
+                      width: '130px',
+                      height: '130px',
+                      borderRadius: '18px',
+                      backgroundColor: '#faf6f0',
+                      border: '2px dashed #e6ded3',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      cursor: imagePreview ? 'zoom-in' : 'default',
+                      position: 'relative'
+                    }}
+                  >
                     {imagePreview ? (
-                      <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <>
+                        <img src={imagePreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <div className="finish-swatch-overlay">
+                          <div className="finish-swatch-zoom-icon">
+                            <ZoomIn size={18} strokeWidth={2.4} />
+                          </div>
+                          <span className="finish-swatch-pill">Enlarge</span>
+                        </div>
+                      </>
                     ) : (() => {
                       const CatIcon = FINISH_CATEGORIES.find(c => c.id === formData.category)?.icon || Palette;
                       return <CatIcon size={34} color="#9a5323" />;
@@ -936,6 +1014,7 @@ function Finishing() {
                       {formData.category === 'metal' && 'High resolution PNG, JPG or WEBP image demonstrating metal finish, patina or coating.'}
                       {formData.category === 'marble' && 'High resolution PNG, JPG or WEBP image demonstrating marble veining, texture or polish.'}
                       {formData.category === 'fabric' && 'High resolution PNG, JPG or WEBP image demonstrating fabric weave, texture or pattern.'}
+                      {formData.category === 'plastic' && 'High resolution PNG, JPG or WEBP image demonstrating plastic polymer, texture or transparency.'}
                     </div>
                   </div>
                 </div>
@@ -945,7 +1024,7 @@ function Finishing() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.15rem' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 650 }}>
-                    {formData.category === 'fabric' ? 'Fabric Name *' : 'Finish Name *'}
+                    {formData.category === 'fabric' ? 'Fabric Name *' : formData.category === 'plastic' ? 'Plastic Name *' : 'Finish Name *'}
                   </label>
                   <input
                     type="text"
@@ -969,7 +1048,7 @@ function Finishing() {
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 650 }}>
-                    {formData.category === 'fabric' ? 'Fabric Code *' : 'Finish Code *'}
+                    {formData.category === 'fabric' ? 'Fabric Code *' : formData.category === 'plastic' ? 'Plastic Code *' : 'Finish Code *'}
                   </label>
                   <input
                     type="text"
@@ -978,7 +1057,8 @@ function Finishing() {
                     placeholder={
                       formData.category === 'wood' ? 'e.g. FIN-109' :
                       formData.category === 'metal' ? 'e.g. MF-01' :
-                      formData.category === 'marble' ? 'e.g. MRB-01' : 'e.g. FAB-01'
+                      formData.category === 'marble' ? 'e.g. MRB-01' :
+                      formData.category === 'plastic' ? 'e.g. PL-01' : 'e.g. FAB-01'
                     }
                     value={formData.finish_code}
                     onChange={handleInputChange}
@@ -1128,6 +1208,37 @@ function Finishing() {
                           ...FABRIC_PATTERNS.map(p => ({ value: p, label: p }))
                         ]}
                         placeholder="Select Pattern / Texture..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {formData.category === 'plastic' && (
+                  <>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Plastic / Polymer Type</label>
+                      <CustomSelect
+                        name="plastic_type"
+                        value={formData.plastic_type}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Plastic Type...' },
+                          ...PLASTIC_TYPES.map(p => ({ value: p, label: p }))
+                        ]}
+                        placeholder="Select Plastic Type..."
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 650 }}>Surface / Transparency</label>
+                      <CustomSelect
+                        name="plastic_finish"
+                        value={formData.plastic_finish}
+                        onChange={handleInputChange}
+                        options={[
+                          { value: '', label: 'Select Surface / Transparency...' },
+                          ...PLASTIC_FINISHES.map(s => ({ value: s, label: s }))
+                        ]}
+                        placeholder="Select Surface / Transparency..."
                       />
                     </div>
                   </>
@@ -1295,6 +1406,14 @@ function Finishing() {
           onDiscard={handleDiscardAndExit}
           onCancel={handleCancelExit}
         />
+
+        {/* Enlarged Finish Texture Inspector Modal */}
+        {enlargedFinish && (
+          <FinishImageModal
+            finish={enlargedFinish}
+            onClose={() => setEnlargedFinish(null)}
+          />
+        )}
       </div>
     );
   }
@@ -1626,7 +1745,7 @@ function Finishing() {
                     <FileSpreadsheet size={16} color="#8b5a2b" /> Import Excel
                   </button>
                   <button onClick={() => navigate('/finishing/new', { state: { category: activeTab } })} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderRadius: '10px', fontWeight: 700, backgroundColor: '#9a5323' }}>
-                    + Add New {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : `${activeCategory.shortLabel} Finish`}
+                    + Add New {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : activeCategory.shortLabel === 'Plastic' ? 'Plastic' : `${activeCategory.shortLabel} Finish`}
                   </button>
                 </>
               )}
@@ -1790,6 +1909,22 @@ function Finishing() {
                 style={{ minWidth: '160px' }}
               />
             )}
+            {activeTab === 'plastic' && (
+              <CustomSelect
+                value={filterSpecificType}
+                onChange={e => {
+                  const val = e.target ? e.target.value : e;
+                  setFilterSpecificType(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  { value: '', label: 'All Plastic Types' },
+                  ...PLASTIC_TYPES.map(p => ({ value: p, label: p }))
+                ]}
+                placeholder="All Plastic Types"
+                style={{ minWidth: '160px' }}
+              />
+            )}
 
             {(searchTerm || filterSpecificType) && (
               <button
@@ -1837,7 +1972,7 @@ function Finishing() {
           </p>
           {isAdmin && ordering !== 'draft' && (
             <button onClick={() => navigate('/finishing/new', { state: { category: activeTab } })} className="btn-primary" style={{ marginTop: '1.25rem', borderRadius: '10px', backgroundColor: '#9a5323' }}>
-              + Add First {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : `${activeCategory.shortLabel} Finish`}
+              + Add First {activeCategory.shortLabel === 'Fabric' ? 'Fabric' : activeCategory.shortLabel === 'Plastic' ? 'Plastic' : `${activeCategory.shortLabel} Finish`}
             </button>
           )}
         </div>
@@ -1909,29 +2044,48 @@ function Finishing() {
                   </div>
                 )}
                 {/* ── Left Swatch Image ── */}
-                <div className="finish-swatch-box" style={{
-                  width: '135px',
-                  height: '135px',
-                  borderRadius: '20px',
-                  backgroundColor: '#faf6f0',
-                  overflow: 'hidden',
-                  flexShrink: 0,
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
+                <div
+                  className={`finish-swatch-box ${imgSrc ? 'has-image' : ''}`}
+                  onClick={(e) => {
+                    if (imgSrc) {
+                      e.stopPropagation();
+                      setEnlargedFinish(finish);
+                    }
+                  }}
+                  title={imgSrc ? "Click to inspect & enlarge finish texture" : undefined}
+                  style={{
+                    width: '135px',
+                    height: '135px',
+                    borderRadius: '20px',
+                    backgroundColor: '#faf6f0',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #ebe5dc',
+                    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.04)'
+                  }}
+                >
                   {imgSrc ? (
-                    <img
-                      src={imgSrc}
-                      alt={finish.name}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        transition: 'transform 0.35s ease'
-                      }}
-                    />
+                    <>
+                      <img
+                        src={imgSrc}
+                        alt={finish.name}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
+                      />
+                      <div className="finish-swatch-overlay">
+                        <div className="finish-swatch-zoom-icon">
+                          <ZoomIn size={18} strokeWidth={2.4} />
+                        </div>
+                        <span className="finish-swatch-pill">Enlarge</span>
+                      </div>
+                    </>
                   ) : (
                     <div style={{ textAlign: 'center', color: itemCatObj.color || '#9a5323' }}>
                       <ItemCatIcon size={30} strokeWidth={1.5} />
@@ -2053,6 +2207,10 @@ function Finishing() {
                       label = 'Material & Pattern';
                       icon = <Scissors size={16} color="#7c3aed" />;
                       val = [finish.material_type, finish.pattern].filter(Boolean).join(' • ') || '—';
+                    } else if (cat === 'plastic') {
+                      label = 'Polymer & Finish';
+                      icon = <Layers size={16} color="#0284c7" />;
+                      val = [finish.plastic_type, finish.plastic_finish].filter(Boolean).join(' • ') || '—';
                     }
 
                     return (
@@ -2174,7 +2332,7 @@ function Finishing() {
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: '0.4rem' }}>
                 Target Category
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.45rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '0.45rem' }}>
                 {FINISH_CATEGORIES.map(c => {
                   const isTarget = importCategory === c.id;
                   const Icon = c.icon;
@@ -2345,6 +2503,24 @@ function Finishing() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Enlarged Finish Detail & Texture Inspector Modal ── */}
+      {enlargedFinish && (
+        <FinishImageModal
+          finish={enlargedFinish}
+          onClose={() => setEnlargedFinish(null)}
+          hasPrev={currentImgIndex > 0}
+          hasNext={currentImgIndex >= 0 && currentImgIndex < finishesWithImages.length - 1}
+          onPrev={() => currentImgIndex > 0 && setEnlargedFinish(finishesWithImages[currentImgIndex - 1])}
+          onNext={() => currentImgIndex < finishesWithImages.length - 1 && setEnlargedFinish(finishesWithImages[currentImgIndex + 1])}
+          currentIndex={currentImgIndex !== -1 ? currentImgIndex : null}
+          totalCount={finishesWithImages.length > 0 ? finishesWithImages.length : null}
+          onViewDetails={enlargedFinish.id ? () => {
+            setEnlargedFinish(null);
+            navigate(`/finishing/${enlargedFinish.id}`);
+          } : null}
+        />
       )}
     </div>
   );

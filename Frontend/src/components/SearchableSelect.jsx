@@ -439,9 +439,13 @@ export function SearchableSelect({
                   const code = typeof opt === 'object' ? (opt[codeKey] || opt.item_code || opt.sample_id || opt.style_no || opt.code || '') : '';
                   const title = typeof opt === 'object' ? (opt[titleKey] || opt.item_name || opt.product_name || opt.name || opt.label || opt.full_name || opt.username || '') : String(opt);
                   const unit = typeof opt === 'object' ? (opt.unit || '') : '';
-                  const stockQty = typeof opt === 'object' 
-                    ? (opt.unit_balance_stock_qty !== undefined ? opt.unit_balance_stock_qty : (opt.balance_stock_qty !== undefined ? opt.balance_stock_qty : (opt.balance_qty !== undefined ? opt.balance_qty : null))) 
+                  const unitStock = typeof opt === 'object' && opt.unit_balance_stock_qty !== undefined && opt.unit_balance_stock_qty !== null
+                    ? opt.unit_balance_stock_qty
                     : null;
+                  const totalStock = typeof opt === 'object' && opt.balance_stock_qty !== undefined && opt.balance_stock_qty !== null
+                    ? opt.balance_stock_qty
+                    : (typeof opt === 'object' && opt.balance_qty !== undefined ? opt.balance_qty : null);
+                  const stockQty = unitStock !== null ? unitStock : totalStock;
 
                   return (
                     <div
@@ -479,13 +483,22 @@ export function SearchableSelect({
                             </span>
                           </div>
                           {(unit || (stockQty !== null && stockQty !== undefined)) && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b', marginTop: '2px', flexWrap: 'wrap' }}>
                               {unit && <span>Unit: <strong>{unit}</strong></span>}
-                              {stockQty !== null && stockQty !== undefined && (
+                              {unitStock !== null && totalStock !== null && parseFloat(unitStock) !== parseFloat(totalStock) ? (
+                                <span style={{ fontSize: '0.75rem' }}>
+                                  <strong style={{ color: parseFloat(unitStock) <= 0 ? '#dc2626' : '#16a34a' }}>
+                                    Unit Stock: {unitStock} {unit}
+                                  </strong>
+                                  <span style={{ color: '#64748b', fontWeight: 600, marginLeft: '5px' }}>
+                                    (Total: {totalStock} {unit})
+                                  </span>
+                                </span>
+                              ) : (stockQty !== null && stockQty !== undefined) ? (
                                 <span style={{ color: parseFloat(stockQty) <= 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
                                   Stock: {stockQty} {unit}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
                           )}
                         </div>

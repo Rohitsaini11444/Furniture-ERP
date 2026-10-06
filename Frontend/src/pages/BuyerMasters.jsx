@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2, FileEdit } from 'lucide-react';
+import { X, Search, ArrowLeft, ChevronRight, ChevronLeft, Download, ImageIcon, Package, FolderTree, FileSpreadsheet, AlertCircle, CheckCircle, Layers, FileText, Eye, Trash2, FileEdit, Palette, Shield, Gem, Scissors } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import SearchableSelect from '../components/SearchableSelect';
@@ -14,7 +14,32 @@ import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import UnsavedChangesModal from '../components/UnsavedChangesModal';
 import { useDrafts } from '../context/DraftsContext';
 
+// ─── Finish Categories Configuration for Buyer Masters ────────────────────────
+const FINISH_CATEGORIES_CONFIG = {
+  wood: { id: 'wood', label: 'Wood Finish', shortLabel: 'Wood', icon: Palette, color: '#9a5323', bg: '#fff2e2', border: '#e6ded3', placeholder: '-- Select Wood Finish --' },
+  metal: { id: 'metal', label: 'Metal Finish', shortLabel: 'Metal', icon: Shield, color: '#334155', bg: '#f1f5f9', border: '#cbd5e1', placeholder: '-- Select Metal Finish --' },
+  marble: { id: 'marble', label: 'Marble Finish', shortLabel: 'Marble', icon: Gem, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', placeholder: '-- Select Marble Finish --' },
+  fabric: { id: 'fabric', label: 'Fabric Type', shortLabel: 'Fabric', icon: Scissors, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', placeholder: '-- Select Fabric Type --' },
+  plastic: { id: 'plastic', label: 'Plastic Type', shortLabel: 'Plastic', icon: Layers, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', placeholder: '-- Select Plastic Type --' },
+};
 
+const detectFinishCategory = (finishName, options = []) => {
+  if (!finishName) return 'wood';
+  const trimmed = String(finishName).trim();
+  const match = options.find(o => 
+    (o.name && o.name.toLowerCase() === trimmed.toLowerCase()) || 
+    o.id === trimmed || 
+    (o.finish_code && o.finish_code.toLowerCase() === trimmed.toLowerCase())
+  );
+  if (match && match.category) return match.category;
+  
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('iron') || lower.includes('steel') || lower.includes('brass') || lower.includes('metal') || lower.includes('copper') || lower.includes('coating') || lower.includes('powder') || lower.includes('black')) return 'metal';
+  if (lower.includes('marble') || lower.includes('stone') || lower.includes('granite') || lower.includes('travertine') || lower.includes('carrara')) return 'marble';
+  if (lower.includes('fabric') || lower.includes('velvet') || lower.includes('linen') || lower.includes('cotton') || lower.includes('leatherette') || lower.includes('boucle') || lower.includes('chenille')) return 'fabric';
+  if (lower.includes('plastic') || lower.includes('poly') || lower.includes('acrylic') || lower.includes('abs') || lower.includes('pvc') || lower.includes('hdpe') || lower.includes('nylon')) return 'plastic';
+  return 'wood';
+};
 
 function SizeGroup({ label, prefix, values, onChange, errors = {} }) {
   return (
@@ -160,6 +185,29 @@ const validateBuyerMaster = (data) => {
   validateDecimal(data.box_breadth, 'box_breadth', 'Box Breadth', 8, 2, 10);
   validateDecimal(data.box_height, 'box_height', 'Box Height', 8, 2, 10);
 
+  // FOB CITY (Price per Unit) (max 10 whole, 2 decimals, max 12 total)
+  validateDecimal(data.fob_city, 'fob_city', 'FOB CITY', 10, 2, 12);
+
+  // CTN (Units per Box)
+  if (data.ctn !== '' && data.ctn !== null && data.ctn !== undefined) {
+    const cNum = Number(data.ctn);
+    if (isNaN(cNum) || !Number.isInteger(cNum)) {
+      errs.ctn = 'CTN (Units per Box) must be a valid whole number.';
+    } else if (cNum < 0) {
+      errs.ctn = 'CTN cannot be negative.';
+    }
+  }
+
+  // Leg Color
+  if (data.leg_color && String(data.leg_color).length > 150) {
+    errs.leg_color = 'Leg color cannot exceed 150 characters.';
+  }
+
+  // Table top colour
+  if (data.table_top_color && String(data.table_top_color).length > 150) {
+    errs.table_top_color = 'Table top colour cannot exceed 150 characters.';
+  }
+
   return errs;
 };
 
@@ -214,19 +262,26 @@ function BuyerMasters() {
 
   const { lastVisitedId, setHighlightRef } = useLastVisitedItem('buyer_masters', id || paramBuyerId, currentPage);
 
-  const handleDownloadExcel = (withDetails = false) => {
+  const handleDownloadExcel = (exportType = 'standard') => {
     if (!exportBuyerId) return;
     const selectedBuyer = buyers.find(b => b.id === exportBuyerId);
     if (!selectedBuyer) return;
 
     setShowExportOptions(false);
+    const withDetails = exportType === 'detailed' || exportType === true;
+    const isSwatchSpec = exportType === 'swatch_spec';
+    const query = isSwatchSpec
+      ? `buyer=${exportBuyerId}&export_type=swatch_spec`
+      : `buyer=${exportBuyerId}&with_details=${withDetails}&export_type=${withDetails ? 'detailed' : 'standard'}`;
 
-    api.get(`/buyer-masters/export-excel/?buyer=${exportBuyerId}&with_details=${withDetails}`, { responseType: 'blob' })
+    api.get(`/buyer-masters/export-excel/?${query}`, { responseType: 'blob' })
       .then(res => {
         const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `${selectedBuyer.code || selectedBuyer.name}_Buyer_Master.xlsx`);
+        const safeName = (selectedBuyer.code || selectedBuyer.name || 'Buyer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const fileSuffix = isSwatchSpec ? 'Specification_Sheet' : (withDetails ? 'Detailed' : 'Standard');
+        link.setAttribute('download', `${safeName}_Buyer_Master_${fileSuffix}.xlsx`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -244,13 +299,23 @@ function BuyerMasters() {
     style_no: '',
     buyer_code: '',
     product_name: '',
+    description: '',
     wood_type: '',
     finish_color: '',
+    wood_finish: '',
+    metal_finish: '',
+    marble_finish: '',
+    fabric_type: '',
+    plastic_type: '',
+    leg_color: '',
+    table_top_color: '',
     size_length: '',
     size_breadth: '',
     size_height: '',
     price_usd: '',
+    fob_city: '',
     units: 1,
+    ctn: '',
     cbm: '',
     total_cbm: '',
     total_amount: '',
@@ -444,7 +509,9 @@ function BuyerMasters() {
   }, [debouncedSearch, ordering]);
 
   const [materialsList, setMaterialsList] = useState(['']);
-  const [finishesList, setFinishesList] = useState(['']);
+  const [finishesList, setFinishesList] = useState([
+    { id: 'bm-init-1', category: 'wood', value: '' }
+  ]);
   const [formError, setFormError] = useState('');
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -493,6 +560,61 @@ function BuyerMasters() {
     onSaveForm: null, // No single submit; user must save manually
   });
 
+  const reconstructFinishesList = (item) => {
+    if (!item) return [{ id: 'bm-init-1', category: 'wood', value: '' }];
+    const items = [];
+    if (item.wood_finish) {
+      parseSlashList(item.wood_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'wood', value: v }));
+    }
+    if (item.metal_finish) {
+      parseSlashList(item.metal_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'metal', value: v }));
+    }
+    if (item.marble_finish) {
+      parseSlashList(item.marble_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'marble', value: v }));
+    }
+    if (item.fabric_type) {
+      parseSlashList(item.fabric_type).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'fabric', value: v }));
+    }
+    if (item.plastic_type) {
+      parseSlashList(item.plastic_type).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'plastic', value: v }));
+    }
+    if (items.length === 0 && item.finish_color) {
+      parseSlashList(item.finish_color).forEach(fin => {
+        if (fin) {
+          const cat = detectFinishCategory(fin, finishesOptions);
+          items.push({ id: Math.random().toString(36).slice(2, 9), category: cat, value: fin });
+        }
+      });
+    }
+    return items.length > 0 ? items : [{ id: 'bm-init-1', category: 'wood', value: '' }];
+  };
+
+  const getOptionsForCategory = (catKey) => {
+    const catConfig = FINISH_CATEGORIES_CONFIG[catKey] || FINISH_CATEGORIES_CONFIG.wood;
+    const opts = [
+      { value: '', label: `-- Select ${catConfig.label} from Catalog --` }
+    ];
+    const filtered = finishesOptions.filter(f => (f.category || 'wood') === catKey);
+    filtered.forEach(f => {
+      const codeStr = f.finish_code ? `[${f.finish_code}] ` : '';
+      let detailAttr = f.wood_type;
+      if (catKey === 'metal') detailAttr = [f.metal_type, f.coating_type].filter(Boolean).join(' · ');
+      else if (catKey === 'marble') detailAttr = [f.marble_type, f.surface_treatment].filter(Boolean).join(' · ');
+      else if (catKey === 'fabric') detailAttr = [f.material_type, f.pattern].filter(Boolean).join(' · ');
+      else if (catKey === 'plastic') detailAttr = [f.plastic_type, f.plastic_finish].filter(Boolean).join(' · ');
+
+      const subStr = [f.color, detailAttr].filter(Boolean).join(' · ');
+      opts.push({
+        value: f.name,
+        label: `${codeStr}${f.name}${subStr ? ` (${subStr})` : ''}`,
+        badge: f.finish_code || null,
+        sublabel: subStr || null,
+        finishId: f.id,
+      });
+    });
+    return opts;
+  };
+
   // Build an empty style form data for a given sample
   const buildStyleFromSample = (sampleId, buyerId) => {
     const s = samples.find(x => x.id === sampleId);
@@ -509,14 +631,24 @@ function BuyerMasters() {
         style_no: s.style_no || '',
         buyer_code: s.buyer_detail?.code || buyer?.code || '',
         product_name: s.product_name || '',
+        description: s.description || '',
         wood_type: s.material || '',
         finish_color: s.finish_color || '',
+        wood_finish: s.wood_finish || '',
+        metal_finish: s.metal_finish || '',
+        marble_finish: s.marble_finish || '',
+        fabric_type: s.fabric_type || '',
+        plastic_type: s.plastic_type || '',
+        leg_color: '',
+        table_top_color: '',
         size_length: s.size_length || '',
         size_breadth: s.size_breadth || '',
         size_height: s.size_height || '',
         cbm: s.cbm || '',
         price_usd: s.usd || '',
+        fob_city: '',
         units: unitsVal,
+        ctn: '',
         total_cbm: (cbmVal && unitsVal) ? (cbmVal * unitsVal).toFixed(4) : '',
         total_amount: (priceVal && unitsVal) ? (priceVal * unitsVal).toFixed(2) : '',
         remark: s.remark || '',
@@ -530,10 +662,9 @@ function BuyerMasters() {
         box_length: '',
         box_breadth: '',
         box_height: '',
-        total_cbm: '',
       },
       materialsList: parseSlashList(s.material),
-      finishesList: parseSlashList(s.finish_color),
+      finishesList: reconstructFinishesList(s),
       showMoreDetails: false,
       status: 'unsaved', // 'unsaved' | 'saving' | 'saved' | 'error'
       packagingFile: null,
@@ -675,13 +806,23 @@ function BuyerMasters() {
 
 
     const woodTypeJoined = item.materialsList.map(m => m.trim()).filter(Boolean).join('/');
-    const finishJoined = item.finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+    const woodJoined = (item.finishesList || []).filter(f => (typeof f === 'object' ? f.category === 'wood' : true)).map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
+    const metalJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'metal')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const marbleJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'marble')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const fabricJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'fabric')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const plasticJoined = (item.finishesList || []).filter(f => (typeof f === 'object' && f.category === 'plastic')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const finishJoined = (item.finishesList || []).map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
 
     const fd = new FormData();
     Object.keys(item.formData).forEach(key => {
       let val = item.formData[key];
       if (key === 'wood_type') val = woodTypeJoined;
       if (key === 'finish_color') val = finishJoined;
+      if (key === 'wood_finish') val = woodJoined;
+      if (key === 'metal_finish') val = metalJoined;
+      if (key === 'marble_finish') val = marbleJoined;
+      if (key === 'fabric_type') val = fabricJoined;
+      if (key === 'plastic_type') val = plasticJoined;
       if (val === null || val === undefined) val = '';
       if (key === 'sample' && !val) return;
       fd.append(key, val);
@@ -777,13 +918,46 @@ function BuyerMasters() {
   const addMaterialField = () => setMaterialsList(prev => [...prev, '']);
   const removeMaterialField = (idx) => setMaterialsList(prev => prev.filter((_, i) => i !== idx));
 
-  const handleFinishItemChange = (idx, value) => {
+  const handleFinishCategoryChange = (idx, cat) => {
     const next = [...finishesList];
-    next[idx] = value;
+    next[idx] = { ...next[idx], category: cat, value: '' };
     setFinishesList(next);
   };
-  const addFinishField = () => setFinishesList(prev => [...prev, '']);
-  const removeFinishField = (idx) => setFinishesList(prev => prev.filter((_, i) => i !== idx));
+  const addFinishField = (category = 'wood') => setFinishesList(prev => [...prev, { id: Math.random().toString(36).slice(2, 9), category, value: '' }]);
+  const removeFinishField = (idx) => setFinishesList(prev => {
+    const filtered = prev.filter((_, i) => i !== idx);
+    return filtered.length > 0 ? filtered : [{ id: 'bm-init-1', category: 'wood', value: '' }];
+  });
+  const handleFinishItemChange = (idx, value) => {
+    const next = [...finishesList];
+    next[idx] = { ...next[idx], value };
+    setFinishesList(next);
+  };
+
+  // Active item finish handlers for queue / multi-style mode
+  const addActiveFinishField = (category = 'wood') => {
+    const next = [...(activeItem?.finishesList || [])];
+    next.push({ id: Math.random().toString(36).slice(2, 9), category, value: '' });
+    updateActiveFinishes(next);
+  };
+  const removeActiveFinishField = (idx) => {
+    const next = (activeItem?.finishesList || []).filter((_, i) => i !== idx);
+    updateActiveFinishes(next.length > 0 ? next : [{ id: 'bm-init-1', category: 'wood', value: '' }]);
+  };
+  const handleActiveFinishItemChange = (idx, value) => {
+    const next = [...(activeItem?.finishesList || [])];
+    if (next[idx]) {
+      next[idx] = { ...next[idx], value };
+      updateActiveFinishes(next);
+    }
+  };
+  const handleActiveFinishCategoryChange = (idx, category) => {
+    const next = [...(activeItem?.finishesList || [])];
+    if (next[idx]) {
+      next[idx] = { ...next[idx], category, value: '' };
+      updateActiveFinishes(next);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -867,8 +1041,14 @@ function BuyerMasters() {
         style_no: selectedSample.style_no || '',
         buyer_code: selectedSample.buyer_detail?.code || '',
         product_name: selectedSample.product_name || '',
+        description: selectedSample.description || '',
         wood_type: selectedSample.material || '',
         finish_color: selectedSample.finish_color || '',
+        wood_finish: selectedSample.wood_finish || '',
+        metal_finish: selectedSample.metal_finish || '',
+        marble_finish: selectedSample.marble_finish || '',
+        fabric_type: selectedSample.fabric_type || '',
+        plastic_type: selectedSample.plastic_type || '',
         size_length: selectedSample.size_length || '',
         size_breadth: selectedSample.size_breadth || '',
         size_height: selectedSample.size_height || '',
@@ -880,7 +1060,7 @@ function BuyerMasters() {
         remark: selectedSample.remark || ''
       }));
       setMaterialsList(parseSlashList(selectedSample.material));
-      setFinishesList(parseSlashList(selectedSample.finish_color));
+      setFinishesList(reconstructFinishesList(selectedSample));
     }
   };
 
@@ -974,14 +1154,24 @@ function BuyerMasters() {
                 style_no: s.style_no || '',
                 buyer_code: s.buyer_code || s.buyer_detail?.code || '',
                 product_name: s.product_name || '',
+                description: s.description || '',
                 wood_type: s.wood_type || '',
                 finish_color: s.finish_color || '',
+                wood_finish: s.wood_finish || '',
+                metal_finish: s.metal_finish || '',
+                marble_finish: s.marble_finish || '',
+                fabric_type: s.fabric_type || '',
+                plastic_type: s.plastic_type || '',
+                leg_color: s.leg_color || '',
+                table_top_color: s.table_top_color || '',
                 size_length: s.size_length || '',
                 size_breadth: s.size_breadth || '',
                 size_height: s.size_height || '',
                 cbm: s.cbm || '',
                 price_usd: s.price_usd || '',
+                fob_city: s.fob_city || '',
                 units: s.units !== undefined && s.units !== null ? s.units : 1,
+                ctn: s.ctn || '',
                 total_cbm: s.total_cbm || '',
                 total_amount: s.total_amount || '',
                 remark: s.remark || '',
@@ -997,7 +1187,7 @@ function BuyerMasters() {
                 box_height: s.box_height || '',
               },
               materialsList: parseSlashList(s.wood_type),
-              finishesList: parseSlashList(s.finish_color),
+              finishesList: reconstructFinishesList(s),
               showMoreDetails: !!(s.vendor_details || s.vendor_price || s.costing || s.purchase_price || s.cbm || s.net_weight || s.gross_weight || s.box_size || s.packaging_image || (s.finishing_images && s.finishing_images.length > 0)),
               status: 'saved',
               packagingFile: null,
@@ -1026,14 +1216,24 @@ function BuyerMasters() {
                     style_no: bm.style_no || '',
                     buyer_code: bm.buyer_code || '',
                     product_name: bm.product_name || '',
+                    description: bm.description || '',
                     wood_type: bm.wood_type || '',
                     finish_color: bm.finish_color || '',
+                    wood_finish: bm.wood_finish || '',
+                    metal_finish: bm.metal_finish || '',
+                    marble_finish: bm.marble_finish || '',
+                    fabric_type: bm.fabric_type || '',
+                    plastic_type: bm.plastic_type || '',
+                    leg_color: bm.leg_color || '',
+                    table_top_color: bm.table_top_color || '',
                     size_length: bm.size_length || '',
                     size_breadth: bm.size_breadth || '',
                     size_height: bm.size_height || '',
                     cbm: bm.cbm || '',
                     price_usd: bm.price_usd || '',
+                    fob_city: bm.fob_city || '',
                     units: bm.units !== undefined && bm.units !== null ? bm.units : 1,
+                    ctn: bm.ctn || '',
                     total_cbm: bm.total_cbm || '',
                     total_amount: bm.total_amount || '',
                     remark: bm.remark || '',
@@ -1049,7 +1249,7 @@ function BuyerMasters() {
                     box_height: bm.box_height || '',
                   },
                   materialsList: parseSlashList(bm.wood_type),
-                  finishesList: parseSlashList(bm.finish_color),
+                  finishesList: reconstructFinishesList(bm),
                   showMoreDetails: false,
                   status: 'saved',
                   packagingFile: null,
@@ -1171,14 +1371,21 @@ function BuyerMasters() {
     }
   };
 
-  const handleRowDownloadExcel = (buyerId, buyerName, withDetails = false) => {
-    api.get(`/buyer-masters/export-excel/?buyer=${buyerId}&with_details=${withDetails}`, { responseType: 'blob' })
+  const handleRowDownloadExcel = (buyerId, buyerName, exportType = 'standard') => {
+    const withDetails = exportType === 'detailed' || exportType === true;
+    const isSwatchSpec = exportType === 'swatch_spec';
+    const query = isSwatchSpec
+      ? `buyer=${buyerId}&export_type=swatch_spec`
+      : `buyer=${buyerId}&with_details=${withDetails}&export_type=${withDetails ? 'detailed' : 'standard'}`;
+
+    api.get(`/buyer-masters/export-excel/?${query}`, { responseType: 'blob' })
       .then(res => {
         const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
         const link = document.createElement('a');
         link.href = url;
         const safeName = (buyerName || 'Buyer').replace(/[^a-zA-Z0-9_-]/g, '_');
-        link.setAttribute('download', `${safeName}_Buyer_Master_${withDetails ? 'Detailed' : 'Standard'}.xlsx`);
+        const fileSuffix = isSwatchSpec ? 'Specification_Sheet' : (withDetails ? 'Detailed' : 'Standard');
+        link.setAttribute('download', `${safeName}_Buyer_Master_${fileSuffix}.xlsx`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -1312,13 +1519,23 @@ function BuyerMasters() {
     setErrors({});
 
     const woodTypeJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
-    const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+    const woodJoined = finishesList.filter(f => (typeof f === 'object' ? f.category === 'wood' : true)).map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
+    const metalJoined = finishesList.filter(f => (typeof f === 'object' && f.category === 'metal')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const marbleJoined = finishesList.filter(f => (typeof f === 'object' && f.category === 'marble')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const fabricJoined = finishesList.filter(f => (typeof f === 'object' && f.category === 'fabric')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const plasticJoined = finishesList.filter(f => (typeof f === 'object' && f.category === 'plastic')).map(f => f.value?.trim()).filter(Boolean).join(' / ');
+    const finishJoined = finishesList.map(f => (typeof f === 'object' ? f.value : f)?.trim()).filter(Boolean).join(' / ');
     
     const formDataPayload = new FormData();
     Object.keys(formData).forEach(key => {
       let val = formData[key];
       if (key === 'wood_type') val = woodTypeJoined;
       if (key === 'finish_color') val = finishJoined;
+      if (key === 'wood_finish') val = woodJoined;
+      if (key === 'metal_finish') val = metalJoined;
+      if (key === 'marble_finish') val = marbleJoined;
+      if (key === 'fabric_type') val = fabricJoined;
+      if (key === 'plastic_type') val = plasticJoined;
       if (val === null || val === undefined) val = '';
       if (key === 'sample' && !val) return; // Skip empty foreign keys
       formDataPayload.append(key, val);
@@ -1542,6 +1759,20 @@ function BuyerMasters() {
                           </div>
                         )}
                       </div>
+
+                      {/* Product Description */}
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label className="form-label" style={{ fontWeight: 600 }}>Product Description</label>
+                        <textarea
+                          name="description"
+                          className="form-input"
+                          rows="2"
+                          value={formData.description || ''}
+                          onChange={handleChange}
+                          placeholder="Detailed product description, design characteristics, joinery notes..."
+                        />
+                      </div>
+
                       <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                           <label className="form-label" style={{ marginBottom: 0, fontWeight: 600 }}>Material(s) / Wood Type *</label>
@@ -1558,13 +1789,256 @@ function BuyerMasters() {
                           ))}
                         </div>
                       </div>
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label className="form-label">Finish (Catalog Reference)</label>
-                        <CustomSelect name="finish_color" value={formData.finish_color || ''} onChange={handleChange}
-                          options={[{ value: '', label: 'Select Registered Finish...' }, ...finishesOptions.map(f => ({ value: f.name, label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})` }))]}
-                          placeholder="Select Registered Finish..." />
+
+                      {/* Categorized Finishes & Coatings */}
+                      <div className="form-group" style={{
+                        gridColumn: '1 / -1',
+                        padding: '1rem 1.15rem',
+                        borderRadius: '10px',
+                        border: '1px solid #e5e7eb',
+                        backgroundColor: '#fafaf9'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <label className="form-label" style={{ marginBottom: 0, fontWeight: 700, color: '#334155' }}>
+                              Finishes & Coatings Catalog
+                            </label>
+                            <a
+                              href="/finishing"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: '0.73rem',
+                                color: '#8b5a2b',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontWeight: 600,
+                                backgroundColor: '#fdf8f5',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #ebd8c8'
+                              }}
+                              title="Open Finish Section in new tab to add or manage finishes"
+                            >
+                              <span>Finishing Section ↗</span>
+                            </a>
+                          </div>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                            Add categorized finishes for this style:
+                          </span>
+                        </div>
+
+                        {/* Add Finish Category Buttons Bar */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          flexWrap: 'wrap',
+                          padding: '0.55rem 0.65rem',
+                          backgroundColor: '#ffffff',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          marginBottom: '0.85rem'
+                        }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 750, color: '#64748b', marginRight: '3px' }}>
+                            + Add:
+                          </span>
+                          {Object.values(FINISH_CATEGORIES_CONFIG).map(cat => {
+                            const Icon = cat.icon;
+                            return (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => addFinishField(cat.id)}
+                                style={{
+                                  padding: '4px 9px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  borderRadius: '6px',
+                                  border: `1px solid ${cat.border}`,
+                                  backgroundColor: cat.bg,
+                                  color: cat.color,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.96)'}
+                                onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                                title={`Add ${cat.label} field`}
+                              >
+                                <Icon size={13} />
+                                <span>+ {cat.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Finishes Input List */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                          {finishesList.map((finItem, idx) => {
+                            const currentVal = typeof finItem === 'string' ? finItem : (finItem?.value || '');
+                            const currentCat = typeof finItem === 'string' ? detectFinishCategory(currentVal, finishesOptions) : (finItem?.category || 'wood');
+                            const catConfig = FINISH_CATEGORIES_CONFIG[currentCat] || FINISH_CATEGORIES_CONFIG.wood;
+                            const CatIcon = catConfig.icon;
+
+                            const catOptions = getOptionsForCategory(currentCat);
+                            const isCustomOrLegacy = currentVal && !finishesOptions.some(f => f.name === currentVal || f.id === currentVal);
+                            const optionsForField = isCustomOrLegacy
+                              ? [
+                                  catOptions[0],
+                                  { value: currentVal, label: `${currentVal} (Unregistered / Custom)`, badge: 'Custom' },
+                                  ...catOptions.slice(1)
+                                ]
+                              : catOptions;
+
+                            return (
+                              <div
+                                key={finItem?.id || idx}
+                                style={{
+                                  display: 'flex',
+                                  gap: '0.5rem',
+                                  alignItems: 'center',
+                                  backgroundColor: '#ffffff',
+                                  padding: '6px 8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #e5e7eb'
+                                }}
+                              >
+                                {/* Category Badge & Switcher */}
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                  <select
+                                    value={currentCat}
+                                    onChange={e => handleFinishCategoryChange(idx, e.target.value)}
+                                    style={{
+                                      appearance: 'none',
+                                      WebkitAppearance: 'none',
+                                      padding: '5px 22px 5px 22px',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 750,
+                                      borderRadius: '6px',
+                                      border: `1.5px solid ${catConfig.border}`,
+                                      backgroundColor: catConfig.bg,
+                                      color: catConfig.color,
+                                      cursor: 'pointer',
+                                      outline: 'none',
+                                      lineHeight: 1.2
+                                    }}
+                                    title="Click to switch finish category"
+                                  >
+                                    {Object.values(FINISH_CATEGORIES_CONFIG).map(c => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.shortLabel}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span style={{
+                                    position: 'absolute',
+                                    left: '6px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    pointerEvents: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: catConfig.color
+                                  }}>
+                                    <CatIcon size={12} />
+                                  </span>
+                                  <span style={{
+                                    position: 'absolute',
+                                    right: '6px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    pointerEvents: 'none',
+                                    fontSize: '0.62rem',
+                                    color: catConfig.color
+                                  }}>
+                                    ▼
+                                  </span>
+                                </div>
+
+                                {/* Catalog Dropdown */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <CustomSelect
+                                    value={currentVal}
+                                    onChange={(e, val) => handleFinishItemChange(idx, val !== undefined ? val : (e?.target ? e.target.value : e))}
+                                    options={optionsForField}
+                                    placeholder={catConfig.placeholder}
+                                    searchable={true}
+                                    searchPlaceholder={`Search ${catConfig.label.toLowerCase()}...`}
+                                  />
+                                </div>
+
+                                {/* Remove button */}
+                                {finishesList.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeFinishField(idx)}
+                                    style={{
+                                      background: '#fee2e2',
+                                      border: '1px solid #fecaca',
+                                      color: '#dc2626',
+                                      cursor: 'pointer',
+                                      padding: '5px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '6px',
+                                      flexShrink: 0
+                                    }}
+                                    title={`Remove this ${catConfig.label}`}
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+
+                      {/* Leg Color & Table Top Colour */}
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 600 }}>Leg Color</label>
+                        <input
+                          type="text"
+                          name="leg_color"
+                          maxLength={150}
+                          className="form-input"
+                          value={formData.leg_color || ''}
+                          onChange={handleChange}
+                          placeholder="e.g. Matt Black, Brass Gold..."
+                        />
+                        {errors.leg_color && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.leg_color}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 600 }}>Table Top Colour</label>
+                        <input
+                          type="text"
+                          name="table_top_color"
+                          maxLength={150}
+                          className="form-input"
+                          value={formData.table_top_color || ''}
+                          onChange={handleChange}
+                          placeholder="e.g. Natural Teak, Walnut, White Carrara..."
+                        />
+                        {errors.table_top_color && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                            <span>{errors.table_top_color}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
                         <div className="form-group">
                           <label className="form-label" style={{ fontWeight: 600 }}>Price (USD)</label>
                           <input
@@ -1592,6 +2066,30 @@ function BuyerMasters() {
                           )}
                         </div>
                         <div className="form-group">
+                          <label className="form-label" style={{ fontWeight: 600 }}>FOB CITY (Price per Unit)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="9999999999.99"
+                            name="fob_city"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.fob_city ? '#dc2626' : undefined,
+                              backgroundColor: errors.fob_city ? '#fff5f5' : undefined
+                            }}
+                            value={formData.fob_city || ''}
+                            onChange={handleChange}
+                            placeholder="e.g. 155.00"
+                          />
+                          {errors.fob_city && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.fob_city}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group">
                           <label className="form-label" style={{ fontWeight: 600 }}>Units</label>
                           <input
                             type="number"
@@ -1613,29 +2111,29 @@ function BuyerMasters() {
                             </div>
                           )}
                         </div>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          name="total_amount"
-                          className="form-input"
-                          style={{
-                            borderColor: errors.total_amount ? '#dc2626' : undefined,
-                            backgroundColor: errors.total_amount ? '#fff5f5' : undefined
-                          }}
-                          value={formData.total_amount}
-                          onChange={handleChange}
-                          placeholder="Auto calculated"
-                        />
-                        {errors.total_amount && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
-                            <AlertCircle size={13} style={{ flexShrink: 0 }} />
-                            <span>{errors.total_amount}</span>
-                          </div>
-                        )}
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="total_amount"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.total_amount ? '#dc2626' : undefined,
+                              backgroundColor: errors.total_amount ? '#fff5f5' : undefined
+                            }}
+                            value={formData.total_amount}
+                            onChange={handleChange}
+                            placeholder="Auto calculated"
+                          />
+                          {errors.total_amount && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.total_amount}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                         <label className="form-label">Remark</label>
@@ -1823,9 +2321,32 @@ function BuyerMasters() {
                         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                           <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={formData} onChange={handleDimChange} errors={errors} />
                         </div>
-                        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <div className="form-group">
                           <label className="form-label">Box Size Summary</label>
                           <input type="text" name="box_size" className="form-input" value={formData.box_size} onChange={handleChange} placeholder="e.g. 100 x 50 x 50 cm" />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontWeight: 600 }}>CTN (Units per Box)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            name="ctn"
+                            className="form-input"
+                            style={{
+                              borderColor: errors.ctn ? '#dc2626' : undefined,
+                              backgroundColor: errors.ctn ? '#fff5f5' : undefined
+                            }}
+                            value={formData.ctn || ''}
+                            onChange={handleChange}
+                            placeholder="e.g. 1 or 2"
+                          />
+                          {errors.ctn && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                              <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                              <span>{errors.ctn}</span>
+                            </div>
+                          )}
                         </div>
                         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
@@ -2185,6 +2706,18 @@ function BuyerMasters() {
                               )}
                             </div>
 
+                            {/* Product Description */}
+                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                              <label className="form-label" style={{ fontWeight: 600 }}>Product Description</label>
+                              <textarea
+                                className="form-input"
+                                rows="2"
+                                value={activeItem.formData.description || ''}
+                                onChange={e => updateActiveField('description', e.target.value)}
+                                placeholder="Detailed product description, design characteristics, joinery notes..."
+                              />
+                            </div>
+
                             {/* Materials */}
                             <div className="form-group" style={{ gridColumn: '1 / -1', background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -2206,15 +2739,241 @@ function BuyerMasters() {
                               </div>
                             </div>
 
-                            {/* Finish */}
-                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                              <label className="form-label">Finish (Catalog Reference)</label>
-                              <CustomSelect name="finish_color" value={activeItem.formData.finish_color || ''} onChange={e => updateActiveField('finish_color', e.target.value)}
-                                options={[{ value: '', label: 'Select Registered Finish...' }, ...finishesOptions.map(f => ({ value: f.name, label: `${f.finish_code ? `[${f.finish_code}] ` : ''}${f.name} (${f.color || f.wood_type || 'Catalog'})` }))]}
-                                placeholder="Select Registered Finish..." />
+                            {/* Categorized Finishes & Coatings */}
+                            <div className="form-group" style={{
+                              gridColumn: '1 / -1',
+                              padding: '1rem 1.15rem',
+                              borderRadius: '10px',
+                              border: '1px solid #e5e7eb',
+                              backgroundColor: '#fafaf9'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <label className="form-label" style={{ marginBottom: 0, fontWeight: 700, color: '#334155' }}>
+                                    Finishes & Coatings Catalog
+                                  </label>
+                                  <a
+                                    href="/finishing"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      fontSize: '0.73rem',
+                                      color: '#8b5a2b',
+                                      textDecoration: 'none',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      fontWeight: 600,
+                                      backgroundColor: '#fdf8f5',
+                                      padding: '2px 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #ebd8c8'
+                                    }}
+                                    title="Open Finish Section in new tab to add or manage finishes"
+                                  >
+                                    <span>Finishing Section ↗</span>
+                                  </a>
+                                </div>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                  Add categorized finishes for this style:
+                                </span>
+                              </div>
+
+                              {/* Add Finish Category Buttons Bar */}
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                flexWrap: 'wrap',
+                                padding: '0.55rem 0.65rem',
+                                backgroundColor: '#ffffff',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                marginBottom: '0.85rem'
+                              }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 750, color: '#64748b', marginRight: '3px' }}>
+                                  + Add:
+                                </span>
+                                {Object.values(FINISH_CATEGORIES_CONFIG).map(cat => {
+                                  const Icon = cat.icon;
+                                  return (
+                                    <button
+                                      key={cat.id}
+                                      type="button"
+                                      onClick={() => addActiveFinishField(cat.id)}
+                                      style={{
+                                        padding: '4px 9px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        borderRadius: '6px',
+                                        border: `1px solid ${cat.border}`,
+                                        backgroundColor: cat.bg,
+                                        color: cat.color,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.96)'}
+                                      onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                                      title={`Add ${cat.label} field`}
+                                    >
+                                      <Icon size={13} />
+                                      <span>+ {cat.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Finishes Input List */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                                {(activeItem.finishesList || []).map((finItem, idx) => {
+                                  const currentVal = typeof finItem === 'string' ? finItem : (finItem?.value || '');
+                                  const currentCat = typeof finItem === 'string' ? detectFinishCategory(currentVal, finishesOptions) : (finItem?.category || 'wood');
+                                  const catConfig = FINISH_CATEGORIES_CONFIG[currentCat] || FINISH_CATEGORIES_CONFIG.wood;
+                                  const CatIcon = catConfig.icon;
+
+                                  const catOptions = getOptionsForCategory(currentCat);
+                                  const isCustomOrLegacy = currentVal && !finishesOptions.some(f => f.name === currentVal || f.id === currentVal);
+                                  const optionsForField = isCustomOrLegacy
+                                    ? [
+                                        catOptions[0],
+                                        { value: currentVal, label: `${currentVal} (Unregistered / Custom)`, badge: 'Custom' },
+                                        ...catOptions.slice(1)
+                                      ]
+                                    : catOptions;
+
+                                  return (
+                                    <div
+                                      key={finItem?.id || idx}
+                                      style={{
+                                        display: 'flex',
+                                        gap: '0.5rem',
+                                        alignItems: 'center',
+                                        backgroundColor: '#ffffff',
+                                        padding: '6px 8px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #e5e7eb'
+                                      }}
+                                    >
+                                      {/* Category Badge & Switcher */}
+                                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                                        <select
+                                          value={currentCat}
+                                          onChange={e => handleActiveFinishCategoryChange(idx, e.target.value)}
+                                          style={{
+                                            appearance: 'none',
+                                            WebkitAppearance: 'none',
+                                            padding: '5px 22px 5px 22px',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 750,
+                                            borderRadius: '6px',
+                                            border: `1.5px solid ${catConfig.border}`,
+                                            backgroundColor: catConfig.bg,
+                                            color: catConfig.color,
+                                            cursor: 'pointer',
+                                            outline: 'none',
+                                            lineHeight: 1.2
+                                          }}
+                                          title="Click to switch finish category"
+                                        >
+                                          {Object.values(FINISH_CATEGORIES_CONFIG).map(c => (
+                                            <option key={c.id} value={c.id}>
+                                              {c.shortLabel}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <span style={{
+                                          position: 'absolute',
+                                          left: '6px',
+                                          top: '50%',
+                                          transform: 'translateY(-50%)',
+                                          pointerEvents: 'none',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          color: catConfig.color
+                                        }}>
+                                          <CatIcon size={12} />
+                                        </span>
+                                        <span style={{
+                                          position: 'absolute',
+                                          right: '6px',
+                                          top: '50%',
+                                          transform: 'translateY(-50%)',
+                                          pointerEvents: 'none',
+                                          fontSize: '0.62rem',
+                                          color: catConfig.color
+                                        }}>
+                                          ▼
+                                        </span>
+                                      </div>
+
+                                      {/* Catalog Dropdown */}
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <CustomSelect
+                                          value={currentVal}
+                                          onChange={(e, val) => handleActiveFinishItemChange(idx, val !== undefined ? val : (e?.target ? e.target.value : e))}
+                                          options={optionsForField}
+                                          placeholder={catConfig.placeholder}
+                                          searchable={true}
+                                          searchPlaceholder={`Search ${catConfig.label.toLowerCase()}...`}
+                                        />
+                                      </div>
+
+                                      {/* Remove button */}
+                                      {(activeItem.finishesList || []).length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeActiveFinishField(idx)}
+                                          style={{
+                                            background: '#fee2e2',
+                                            border: '1px solid #fecaca',
+                                            color: '#dc2626',
+                                            cursor: 'pointer',
+                                            padding: '5px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            borderRadius: '6px',
+                                            flexShrink: 0
+                                          }}
+                                          title={`Remove this ${catConfig.label}`}
+                                        >
+                                          <X size={16} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
 
-                            <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            {/* Leg Color & Table Top Colour */}
+                            <div className="form-group">
+                              <label className="form-label" style={{ fontWeight: 600 }}>Leg Color</label>
+                              <input
+                                type="text"
+                                maxLength={150}
+                                className="form-input"
+                                value={activeItem.formData.leg_color || ''}
+                                onChange={e => updateActiveField('leg_color', e.target.value)}
+                                placeholder="e.g. Matt Black, Brass Gold..."
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label" style={{ fontWeight: 600 }}>Table Top Colour</label>
+                              <input
+                                type="text"
+                                maxLength={150}
+                                className="form-input"
+                                value={activeItem.formData.table_top_color || ''}
+                                onChange={e => updateActiveField('table_top_color', e.target.value)}
+                                placeholder="e.g. Natural Teak, Walnut, White Carrara..."
+                              />
+                            </div>
+
+                            <div className="bm-price-units-row" style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
                               <div className="form-group">
                                 <label className="form-label" style={{ fontWeight: 600 }}>Price (USD)</label>
                                 <input
@@ -2241,6 +3000,29 @@ function BuyerMasters() {
                                 )}
                               </div>
                               <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600 }}>FOB CITY (Price per Unit)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max="9999999999.99"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.fob_city ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.fob_city ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.fob_city || ''}
+                                  onChange={e => updateActiveField('fob_city', e.target.value)}
+                                  placeholder="e.g. 155.00"
+                                />
+                                {activeItem.fieldErrors?.fob_city && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.fob_city}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="form-group">
                                 <label className="form-label" style={{ fontWeight: 600 }}>Units</label>
                                 <input
                                   type="number"
@@ -2261,28 +3043,28 @@ function BuyerMasters() {
                                   </div>
                                 )}
                               </div>
-                            </div>
-                            <div className="form-group">
-                              <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                className="form-input"
-                                style={{
-                                  borderColor: activeItem.fieldErrors?.total_amount ? '#dc2626' : undefined,
-                                  backgroundColor: activeItem.fieldErrors?.total_amount ? '#fff5f5' : undefined
-                                }}
-                                value={activeItem.formData.total_amount}
-                                onChange={e => updateActiveField('total_amount', e.target.value)}
-                                placeholder="Auto calculated"
-                              />
-                              {activeItem.fieldErrors?.total_amount && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
-                                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
-                                  <span>{activeItem.fieldErrors.total_amount}</span>
-                                </div>
-                              )}
+                              <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600 }}>Total Amount ($)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.total_amount ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.total_amount ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.total_amount}
+                                  onChange={e => updateActiveField('total_amount', e.target.value)}
+                                  placeholder="Auto calculated"
+                                />
+                                {activeItem.fieldErrors?.total_amount && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.total_amount}</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                               <label className="form-label">Remark</label>
@@ -2468,9 +3250,31 @@ function BuyerMasters() {
                               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                                 <SizeGroup label="Box Size Dimensions (cm)" prefix="box" values={activeItem.formData} onChange={(key, val) => updateActiveField(key, val)} errors={activeItem.fieldErrors || {}} />
                               </div>
-                              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                              <div className="form-group">
                                 <label className="form-label">Box Size Summary</label>
                                 <input type="text" className="form-input" value={activeItem.formData.box_size} onChange={e => updateActiveField('box_size', e.target.value)} placeholder="e.g. 100 x 50 x 50 cm" />
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label" style={{ fontWeight: 600 }}>CTN (Units per Box)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  className="form-input"
+                                  style={{
+                                    borderColor: activeItem.fieldErrors?.ctn ? '#dc2626' : undefined,
+                                    backgroundColor: activeItem.fieldErrors?.ctn ? '#fff5f5' : undefined
+                                  }}
+                                  value={activeItem.formData.ctn || ''}
+                                  onChange={e => updateActiveField('ctn', e.target.value)}
+                                  placeholder="e.g. 1 or 2"
+                                />
+                                {activeItem.fieldErrors?.ctn && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '4px' }}>
+                                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                                    <span>{activeItem.fieldErrors.ctn}</span>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Packaging Image */}
@@ -3427,6 +4231,25 @@ function BuyerMasters() {
                   <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>Detailed Excel Download (With Images)</h4>
                   <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
                     Includes standard columns + Vendor details, Costing, Weights, Box sizes & embedded Finishing Photos.
+                  </p>
+                </div>
+                <ChevronRight size={20} color="#94a3b8" />
+              </div>
+
+              <div
+                className="bm-export-option-card"
+                onClick={() => {
+                  handleRowDownloadExcel(exportModalGroup.buyerId, exportModalGroup.buyerName, 'swatch_spec');
+                  setExportModalGroup(null);
+                }}
+              >
+                <div className="bm-export-icon-box" style={{ background: '#fffbeb', color: '#d97706', border: '1.5px solid #fde68a' }}>
+                  <Palette size={24} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#1e293b' }}>Specification &amp; Swatch Excel (With Catalog Images)</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
+                    Commercial format: Embedded product pictures, catalog swatches (Marble, Metal, Plastic, Wood), dimensions, leg/top colors, and FOB prices.
                   </p>
                 </div>
                 <ChevronRight size={20} color="#94a3b8" />

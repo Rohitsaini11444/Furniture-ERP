@@ -301,6 +301,20 @@ class UserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(supervisor_id=supervisor_id)
         if user.role == 'supervisor' and role == 'contractor':
             qs = qs.filter(Q(supervisor=user) | Q(supervisor__isnull=True))
+        has_store_bills = self.request.query_params.get('has_store_bills')
+        if has_store_bills in ('true', '1', True):
+            from django.db.models import Count, Sum, Max
+            from django.db.models.functions import Coalesce
+            from decimal import Decimal
+            from erp.models import StoreItemStatus
+            qs = qs.filter(store_issues__isnull=False).distinct().annotate(
+                store_issues_count_annotated=Count('store_issues', distinct=True),
+                chargeable_total_annotated=Coalesce(
+                    Sum('store_issues__chargeable_total', filter=Q(store_issues__status=StoreItemStatus.CHARGE)),
+                    Decimal('0.00')
+                ),
+                latest_issue_date_annotated=Max('store_issues__issue_date')
+            ).order_by('-chargeable_total_annotated', '-latest_issue_date_annotated', 'username')
         if search:
             qs = qs.annotate(
                 full_name_annotated=Concat('first_name', Value(' '), 'last_name')
@@ -369,7 +383,7 @@ class FinishViewSet(viewsets.ModelViewSet):
     """
     Finishes / Polish Catalog ViewSet.
     Accessible to all authenticated users. Admins can CRUD.
-    Supports category tabs: wood, metal, marble, fabric.
+    Supports category tabs: wood, metal, marble, fabric, plastic.
     """
     permission_classes = [IsAuthenticated]
 
@@ -389,6 +403,8 @@ class FinishViewSet(viewsets.ModelViewSet):
         surface_treatment = self.request.query_params.get('surface_treatment')
         material_type = self.request.query_params.get('material_type')
         pattern = self.request.query_params.get('pattern')
+        plastic_type = self.request.query_params.get('plastic_type')
+        plastic_finish = self.request.query_params.get('plastic_finish')
         color = self.request.query_params.get('color')
 
         if category:
@@ -409,7 +425,9 @@ class FinishViewSet(viewsets.ModelViewSet):
                 Q(marble_type__icontains=q) |
                 Q(surface_treatment__icontains=q) |
                 Q(material_type__icontains=q) |
-                Q(pattern__icontains=q)
+                Q(pattern__icontains=q) |
+                Q(plastic_type__icontains=q) |
+                Q(plastic_finish__icontains=q)
             )
         if wood_type:
             qs = qs.filter(wood_type__icontains=wood_type)
@@ -425,6 +443,10 @@ class FinishViewSet(viewsets.ModelViewSet):
             qs = qs.filter(material_type__icontains=material_type)
         if pattern:
             qs = qs.filter(pattern__icontains=pattern)
+        if plastic_type:
+            qs = qs.filter(plastic_type__icontains=plastic_type)
+        if plastic_finish:
+            qs = qs.filter(plastic_finish__icontains=plastic_finish)
         if color:
             qs = qs.filter(color__icontains=color)
 
@@ -440,6 +462,7 @@ class FinishViewSet(viewsets.ModelViewSet):
             'metal': Finish.objects.filter(category='metal').count(),
             'marble': Finish.objects.filter(category='marble').count(),
             'fabric': Finish.objects.filter(category='fabric').count(),
+            'plastic': Finish.objects.filter(category='plastic').count(),
             'total': Finish.objects.count(),
         })
 
@@ -1457,11 +1480,195 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
         
         with_details = request.query_params.get('with_details') == 'true'
         
+    def _generate_swatch_spec_excel(self, ws, masters, buyer, temp_files):
+        ws.title = f"{buyer.code}_Spec_Sheet"
+        headers = [
+            'ITEM NO.', 'Picture', 'Buyer Product Name', 'Description', 'MATERIAL',
+            'No. Fabric', 'Marbel Finish', 'Colour Metal colour', 'Plastic colour', 'Wood Colour',
+            'Price', 'Remark [required]', 'Product Size ( Heigh. Width. Depth) (cm)', '', '',
+            'Packing Size ( Heigh. Width. Depth) (cm)', '', '', 'CBM', 'Total',
+            'Leg color', 'Table top colour', 'CTN (Units per Box)', 'Certification & Warrant',
+            'QTY (PCS)', 'FOB CITY (Price per Unit)', 'Total Amount', 'Nt. Wt.', 'Gr. Wt.'
+        ]
+        ws.append(headers)
+        ws.merge_cells('M1:O1')
+        ws.merge_cells('P1:R1')
+
+        header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        header_font = Font(name="Calibri", size=10, bold=True, color="000000")
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        border_thin = Side(style='thin', color='000000')
+        border_medium = Side(style='medium', color='000000')
+        header_border = Border(left=border_thin, right=border_thin, top=border_medium, bottom=border_medium)
+        data_border = Border(left=border_thin, right=border_thin, top=border_thin, bottom=border_thin)
+        data_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        ws.row_dimensions[1].height = 36
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_idx)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_align
+            cell.border = header_border
+
+        # Build finish catalog image lookup
+        finish_records = []
+        for fin in Finish.objects.filter(image__isnull=False):
+            if fin.image and os.path.exists(fin.image.path):
+                finish_records.append({
+                    'category': (fin.category or 'wood').lower().strip(),
+                    'name': (fin.name or '').lower().strip(),
+                    'code': (fin.finish_code or '').lower().strip(),
+                    'path': fin.image.path
+                })
+
+        col_widths = {
+            'A': 16, 'B': 18, 'C': 24, 'D': 24, 'E': 14, 'F': 14,
+            'G': 14, 'H': 14, 'I': 14, 'J': 14, 'K': 12, 'L': 20,
+            'M': 8,  'N': 8,  'O': 8,  'P': 8,  'Q': 8,  'R': 8,
+            'S': 10, 'T': 10, 'U': 14, 'V': 14, 'W': 16, 'X': 14,
+            'Y': 10, 'Z': 16, 'AA': 14, 'AB': 12, 'AC': 12
+        }
+        for col_letter, width in col_widths.items():
+            ws.column_dimensions[col_letter].width = width
+
+        for idx, bm in enumerate(masters, 1):
+            row_idx = idx + 1
+            ws.row_dimensions[row_idx].height = 75
+
+            row_data = [
+                bm.style_no or "",
+                "", # Col B: Picture
+                bm.product_name or "",
+                bm.description or "",
+                bm.wood_type or "",
+                "", # Col F: Fabric (image or text)
+                "", # Col G: Marble Swatch
+                "", # Col H: Metal Swatch
+                "", # Col I: Plastic Swatch
+                "", # Col J: Wood Swatch
+                float(bm.price_usd) if bm.price_usd else "",
+                bm.remark or "",
+                float(bm.size_height) if bm.size_height else "",
+                float(bm.size_breadth) if bm.size_breadth else "",
+                float(bm.size_length) if bm.size_length else "",
+                float(bm.box_height) if bm.box_height else "",
+                float(bm.box_breadth) if bm.box_breadth else "",
+                float(bm.box_length) if bm.box_length else "",
+                float(bm.cbm) if bm.cbm else "",
+                float(bm.total_cbm) if bm.total_cbm else "",
+                bm.leg_color or "",
+                bm.table_top_color or "",
+                str(bm.ctn) if bm.ctn is not None and str(bm.ctn) != "" else "",
+                "", # Certification & Warrant
+                int(bm.units) if bm.units else 1,
+                float(bm.fob_city) if bm.fob_city else "",
+                float(bm.total_amount) if bm.total_amount else "",
+                f"{float(bm.net_weight):.3f} Kg." if bm.net_weight else "",
+                f"{float(bm.gross_weight):.3f} Kg." if bm.gross_weight else "",
+            ]
+
+            for col_idx, val in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.alignment = data_align
+                cell.border = data_border
+                cell.font = Font(name="Calibri", size=10)
+
+                # Currency formatting for Price, FOB City, Total Amount
+                if col_idx in (11, 26, 27) and isinstance(val, (int, float)):
+                    cell.number_format = '"$" #,##0.00'
+                elif col_idx in (19, 20) and isinstance(val, (int, float)):
+                    cell.number_format = '0.00'
+
+            # 1. Product Picture Thumbnail (Col B)
+            sample_img_path = None
+            if bm.sample:
+                first_img = bm.sample.images.first()
+                if first_img and first_img.image and os.path.exists(first_img.image.path):
+                    sample_img_path = first_img.image.path
+            if not sample_img_path and bm.packaging_image and os.path.exists(bm.packaging_image.path):
+                sample_img_path = bm.packaging_image.path
+
+            if sample_img_path:
+                try:
+                    pil_img = PILImage.open(sample_img_path)
+                    if pil_img.mode in ('RGBA', 'LA', 'P'):
+                        pil_img = pil_img.convert('RGB')
+                    pil_img.thumbnail((85, 65))
+                    tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                    pil_img.save(tmp_f.name, format='JPEG', quality=85)
+                    tmp_f.close()
+                    temp_files.append(tmp_f.name)
+
+                    xl_img = OpenpyxlImage(tmp_f.name)
+                    add_centered_image(ws, f"B{row_idx}", xl_img)
+                except Exception as e:
+                    print(f"Error drawing product picture: {e}")
+
+            # 2. Finish Swatches Helper
+            def embed_finish_swatch(col_letter, finish_str, category):
+                if not finish_str:
+                    return
+                clean_name = str(finish_str).split('/')[0].strip()
+                if not clean_name:
+                    return
+                c_lower = clean_name.lower()
+
+                swatch_path = None
+                # 1. Exact match with category
+                for rec in finish_records:
+                    if rec['category'] == category and (rec['name'] == c_lower or rec['code'] == c_lower):
+                        swatch_path = rec['path']
+                        break
+
+                # 2. Exact match across any category
+                if not swatch_path:
+                    for rec in finish_records:
+                        if rec['name'] == c_lower or rec['code'] == c_lower:
+                            swatch_path = rec['path']
+                            break
+
+                # 3. Substring match
+                if not swatch_path:
+                    for rec in finish_records:
+                        if (rec['category'] == category or not category) and (c_lower in rec['name'] or rec['name'] in c_lower or (rec['code'] and rec['code'] in c_lower)):
+                            swatch_path = rec['path']
+                            break
+
+                if swatch_path and os.path.exists(swatch_path):
+                    try:
+                        pil_img = PILImage.open(swatch_path)
+                        if pil_img.mode in ('RGBA', 'LA', 'P'):
+                            pil_img = pil_img.convert('RGB')
+                        pil_img.thumbnail((55, 55))
+                        tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                        pil_img.save(tmp_f.name, format='JPEG', quality=85)
+                        tmp_f.close()
+                        temp_files.append(tmp_f.name)
+
+                        xl_img = OpenpyxlImage(tmp_f.name)
+                        add_centered_image(ws, f"{col_letter}{row_idx}", xl_img)
+                        return
+                    except Exception as e:
+                        print(f"Error drawing finish swatch {category}: {e}")
+
+                ws[f"{col_letter}{row_idx}"] = clean_name
+
+            embed_finish_swatch('G', bm.marble_finish, 'marble')
+            embed_finish_swatch('H', bm.metal_finish, 'metal')
+            embed_finish_swatch('I', bm.plastic_type, 'plastic')
+            embed_finish_swatch('J', bm.wood_finish or bm.finish_color, 'wood')
+            if bm.fabric_type:
+                embed_finish_swatch('F', bm.fabric_type, 'fabric')
+
+    def _generate_standard_excel(self, ws, masters, buyer, with_details, temp_files):
         headers = [
             'S. No.', 'Buyer Name', 'Buyer Code', 'Style No', 'Sample ID', 'Picture', 'Product Name', 
-            'Material', 'Finish', 'Size Length (cm)', 
+            'Description', 'Material', 'Finish', 'Wood Finish', 'Metal Finish', 'Marble Finish', 'Fabric Type', 'Plastic Type',
+            'Leg Color', 'Table Top Colour', 'Size Length (cm)', 
             'Size Breadth (cm)', 'Size Height (cm)', 
-            'Price USD', 'Units', 'Total CBM', 'Total Amount', 'Remark'
+            'Price USD', 'FOB City', 'Units', 'CTN (Units/Box)', 'Total CBM', 'Total Amount', 'Remark'
         ]
         
         if with_details:
@@ -1496,8 +1703,6 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
             cell.alignment = header_align
             cell.border = header_border
             
-        temp_files = []
-        
         for idx, bm in enumerate(masters, 1):
             row_idx = idx + 1
             ws.row_dimensions[row_idx].height = 80
@@ -1518,13 +1723,23 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 sample_id_val,
                 "", # Picture cell
                 bm.product_name or "",
+                bm.description or "",
                 bm.wood_type or "",
                 bm.finish_color or "",
+                bm.wood_finish or "",
+                bm.metal_finish or "",
+                bm.marble_finish or "",
+                bm.fabric_type or "",
+                bm.plastic_type or "",
+                bm.leg_color or "",
+                bm.table_top_color or "",
                 float(bm.size_length) if bm.size_length else "",
                 float(bm.size_breadth) if bm.size_breadth else "",
                 float(bm.size_height) if bm.size_height else "",
                 float(bm.price_usd) if bm.price_usd else "",
+                float(bm.fob_city) if bm.fob_city else "",
                 bm.units or 1,
+                bm.ctn if bm.ctn is not None else "",
                 float(bm.total_cbm) if bm.total_cbm else "",
                 float(bm.total_amount) if bm.total_amount else "",
                 bm.remark or ""
@@ -1579,9 +1794,38 @@ class BuyerMasterViewSet(viewsets.ModelViewSet):
                 if len(val_str) > max_len:
                     max_len = len(val_str)
             ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+    @action(detail=False, methods=['get'], url_path='export-excel')
+    def export_excel(self, request):
+        buyer_id = request.query_params.get('buyer')
+        if not buyer_id:
+            return HttpResponse("Buyer ID is required", status=400)
+        
+        try:
+            buyer = Buyer.objects.get(id=buyer_id)
+        except Buyer.DoesNotExist:
+            return HttpResponse("Buyer not found", status=404)
+        
+        masters = self.get_queryset().filter(buyer=buyer)
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"{buyer.code}_Buyer_Master"
+        ws.views.sheetView[0].showGridLines = True
+        
+        temp_files = []
+        export_type = request.query_params.get('export_type', '')
+        with_details = request.query_params.get('with_details') == 'true' or export_type == 'detailed'
+
+        if export_type == 'swatch_spec':
+            self._generate_swatch_spec_excel(ws, masters, buyer, temp_files)
+            filename = f"{buyer.code}_Specification_Sheet.xlsx"
+        else:
+            self._generate_standard_excel(ws, masters, buyer, with_details, temp_files)
+            filename = f"{buyer.code}_Buyer_Master_{'Detailed' if with_details else 'Standard'}.xlsx"
             
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="{buyer.code}_Buyer_Master.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         wb.save(response)
         
         for f in temp_files:
@@ -4955,6 +5199,8 @@ class FinishExcelExportView(APIView):
             headers = ["S.No.", "Picture", "Finish Code", "Finish Name", "Color", "Marble Type", "Surface Treatment", "Created Date"]
         elif category == 'fabric':
             headers = ["S.No.", "Picture", "Fabric Code", "Fabric Name", "Color", "Material", "Pattern / Texture", "Created Date"]
+        elif category == 'plastic':
+            headers = ["S.No.", "Picture", "Plastic Code", "Plastic Name", "Color", "Plastic Type", "Surface / Transparency", "Created Date"]
         else:
             headers = ["S.No.", "Picture", "Category", "Finish Code", "Finish Name", "Color", "Material / Type", "Process / Treatment / Pattern", "Created Date"]
 
@@ -5031,9 +5277,20 @@ class FinishExcelExportView(APIView):
                     finish.pattern or "",
                     finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
                 ]
+            elif category == 'plastic':
+                row_data = [
+                    idx,
+                    "",
+                    finish.finish_code or "",
+                    finish.name,
+                    finish.color or "",
+                    finish.plastic_type or "",
+                    finish.plastic_finish or "",
+                    finish.created_at.strftime('%Y-%m-%d') if finish.created_at else ""
+                ]
             else:
-                attr1 = finish.wood_type or finish.metal_type or finish.marble_type or finish.material_type or ""
-                attr2 = finish.coating_type or finish.surface_treatment or finish.pattern or ""
+                attr1 = finish.wood_type or finish.metal_type or finish.marble_type or finish.material_type or finish.plastic_type or ""
+                attr2 = finish.coating_type or finish.surface_treatment or finish.pattern or finish.plastic_finish or ""
                 row_data = [
                     idx,
                     "",
@@ -5100,7 +5357,7 @@ class FinishExcelImportView(APIView):
             return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
 
         default_cat = request.data.get('category', 'wood').strip().lower()
-        if default_cat not in ['wood', 'metal', 'marble', 'fabric']:
+        if default_cat not in ['wood', 'metal', 'marble', 'fabric', 'plastic']:
             default_cat = 'wood'
 
         file_name = file_obj.name.lower()
@@ -5127,8 +5384,8 @@ class FinishExcelImportView(APIView):
                     return -1
 
                 cat_col = find_idx(['category', 'finish category'])
-                code_col = find_idx(['finish code', 'code', 'finish_code', 'fabric code'])
-                name_col = find_idx(['finish name', 'name', 'finish_name', 'title', 'fabric name'])
+                code_col = find_idx(['finish code', 'code', 'finish_code', 'fabric code', 'plastic code'])
+                name_col = find_idx(['finish name', 'name', 'finish_name', 'title', 'fabric name', 'plastic name'])
                 color_col = find_idx(['color', 'finish color', 'shade'])
                 wood_col = find_idx(['wood type', 'wood'])
                 metal_col = find_idx(['metal type', 'metal'])
@@ -5137,6 +5394,8 @@ class FinishExcelImportView(APIView):
                 surface_col = find_idx(['surface', 'treatment', 'surface treatment'])
                 material_col = find_idx(['material', 'fabric material', 'composition'])
                 pattern_col = find_idx(['pattern', 'texture'])
+                plastic_type_col = find_idx(['plastic type', 'plastic', 'polymer'])
+                plastic_finish_col = find_idx(['transparency', 'plastic finish', 'surface / transparency'])
 
                 row_images = {}
                 if hasattr(ws, '_images'):
@@ -5159,6 +5418,7 @@ class FinishExcelImportView(APIView):
                     if 'metal' in cat_val: cat_val = 'metal'
                     elif 'marb' in cat_val: cat_val = 'marble'
                     elif 'fab' in cat_val: cat_val = 'fabric'
+                    elif 'plast' in cat_val: cat_val = 'plastic'
                     elif 'wood' in cat_val: cat_val = 'wood'
                     else: cat_val = default_cat
 
@@ -5169,6 +5429,8 @@ class FinishExcelImportView(APIView):
                     surface_val = str(r[surface_col] or '').strip() if (surface_col != -1 and surface_col < len(r)) else ''
                     material_val = str(r[material_col] or '').strip() if (material_col != -1 and material_col < len(r)) else ''
                     pattern_val = str(r[pattern_col] or '').strip() if (pattern_col != -1 and pattern_col < len(r)) else ''
+                    plastic_type_val = str(r[plastic_type_col] or '').strip() if (plastic_type_col != -1 and plastic_type_col < len(r)) else ''
+                    plastic_finish_val = str(r[plastic_finish_col] or '').strip() if (plastic_finish_col != -1 and plastic_finish_col < len(r)) else ''
 
                     if not name_val and not code_val:
                         continue
@@ -5196,6 +5458,8 @@ class FinishExcelImportView(APIView):
                         if surface_val: finish_obj.surface_treatment = surface_val
                         if material_val: finish_obj.material_type = material_val
                         if pattern_val: finish_obj.pattern = pattern_val
+                        if plastic_type_val: finish_obj.plastic_type = plastic_type_val
+                        if plastic_finish_val: finish_obj.plastic_finish = plastic_finish_val
                         finish_obj.save()
                         updated_count += 1
                     else:
@@ -5211,6 +5475,8 @@ class FinishExcelImportView(APIView):
                             surface_treatment=surface_val or None,
                             material_type=material_val or None,
                             pattern=pattern_val or None,
+                            plastic_type=plastic_type_val or None,
+                            plastic_finish=plastic_finish_val or None,
                         )
                         imported_count += 1
 
@@ -5233,13 +5499,14 @@ class FinishExcelImportView(APIView):
                 csv_reader = csv.DictReader(io.StringIO(decoded_file))
 
                 for row in csv_reader:
-                    name_val = row.get('Finish Name') or row.get('name') or row.get('Name') or row.get('Fabric Name') or ''
-                    code_val = row.get('Finish Code') or row.get('code') or row.get('Code') or row.get('Fabric Code') or ''
+                    name_val = row.get('Finish Name') or row.get('name') or row.get('Name') or row.get('Fabric Name') or row.get('Plastic Name') or ''
+                    code_val = row.get('Finish Code') or row.get('code') or row.get('Code') or row.get('Fabric Code') or row.get('Plastic Code') or ''
                     color_val = row.get('Color') or row.get('color') or ''
                     cat_val = (row.get('Category') or row.get('category') or default_cat).strip().lower()
                     if 'metal' in cat_val: cat_val = 'metal'
                     elif 'marb' in cat_val: cat_val = 'marble'
                     elif 'fab' in cat_val: cat_val = 'fabric'
+                    elif 'plast' in cat_val: cat_val = 'plastic'
                     elif 'wood' in cat_val: cat_val = 'wood'
                     else: cat_val = default_cat
 
@@ -5250,6 +5517,8 @@ class FinishExcelImportView(APIView):
                     surface_val = row.get('Surface Treatment') or row.get('surface_treatment') or ''
                     material_val = row.get('Material') or row.get('material_type') or ''
                     pattern_val = row.get('Pattern') or row.get('pattern') or ''
+                    plastic_type_val = row.get('Plastic Type') or row.get('plastic_type') or ''
+                    plastic_finish_val = row.get('Surface / Transparency') or row.get('plastic_finish') or ''
 
                     name_val = name_val.strip()
                     code_val = code_val.strip()
@@ -5280,6 +5549,8 @@ class FinishExcelImportView(APIView):
                         if surface_val: finish_obj.surface_treatment = surface_val
                         if material_val: finish_obj.material_type = material_val
                         if pattern_val: finish_obj.pattern = pattern_val
+                        if plastic_type_val: finish_obj.plastic_type = plastic_type_val
+                        if plastic_finish_val: finish_obj.plastic_finish = plastic_finish_val
                         finish_obj.save()
                         updated_count += 1
                     else:
@@ -5295,6 +5566,8 @@ class FinishExcelImportView(APIView):
                             surface_treatment=surface_val or None,
                             material_type=material_val or None,
                             pattern=pattern_val or None,
+                            plastic_type=plastic_type_val or None,
+                            plastic_finish=plastic_finish_val or None,
                         )
                         imported_count += 1
 

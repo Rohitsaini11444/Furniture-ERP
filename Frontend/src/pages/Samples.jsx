@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2, FileText, FileEdit } from 'lucide-react';
+import { X, Search, Upload, ImageIcon, Filter, ArrowLeft, ChevronRight, Package, FileSpreadsheet, Download, AlertCircle, CheckCircle, Trash2, FileText, FileEdit, Palette, Shield, Gem, Scissors, Layers } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PRODUCT } from '../components/OrderBySelect';
@@ -14,7 +14,32 @@ import { useDrafts } from '../context/DraftsContext';
 
 
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────----
+// ─── Finish Categories Configuration for Samples ──────────────────────────────
+const FINISH_CATEGORIES_CONFIG = {
+  wood: { id: 'wood', label: 'Wood Finish', shortLabel: 'Wood', icon: Palette, color: '#9a5323', bg: '#fff2e2', border: '#e6ded3', placeholder: '-- Select Wood Finish --' },
+  metal: { id: 'metal', label: 'Metal Finish', shortLabel: 'Metal', icon: Shield, color: '#334155', bg: '#f1f5f9', border: '#cbd5e1', placeholder: '-- Select Metal Finish --' },
+  marble: { id: 'marble', label: 'Marble Finish', shortLabel: 'Marble', icon: Gem, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', placeholder: '-- Select Marble Finish --' },
+  fabric: { id: 'fabric', label: 'Fabric Type', shortLabel: 'Fabric', icon: Scissors, color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', placeholder: '-- Select Fabric Type --' },
+  plastic: { id: 'plastic', label: 'Plastic Type', shortLabel: 'Plastic', icon: Layers, color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', placeholder: '-- Select Plastic Type --' },
+};
+
+const detectFinishCategory = (finishName, options = []) => {
+  if (!finishName) return 'wood';
+  const trimmed = String(finishName).trim();
+  const match = options.find(o => 
+    (o.name && o.name.toLowerCase() === trimmed.toLowerCase()) || 
+    o.id === trimmed || 
+    (o.finish_code && o.finish_code.toLowerCase() === trimmed.toLowerCase())
+  );
+  if (match && match.category) return match.category;
+  
+  const lower = trimmed.toLowerCase();
+  if (lower.includes('iron') || lower.includes('steel') || lower.includes('brass') || lower.includes('metal') || lower.includes('copper') || lower.includes('coating') || lower.includes('powder') || lower.includes('black')) return 'metal';
+  if (lower.includes('marble') || lower.includes('stone') || lower.includes('granite') || lower.includes('travertine') || lower.includes('carrara')) return 'marble';
+  if (lower.includes('fabric') || lower.includes('velvet') || lower.includes('linen') || lower.includes('cotton') || lower.includes('leatherette') || lower.includes('boucle') || lower.includes('chenille')) return 'fabric';
+  if (lower.includes('plastic') || lower.includes('poly') || lower.includes('acrylic') || lower.includes('abs') || lower.includes('pvc') || lower.includes('hdpe') || lower.includes('nylon')) return 'plastic';
+  return 'wood';
+};
 
 const emptyForm = {
   sample_id: '',
@@ -24,6 +49,12 @@ const emptyForm = {
   product_name: '',
   material: '',
   finish_color: '',
+  wood_finish: '',
+  metal_finish: '',
+  marble_finish: '',
+  fabric_type: '',
+  plastic_type: '',
+  description: '',
   remark: '',
   cbm: '',
   usd: '',
@@ -203,7 +234,9 @@ function Samples() {
 
   // Multi-item materials and finishes
   const [materialsList, setMaterialsList] = useState(['']);
-  const [finishesList, setFinishesList] = useState(['']);
+  const [finishesList, setFinishesList] = useState([
+    { id: 'init-1', category: 'wood', value: '' }
+  ]);
 
   const parseSlashList = (str) => {
     if (!str || typeof str !== 'string') return [''];
@@ -332,12 +365,51 @@ function Samples() {
     ];
     finishesOptions.forEach(f => {
       const codeStr = f.finish_code ? `[${f.finish_code}] ` : '';
-      const colorWoodStr = [f.color, f.wood_type].filter(Boolean).join(' · ');
+      let detailAttr = f.wood_type;
+      if (f.category === 'metal') detailAttr = [f.metal_type, f.coating_type].filter(Boolean).join(' · ');
+      else if (f.category === 'marble') detailAttr = [f.marble_type, f.surface_treatment].filter(Boolean).join(' · ');
+      else if (f.category === 'fabric') detailAttr = [f.material_type, f.pattern].filter(Boolean).join(' · ');
+      else if (f.category === 'plastic') detailAttr = [f.plastic_type, f.plastic_finish].filter(Boolean).join(' · ');
+
+      const subStr = [f.color, detailAttr].filter(Boolean).join(' · ');
+      const catObj = FINISH_CATEGORIES_CONFIG[f.category] || FINISH_CATEGORIES_CONFIG.wood;
       opts.push({
         value: f.name,
-        label: `${codeStr}${f.name}${colorWoodStr ? ` (${colorWoodStr})` : ''}`,
+        label: `${codeStr}${f.name}${subStr ? ` (${subStr})` : ''}`,
+        badge: f.finish_code || catObj.shortLabel,
+        sublabel: subStr ? `[${catObj.shortLabel}] · ${subStr}` : `[${catObj.shortLabel}]`,
+        image: f.image || null,
+        finishId: f.id,
+        category: f.category || 'wood'
+      });
+    });
+    return opts;
+  }, [finishesOptions]);
+
+  const getOptionsForCategory = useCallback((catKey) => {
+    if (catKey === 'all') {
+      return finishSelectOptions;
+    }
+    const catConfig = FINISH_CATEGORIES_CONFIG[catKey] || FINISH_CATEGORIES_CONFIG.wood;
+    const catLabel = catConfig.label;
+    const opts = [
+      { value: '', label: `-- Select ${catLabel} from Catalog --` }
+    ];
+    const filtered = finishesOptions.filter(f => (f.category || 'wood') === catKey);
+    filtered.forEach(f => {
+      const codeStr = f.finish_code ? `[${f.finish_code}] ` : '';
+      let detailAttr = f.wood_type;
+      if (catKey === 'metal') detailAttr = [f.metal_type, f.coating_type].filter(Boolean).join(' · ');
+      else if (catKey === 'marble') detailAttr = [f.marble_type, f.surface_treatment].filter(Boolean).join(' · ');
+      else if (catKey === 'fabric') detailAttr = [f.material_type, f.pattern].filter(Boolean).join(' · ');
+      else if (catKey === 'plastic') detailAttr = [f.plastic_type, f.plastic_finish].filter(Boolean).join(' · ');
+
+      const subStr = [f.color, detailAttr].filter(Boolean).join(' · ');
+      opts.push({
+        value: f.name,
+        label: `${codeStr}${f.name}${subStr ? ` (${subStr})` : ''}`,
         badge: f.finish_code || null,
-        sublabel: colorWoodStr || null,
+        sublabel: subStr || null,
         image: f.image || null,
         finishId: f.id,
       });
@@ -376,7 +448,7 @@ function Samples() {
           buyer: buyerId,
           buyer_detail: buyerObj || (buyerId ? { name: String(buyerId) } : null),
           material: mats.filter(Boolean).join('/') || fd.material || '',
-          finish_color: fins.filter(Boolean).join('/') || fd.finish_color || '',
+          finish_color: fins.map(f => (typeof f === 'string' ? f : f?.value || '')).filter(Boolean).join(' / ') || fd.finish_color || '',
           cbm: fd.cbm || '',
           usd: fd.usd || '',
           vendor_name: fd.vendor_name || '',
@@ -557,6 +629,12 @@ function Samples() {
             product_name: sample.product_name ?? '',
             material: sample.material ?? '',
             finish_color: sample.finish_color ?? '',
+            wood_finish: sample.wood_finish ?? '',
+            metal_finish: sample.metal_finish ?? '',
+            marble_finish: sample.marble_finish ?? '',
+            fabric_type: sample.fabric_type ?? '',
+            plastic_type: sample.plastic_type ?? '',
+            description: sample.description ?? '',
             remark: sample.remark ?? '',
             cbm: sample.cbm ?? '',
             usd: sample.usd ?? '',
@@ -566,11 +644,43 @@ function Samples() {
             size_height: sample.size_height ?? '',
           });
           setMaterialsList(parseSlashList(sample.material));
-          let parsedFinishes = parseSlashList(sample.finish_color);
-          if ((!parsedFinishes.length || !parsedFinishes[0]) && sample.finish_detail?.name) {
-            parsedFinishes = [sample.finish_detail.name];
+          
+          // Reconstruct categorized finishes list
+          const items = [];
+          if (sample.wood_finish) {
+            parseSlashList(sample.wood_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'wood', value: v }));
           }
-          setFinishesList(parsedFinishes.length ? parsedFinishes : ['']);
+          if (sample.metal_finish) {
+            parseSlashList(sample.metal_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'metal', value: v }));
+          }
+          if (sample.marble_finish) {
+            parseSlashList(sample.marble_finish).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'marble', value: v }));
+          }
+          if (sample.fabric_type) {
+            parseSlashList(sample.fabric_type).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'fabric', value: v }));
+          }
+          if (sample.plastic_type) {
+            parseSlashList(sample.plastic_type).forEach(v => items.push({ id: Math.random().toString(36).slice(2, 9), category: 'plastic', value: v }));
+          }
+
+          if (items.length === 0) {
+            let parsedFinishes = parseSlashList(sample.finish_color);
+            if ((!parsedFinishes.length || !parsedFinishes[0]) && sample.finish_detail?.name) {
+              parsedFinishes = [sample.finish_detail.name];
+            }
+            parsedFinishes.forEach(fin => {
+              if (fin) {
+                const cat = detectFinishCategory(fin, finishesOptions);
+                items.push({ id: Math.random().toString(36).slice(2, 9), category: cat, value: fin });
+              }
+            });
+          }
+
+          if (items.length === 0) {
+            items.push({ id: 'init-1', category: 'wood', value: '' });
+          }
+          setFinishesList(items);
+
           const existingImgs = (sample.images || []).map(img => ({
             id: img.id,
             image_url: img.image_url,
@@ -586,7 +696,20 @@ function Samples() {
       if (location.state?.draftData) {
         if (location.state.draftData.formData) setFormData(location.state.draftData.formData);
         if (location.state.draftData.materialsList) setMaterialsList(location.state.draftData.materialsList);
-        if (location.state.draftData.finishesList) setFinishesList(location.state.draftData.finishesList);
+        if (location.state.draftData.finishesList) {
+          const rawFins = location.state.draftData.finishesList;
+          const normalized = rawFins.map(item => {
+            if (typeof item === 'string') {
+              return { id: Math.random().toString(36).slice(2, 9), category: detectFinishCategory(item, finishesOptions), value: item };
+            }
+            return {
+              id: item.id || Math.random().toString(36).slice(2, 9),
+              category: item.category || 'wood',
+              value: item.value || ''
+            };
+          });
+          setFinishesList(normalized);
+        }
         setIsDirty(true);
         if (location.state.draftId) {
           setCurrentDraftId(location.state.draftId);
@@ -594,7 +717,7 @@ function Samples() {
       } else {
         setFormData(emptyForm);
         setMaterialsList(['']);
-        setFinishesList(['']);
+        setFinishesList([{ id: 'init-1', category: 'wood', value: '' }]);
         setImages([]);
         setEditingId(null);
       }
@@ -634,19 +757,44 @@ function Samples() {
   const addMaterialField = () => setMaterialsList(prev => [...prev, '']);
   const removeMaterialField = (idx) => setMaterialsList(prev => prev.filter((_, i) => i !== idx));
 
+  const handleFinishCategoryChange = (idx, newCategory) => {
+    setIsDirty(true);
+    setFinishesList(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], category: newCategory };
+      return next;
+    });
+  };
+
   const handleFinishItemChange = (idx, value) => {
     setIsDirty(true);
-    const next = [...finishesList];
-    next[idx] = value;
-    setFinishesList(next);
+    setFinishesList(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], value };
 
-    const primaryFinishName = next.map(f => f.trim()).filter(Boolean)[0] || '';
-    const matched = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
-    setFormData(prev => ({
-      ...prev,
-      finish: matched ? matched.id : (idx === 0 ? '' : prev.finish),
-      finish_color: next.map(f => f.trim()).filter(Boolean).join(' / ')
-    }));
+      const validItems = next.filter(item => item.value && item.value.trim());
+      const primaryItem = validItems[0];
+      const matched = primaryItem ? finishesOptions.find(f => f.name === primaryItem.value || f.id === primaryItem.value) : null;
+
+      const woodVals = next.filter(i => (i.category || 'wood') === 'wood' && i.value).map(i => i.value.trim());
+      const metalVals = next.filter(i => i.category === 'metal' && i.value).map(i => i.value.trim());
+      const marbleVals = next.filter(i => i.category === 'marble' && i.value).map(i => i.value.trim());
+      const fabricVals = next.filter(i => i.category === 'fabric' && i.value).map(i => i.value.trim());
+      const plasticVals = next.filter(i => i.category === 'plastic' && i.value).map(i => i.value.trim());
+
+      setFormData(fPrev => ({
+        ...fPrev,
+        finish: matched ? matched.id : (idx === 0 ? '' : fPrev.finish),
+        finish_color: next.map(i => (typeof i === 'string' ? i : i.value).trim()).filter(Boolean).join(' / '),
+        wood_finish: woodVals.join(' / '),
+        metal_finish: metalVals.join(' / '),
+        marble_finish: marbleVals.join(' / '),
+        fabric_type: fabricVals.join(' / '),
+        plastic_type: plasticVals.join(' / '),
+      }));
+
+      return next;
+    });
 
     if (formErrors.finish_color || formErrors.finish || formErrors.general) {
       setFormErrors(prev => {
@@ -660,19 +808,44 @@ function Samples() {
       });
     }
   };
-  const addFinishField = () => setFinishesList(prev => [...prev, '']);
+
+  const addFinishField = (category = 'wood') => {
+    setIsDirty(true);
+    setFinishesList(prev => [
+      ...prev,
+      { id: Math.random().toString(36).slice(2, 9), category, value: '' }
+    ]);
+  };
+
   const removeFinishField = (idx) => {
     setIsDirty(true);
-    const next = finishesList.filter((_, i) => i !== idx);
-    const updated = next.length > 0 ? next : [''];
-    setFinishesList(updated);
-    const primaryFinishName = updated.map(f => f.trim()).filter(Boolean)[0] || '';
-    const matched = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
-    setFormData(prev => ({
-      ...prev,
-      finish: matched ? matched.id : '',
-      finish_color: updated.map(f => f.trim()).filter(Boolean).join(' / ')
-    }));
+    setFinishesList(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      const updated = next.length > 0 ? next : [{ id: Math.random().toString(36).slice(2, 9), category: 'wood', value: '' }];
+
+      const validItems = updated.filter(item => item.value && item.value.trim());
+      const primaryItem = validItems[0];
+      const matched = primaryItem ? finishesOptions.find(f => f.name === primaryItem.value || f.id === primaryItem.value) : null;
+
+      const woodVals = updated.filter(i => (i.category || 'wood') === 'wood' && i.value).map(i => i.value.trim());
+      const metalVals = updated.filter(i => i.category === 'metal' && i.value).map(i => i.value.trim());
+      const marbleVals = updated.filter(i => i.category === 'marble' && i.value).map(i => i.value.trim());
+      const fabricVals = updated.filter(i => i.category === 'fabric' && i.value).map(i => i.value.trim());
+      const plasticVals = updated.filter(i => i.category === 'plastic' && i.value).map(i => i.value.trim());
+
+      setFormData(fPrev => ({
+        ...fPrev,
+        finish: matched ? matched.id : '',
+        finish_color: updated.map(i => (typeof i === 'string' ? i : i.value).trim()).filter(Boolean).join(' / '),
+        wood_finish: woodVals.join(' / '),
+        metal_finish: metalVals.join(' / '),
+        marble_finish: marbleVals.join(' / '),
+        fabric_type: fabricVals.join(' / '),
+        plastic_type: plasticVals.join(' / '),
+      }));
+
+      return updated;
+    });
   };
 
   const handleDimChange = (key, val) => {
@@ -807,7 +980,7 @@ function Samples() {
     }
 
     // finish_color
-    const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+    const finishJoined = finishesList.map(f => (typeof f === 'string' ? f : f?.value || '').trim()).filter(Boolean).join(' / ');
     if (!finishJoined) {
       errors.finish_color = 'Please select a finish from the Finish Catalog.';
     } else if (finishJoined.length > 255) {
@@ -891,12 +1064,18 @@ function Samples() {
     setSubmitting(true);
     try {
       const materialJoined = materialsList.map(m => m.trim()).filter(Boolean).join('/');
-      const finishJoined = finishesList.map(f => f.trim()).filter(Boolean).join(' / ');
+      const finishJoined = finishesList.map(f => (typeof f === 'string' ? f : f?.value || '').trim()).filter(Boolean).join(' / ');
 
       // Primary finish foreign key linking to Finish model
-      const primaryFinishName = finishesList.map(f => f.trim()).filter(Boolean)[0] || '';
+      const primaryFinishName = finishesList.map(f => (typeof f === 'string' ? f : f?.value || '').trim()).filter(Boolean)[0] || '';
       const matchedFinish = finishesOptions.find(f => f.name === primaryFinishName || f.id === primaryFinishName);
       const finishId = matchedFinish ? matchedFinish.id : (formData.finish || '');
+
+      const woodJoined = finishesList.filter(f => (f.category || 'wood') === 'wood').map(f => (typeof f === 'string' ? f : f.value).trim()).filter(Boolean).join(' / ');
+      const metalJoined = finishesList.filter(f => f.category === 'metal').map(f => (typeof f === 'string' ? f : f.value).trim()).filter(Boolean).join(' / ');
+      const marbleJoined = finishesList.filter(f => f.category === 'marble').map(f => (typeof f === 'string' ? f : f.value).trim()).filter(Boolean).join(' / ');
+      const fabricJoined = finishesList.filter(f => f.category === 'fabric').map(f => (typeof f === 'string' ? f : f.value).trim()).filter(Boolean).join(' / ');
+      const plasticJoined = finishesList.filter(f => f.category === 'plastic').map(f => (typeof f === 'string' ? f : f.value).trim()).filter(Boolean).join(' / ');
 
       const updatedFormData = {
         ...formData,
@@ -904,6 +1083,11 @@ function Samples() {
         material: materialJoined,
         finish: finishId,
         finish_color: finishJoined,
+        wood_finish: woodJoined,
+        metal_finish: metalJoined,
+        marble_finish: marbleJoined,
+        fabric_type: fabricJoined,
+        plastic_type: plasticJoined,
       };
 
       const submitData = new FormData();
@@ -1151,6 +1335,31 @@ function Samples() {
                 </div>
               </div>
 
+              {/* Product Description */}
+              <div style={{ marginTop: '0.85rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  Product Description
+                </label>
+                <textarea
+                  name="description"
+                  className="form-input"
+                  rows={2}
+                  value={formData.description || ''}
+                  onChange={handleChange}
+                  placeholder="Detailed product description, design characteristics, wood grain or joinery notes..."
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    boxSizing: 'border-box',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+
               {/* Row 2: Commercial & Logistics (4-columns across desktop) */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
                 <div>
@@ -1332,17 +1541,17 @@ function Samples() {
                   )}
                 </div>
 
-                {/* Col 2: Finish / Color(s) */}
+                {/* Col 2: Finishes & Coatings Catalog */}
                 <div style={{
-                  padding: '1rem 1.15rem',
+                  padding: '1.1rem 1.25rem',
                   borderRadius: '12px',
                   border: formErrors.finish_color ? '1.5px solid #dc2626' : '1px solid #e2e8f0',
                   backgroundColor: formErrors.finish_color ? '#fff5f5' : '#fafaf9'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', margin: 0 }}>
-                        Finish / Polish Catalog *
+                        Finishes & Coatings Catalog *
                       </label>
                       <a
                         href="/finishing"
@@ -1366,75 +1575,187 @@ function Samples() {
                         <span>Finishing Section ↗</span>
                       </a>
                     </div>
-                    <button
-                      type="button"
-                      onClick={addFinishField}
-                      style={{
-                        padding: '0.3rem 0.65rem',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        backgroundColor: '#ffffff',
-                        color: '#8b5a2b',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      + Add Finish
-                    </button>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Add finish types applicable to this sample:
+                    </span>
                   </div>
+
+                  {/* Add Finish Category Buttons Bar */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    flexWrap: 'wrap',
+                    padding: '0.55rem 0.65rem',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    marginBottom: '0.85rem'
+                  }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 750, color: '#64748b', marginRight: '3px' }}>
+                      + Add:
+                    </span>
+                    {Object.values(FINISH_CATEGORIES_CONFIG).map(cat => {
+                      const Icon = cat.icon;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => addFinishField(cat.id)}
+                          style={{
+                            padding: '4px 9px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            borderRadius: '6px',
+                            border: `1px solid ${cat.border}`,
+                            backgroundColor: cat.bg,
+                            color: cat.color,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.96)'}
+                          onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                          title={`Add ${cat.label} field to sample`}
+                        >
+                          <Icon size={13} />
+                          <span>+ {cat.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   {finishesOptions.length === 0 && (
                     <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e', marginBottom: '8px' }}>
                       No registered finishes found in Finish Catalog. Please add finishes in the <a href="/finishing" target="_blank" rel="noopener noreferrer" style={{ color: '#8b5a2b', fontWeight: 700 }}>Finishing Section</a>.
                     </div>
                   )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {finishesList.map((fin, idx) => {
-                      const isCustomOrLegacy = fin && !finishesOptions.some(f => f.name === fin || f.id === fin);
+
+                  {/* Finishes Input List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    {finishesList.map((finItem, idx) => {
+                      const currentVal = typeof finItem === 'string' ? finItem : (finItem?.value || '');
+                      const currentCat = typeof finItem === 'string' ? detectFinishCategory(currentVal, finishesOptions) : (finItem?.category || 'wood');
+                      const catConfig = FINISH_CATEGORIES_CONFIG[currentCat] || FINISH_CATEGORIES_CONFIG.wood;
+                      const CatIcon = catConfig.icon;
+
+                      const catOptions = getOptionsForCategory(currentCat);
+                      const isCustomOrLegacy = currentVal && !finishesOptions.some(f => f.name === currentVal || f.id === currentVal);
                       const optionsForField = isCustomOrLegacy
                         ? [
-                            finishSelectOptions[0],
-                            { value: fin, label: `${fin} (Legacy Unregistered)`, badge: 'Legacy' },
-                            ...finishSelectOptions.slice(1)
+                            catOptions[0],
+                            { value: currentVal, label: `${currentVal} (Unregistered / Custom)`, badge: 'Custom' },
+                            ...catOptions.slice(1)
                           ]
-                        : finishSelectOptions;
+                        : catOptions;
 
                       return (
-                        <div key={idx} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <div
+                          key={finItem?.id || idx}
+                          style={{
+                            display: 'flex',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                            backgroundColor: '#ffffff',
+                            padding: '6px 8px',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb'
+                          }}
+                        >
+                          {/* Category Badge & Switcher */}
+                          <div style={{ position: 'relative', flexShrink: 0 }}>
+                            <select
+                              value={currentCat}
+                              onChange={e => handleFinishCategoryChange(idx, e.target.value)}
+                              style={{
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                padding: '5px 22px 5px 22px',
+                                fontSize: '0.74rem',
+                                fontWeight: 750,
+                                borderRadius: '6px',
+                                border: `1.5px solid ${catConfig.border}`,
+                                backgroundColor: catConfig.bg,
+                                color: catConfig.color,
+                                cursor: 'pointer',
+                                outline: 'none',
+                                lineHeight: 1.2
+                              }}
+                              title="Click to switch finish category (Wood, Metal, Marble, Fabric, Plastic)"
+                            >
+                              {Object.values(FINISH_CATEGORIES_CONFIG).map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.shortLabel}
+                                </option>
+                              ))}
+                              <option value="all">All</option>
+                            </select>
+                            <span style={{
+                              position: 'absolute',
+                              left: '6px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              pointerEvents: 'none',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: catConfig.color
+                            }}>
+                              <CatIcon size={12} />
+                            </span>
+                            <span style={{
+                              position: 'absolute',
+                              right: '6px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              pointerEvents: 'none',
+                              fontSize: '0.62rem',
+                              color: catConfig.color
+                            }}>
+                              ▼
+                            </span>
+                          </div>
+
+                          {/* Catalog Dropdown */}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <CustomSelect
-                              value={fin}
-                              onChange={(e, val) => handleFinishItemChange(idx, val !== undefined ? val : e.target.value)}
+                              value={currentVal}
+                              onChange={(e, val) => handleFinishItemChange(idx, val !== undefined ? val : (e?.target ? e.target.value : e))}
                               options={optionsForField}
-                              placeholder="-- Select Finish from Catalog --"
+                              placeholder={catConfig.placeholder}
                               searchable={true}
-                              searchPlaceholder="Search finish by name, code, wood..."
+                              searchPlaceholder={`Search ${catConfig.label.toLowerCase()}...`}
                             />
                           </div>
+
+                          {/* Remove button */}
                           {finishesList.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeFinishField(idx)}
                               style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#ef4444',
+                                background: '#fee2e2',
+                                border: '1px solid #fecaca',
+                                color: '#dc2626',
                                 cursor: 'pointer',
-                                padding: '0.3rem',
+                                padding: '5px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                borderRadius: '6px'
+                                borderRadius: '6px',
+                                flexShrink: 0
                               }}
-                              title="Remove Finish"
+                              title={`Remove this ${catConfig.label}`}
                             >
-                              <X size={18} />
+                              <X size={15} />
                             </button>
                           )}
                         </div>
                       );
                     })}
                   </div>
+
                   {formErrors.finish_color && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', marginTop: '6px' }}>
                       <AlertCircle size={14} style={{ flexShrink: 0 }} />
@@ -2157,27 +2478,71 @@ function Samples() {
                         <td>{s.buyer_detail?.name || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.material || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>
-                          {s.finish_detail ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {s.finish_detail.finish_code && (
-                                <span style={{
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  backgroundColor: '#f5efe8',
-                                  color: '#8b5a2b',
-                                  padding: '1px 6px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #e8dbce',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {s.finish_detail.finish_code}
-                                </span>
-                              )}
-                              <span>{s.finish_color || s.finish_detail.name}</span>
-                            </div>
-                          ) : (
-                            s.finish_color || <span style={{color:'var(--text-muted)'}}>—</span>
-                          )}
+                          {(() => {
+                            const pills = [];
+                            if (s.wood_finish) pills.push({ cat: 'wood', label: s.wood_finish });
+                            if (s.metal_finish) pills.push({ cat: 'metal', label: s.metal_finish });
+                            if (s.marble_finish) pills.push({ cat: 'marble', label: s.marble_finish });
+                            if (s.fabric_type) pills.push({ cat: 'fabric', label: s.fabric_type });
+                            if (s.plastic_type) pills.push({ cat: 'plastic', label: s.plastic_type });
+
+                            if (pills.length === 0 && s.finish_color) {
+                              const rawParts = s.finish_color.split(/\s*\/\s*/).map(p => p.trim()).filter(Boolean);
+                              rawParts.forEach(p => {
+                                pills.push({ cat: detectFinishCategory(p, finishesOptions), label: p });
+                              });
+                            }
+
+                            if (pills.length === 0 && s.finish_detail) {
+                              pills.push({ cat: s.finish_detail.category || 'wood', label: s.finish_detail.name, code: s.finish_detail.finish_code });
+                            }
+
+                            if (pills.length === 0) {
+                              return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+                            }
+
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                {pills.map((pill, pIdx) => {
+                                  const cfg = FINISH_CATEGORIES_CONFIG[pill.cat] || FINISH_CATEGORIES_CONFIG.wood;
+                                  const Icon = cfg.icon;
+                                  return (
+                                    <div key={pIdx} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem' }}>
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '0.68rem',
+                                        fontWeight: 750,
+                                        backgroundColor: cfg.bg,
+                                        color: cfg.color,
+                                        border: `1px solid ${cfg.border}`,
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        <Icon size={10} />
+                                        {cfg.shortLabel}
+                                      </span>
+                                      {pill.code && (
+                                        <span style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          backgroundColor: '#f1f5f9',
+                                          color: '#475569',
+                                          padding: '1px 5px',
+                                          borderRadius: '3px'
+                                        }}>
+                                          {pill.code}
+                                        </span>
+                                      )}
+                                      <span style={{ fontWeight: 600, color: '#1e293b' }}>{pill.label}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td>{s.cbm || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                         <td>{s.usd ? `$${s.usd}` : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
