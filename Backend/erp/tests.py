@@ -773,8 +773,9 @@ class BuyerPIExportTests(APITestCase):
 
         wb = openpyxl.load_workbook(io.BytesIO(res.content))
         ws = wb.active
-        self.assertEqual(ws['A1'].value, "PINKCITY ENTERPRISES")
-        self.assertEqual(ws.cell(row=13, column=1).value, "ITEM NO.")
+        self.assertEqual(ws['B1'].value, "PINKCITY ENTERPRISES")
+        self.assertIsNone(ws.cell(row=13, column=1).value)
+        self.assertEqual(ws.cell(row=13, column=2).value, "ITEM NO.")
 
     def test_export_ef_format_selected_items(self):
         url = reverse('buyer-pi-export-excel', args=[self.pi.id])
@@ -784,8 +785,9 @@ class BuyerPIExportTests(APITestCase):
 
         wb = openpyxl.load_workbook(io.BytesIO(res.content))
         ws = wb.active
-        # Item row 14 should have item2 style
-        self.assertEqual(ws.cell(row=14, column=1).value, self.bm2.style_no)
-        # Total pcs on row 15 column 27 should be 100
-        self.assertEqual(ws.cell(row=15, column=27).value, 100)
+        # Item row 14 should have item2 style at column 2 (Column B)
+        self.assertIsNone(ws.cell(row=14, column=1).value)
+        self.assertEqual(ws.cell(row=14, column=2).value, self.bm2.style_no)
+        # Total pcs on row 15 column 28 should be 100
+        self.assertEqual(ws.cell(row=15, column=28).value, 100)
 
