@@ -17,7 +17,6 @@ const FORM_ICONS = {
   finishing: Palette,
   store_in: ArrowDownRight,
   store_issue: ArrowUpRight,
-  store_return: Undo2,
   store_item: Package,
 };
 
@@ -29,7 +28,6 @@ const FORM_COLORS = {
   finishing: '#8b5a2b',
   store_in: '#16a34a',
   store_issue: '#ea580c',
-  store_return: '#d97706',
   store_item: '#0284c7',
 };
 
@@ -42,7 +40,6 @@ const CATEGORIES = [
   { id: 'finishing', label: 'Finishing' },
   { id: 'store_in', label: 'Material In' },
   { id: 'store_issue', label: 'Daily Issue' },
-  { id: 'store_return', label: 'Material Return' },
   { id: 'store_item', label: 'Store Item' },
 ];
 
@@ -51,7 +48,7 @@ export function DraftsModal({ isOpen, onClose }) {
   const { drafts, deleteDraft } = useDrafts();
   const navigate = useNavigate();
 
-  const STORE_FORM_TYPES = useMemo(() => ['store_in', 'store_issue', 'store_return', 'store_item'], []);
+  const STORE_FORM_TYPES = useMemo(() => ['store_in', 'store_issue', 'store_item'], []);
 
   const relevantCategories = useMemo(() => {
     if (isStoreManager) {

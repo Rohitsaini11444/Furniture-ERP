@@ -3306,368 +3306,30 @@ class BuyerPIViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsAdmin()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['get'], url_path='export-excel')
+    @action(detail=True, methods=['get', 'post'], url_path='export-excel')
     def export_excel(self, request, pk=None):
         pi = self.get_object()
+        format_type = None
+        if request.method == 'POST':
+            format_type = request.data.get('export_format') or request.data.get('format') or request.data.get('format_type')
+        if not format_type:
+            format_type = (
+                request.query_params.get('export_format') or
+                request.query_params.get('pi_format') or
+                request.query_params.get('format') or
+                'general'
+            )
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = f"PI_{pi.pi_no}"
-        ws.views.sheetView[0].showGridLines = True
+        item_ids = None
+        if request.method == 'POST' and 'item_ids' in request.data:
+            item_ids = request.data.get('item_ids')
+        elif 'item_ids' in request.query_params:
+            raw_ids = request.query_params.get('item_ids', '')
+            item_ids = [i.strip() for i in raw_ids.split(',') if i.strip()]
 
-        thin_side = Side(style='thin', color='000000')
-        border_all = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        from .pi_exporters import export_buyer_pi_excel
+        return export_buyer_pi_excel(pi, format_type=format_type, item_ids=item_ids)
 
-        font_bold_lg = Font(name='Calibri', size=14, bold=True)
-        font_bold_md = Font(name='Calibri', size=11, bold=True)
-        font_bold_sm = Font(name='Calibri', size=10, bold=True)
-        font_regular = Font(name='Calibri', size=9)
-        fill_gray = PatternFill(start_color='EAEAEA', end_color='EAEAEA', fill_type='solid')
-
-        align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        align_right = Alignment(horizontal='right', vertical='center', wrap_text=True)
-        align_top_left = Alignment(horizontal='left', vertical='top', wrap_text=True, indent=1)
-
-        def style_box(row_start, col_start, row_end, col_end, text="", font=font_regular, alignment=align_center, fill=None):
-            if row_start != row_end or col_start != col_end:
-                ws.merge_cells(start_row=row_start, start_column=col_start, end_row=row_end, end_column=col_end)
-            
-            top_left = ws.cell(row=row_start, column=col_start)
-            top_left.value = text
-            if not isinstance(text, CellRichText):
-                top_left.font = font
-            top_left.alignment = alignment
-            
-            for r in range(row_start, row_end + 1):
-                for c in range(col_start, col_end + 1):
-                    cell = ws.cell(row=r, column=c)
-                    cell.border = border_all
-                    if fill:
-                        cell.fill = fill
-
-        ws.row_dimensions[1].height = 110
-
-        # Block 1: Pinkcity Enterprises Header (A1:E1)
-        font_company = InlineFont(rFont='Times New Roman', sz=20, b=True)
-        font_block1_addr = InlineFont(rFont='Times New Roman', sz=10)
-        company_text = CellRichText(
-            TextBlock(font_company, "Pinkcity Enterprises\n"),
-            TextBlock(font_block1_addr, "G 78 EPIP, Sitapura Industrial Area,\n"),
-            TextBlock(font_block1_addr, "Jaipur 302022 -\n"),
-            TextBlock(font_block1_addr, "Phone: +91 141 277 1144\n")  # Trailing newline to push title slightly higher
-        )
-        style_box(1, 1, 1, 5, company_text, alignment=align_center)
-
-        # Block 2: Buyer Address (F1:J1)
-        buyer_name = pi.buyer.name if pi.buyer else "BUYER"
-        buyer_addr = pi.buyer.address if (pi.buyer and pi.buyer.address) else ""
-        font_buyer_title = InlineFont(rFont='Calibri', sz=20, b=True)
-        font_buyer_addr = InlineFont(rFont='Calibri', sz=10)
-        font_spacer_calibri = InlineFont(rFont='Calibri', sz=5)
-        
-        buyer_blocks = [
-            TextBlock(font_spacer_calibri, "\n"),  # Top padding
-            TextBlock(font_buyer_title, f"{buyer_name.upper()}\n"),
-            TextBlock(font_spacer_calibri, "\n")   # Spacing between title and address
-        ]
-        if buyer_addr:
-            buyer_blocks.append(TextBlock(font_buyer_addr, buyer_addr))
-        style_box(1, 6, 1, 10, CellRichText(*buyer_blocks), alignment=align_top_left, fill=fill_gray)
-
-        # Block 3: Delivered To (K1:N1)
-        delivered_contact = pi.delivered_to_name or ""
-        delivered_comp = pi.delivered_to_company or (pi.buyer.name if pi.buyer else "")
-        delivered_addr = pi.delivered_to_address or ""
-        font_delim = InlineFont(rFont='Calibri', sz=9)
-        font_comp = InlineFont(rFont='Calibri', sz=20, b=True)
-        font_addr = InlineFont(rFont='Calibri', sz=10)
-        
-        deliv_blocks = [
-            TextBlock(font_spacer_calibri, "\n")  # Top padding
-        ]
-        if delivered_contact:
-            deliv_blocks.append(TextBlock(font_delim, f"DELIVERED TO: {delivered_contact}\n"))
-        else:
-            deliv_blocks.append(TextBlock(font_delim, "DELIVERED TO:\n"))
-        deliv_blocks.append(TextBlock(font_comp, f"{delivered_comp}\n"))
-        deliv_blocks.append(TextBlock(font_spacer_calibri, "\n"))  # Spacing
-        if delivered_addr:
-            deliv_blocks.append(TextBlock(font_addr, delivered_addr))
-        style_box(1, 11, 1, 14, CellRichText(*deliv_blocks), alignment=align_top_left, fill=fill_gray)
-
-        # Block 4: PI Summary Info (O1:Q1)
-        formatted_date = pi.pi_date.strftime('%d/%m/%Y') if pi.pi_date else ''
-        formatted_ex_fac = pi.ex_factory_date.strftime('%d %B, %Y') if pi.ex_factory_date else ''
-        font_pi_bold = InlineFont(rFont='Times New Roman', sz=12, b=True)
-        font_spacer_times = InlineFont(rFont='Times New Roman', sz=6)
-        
-        pi_summary_text = CellRichText(
-            TextBlock(font_spacer_times, "\n"),  # Top padding
-            TextBlock(font_pi_bold, f"PI of PO # {pi.pi_no}\n"),
-            TextBlock(font_pi_bold, f"Date : {formatted_date}\n"),
-            TextBlock(font_pi_bold, f"Ex-Factory : {formatted_ex_fac}\n"),
-            TextBlock(font_pi_bold, f"Payment: {pi.payment_terms or '100% TT 30 Days from BL'}")
-        )
-        style_box(1, 15, 1, 17, pi_summary_text, alignment=align_top_left, fill=fill_gray)
-
-        # ─── Table Headers (Row 2) ───────────────────────────────────────────
-        ws.row_dimensions[2].height = 28
-        headers_first_part = [
-            ("S. No.", 1, 1),
-            ("Barcode", 2, 2),
-            ("Buyer #", 3, 3),
-            ("Style No.", 4, 4),
-            ("Picture", 5, 5),
-            ("Name", 6, 6),
-            ("Size CMs", 7, 9),
-        ]
-        headers_second_part = [
-            ("Material", 10),
-            ("Finish", 11),
-            ("CBM", 12),
-            ("Price USD", 13),
-            ("Units", 14),
-            ("Total CBM", 15),
-            ("Total Amount", 16),
-            ("Remarks", 17),
-        ]
-
-        for title, start_col, end_col in headers_first_part:
-            style_box(2, start_col, 2, end_col, title, font=font_bold_sm, alignment=align_center)
-        for title, col_idx in headers_second_part:
-            style_box(2, col_idx, 2, col_idx, title, font=font_bold_sm, alignment=align_center)
-
-        # Apply custom borders to the header blocks and headers row (Rows 1 & 2)
-        blue_medium = Side(style='medium', color='1F4E78')
-        thin_black = Side(style='thin', color='000000')
-
-        for r in range(1, 3):
-            for c in range(1, 18):
-                cell = ws.cell(row=r, column=c)
-                
-                # Determine individual sides
-                left_side = blue_medium if c == 1 else (thin_black if c in (6, 11, 15) else Side(style=None))
-                right_side = blue_medium if c == 17 else (thin_black if c in (5, 10, 14) else Side(style=None))
-                top_side = blue_medium if r == 1 else thin_black
-                bottom_side = thin_black
-                
-                # For Row 2, every vertical divider should be thin black except the outer edges
-                if r == 2:
-                    left_side = blue_medium if c == 1 else thin_black
-                    right_side = blue_medium if c == 17 else thin_black
-                
-                cell.border = Border(left=left_side, right=right_side, top=top_side, bottom=bottom_side)
-
-        # ─── Line Items (Row 3 onwards) ──────────────────────────────────────
-        curr_row = 3
-        tot_units = 0
-        tot_cbm = 0.0
-        tot_amt = 0.0
-        temp_files = []
-
-        # Set column widths upfront so add_centered_image knows exact cell width
-        col_widths = {
-            1: 5, 2: 12, 3: 12, 4: 14, 5: 20,
-            6: 30, 7: 7, 8: 7, 9: 7, 10: 12,
-            11: 14, 12: 9, 13: 12, 14: 9, 15: 12, 16: 14, 17: 22
-        }
-        for col_idx, width in col_widths.items():
-            col_letter = get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = width
-            if col_idx == 9:
-                ws.column_dimensions[col_letter].hidden = True
-
-        items = list(pi.items.all())
-        for idx, item in enumerate(items, 1):
-            ws.row_dimensions[curr_row].height = 80
-
-            # S. No. (Col 1)
-            c = ws.cell(row=curr_row, column=1, value=idx)
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # Barcode (Col 2)
-            c = ws.cell(row=curr_row, column=2, value=item.barcode or "")
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # Buyer # (Col 3)
-            c = ws.cell(row=curr_row, column=3, value=item.buyer_no or "")
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # Style No (Col 4)
-            c = ws.cell(row=curr_row, column=4, value=item.style_no or "")
-            c.font = font_bold_sm
-            c.alignment = align_center
-            c.border = border_all
-
-            # Picture (Col 5)
-            c = ws.cell(row=curr_row, column=5, value="")
-            c.border = border_all
-
-            # Name (Col 6)
-            c = ws.cell(row=curr_row, column=6, value=item.product_name or "")
-            c.font = font_regular
-            c.alignment = align_left
-            c.border = border_all
-
-            # Size CMs (L, W, H in Cols 7, 8, 9)
-            l = float(item.size_length) if item.size_length else ""
-            b_dim = float(item.size_breadth) if item.size_breadth else ""
-            h = float(item.size_height) if item.size_height else ""
-            
-            c_l = ws.cell(row=curr_row, column=7, value=l)
-            c_l.font = font_regular
-            c_l.alignment = align_center
-            c_l.border = border_all
-            
-            c_b = ws.cell(row=curr_row, column=8, value=b_dim)
-            c_b.font = font_regular
-            c_b.alignment = align_center
-            c_b.border = border_all
-            
-            c_h = ws.cell(row=curr_row, column=9, value=h)
-            c_h.font = font_regular
-            c_h.alignment = align_center
-            c_h.border = border_all
-
-            # Material (Col 10)
-            c = ws.cell(row=curr_row, column=10, value=item.material or "")
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # Finish (Col 11)
-            c = ws.cell(row=curr_row, column=11, value=item.finish_color or "")
-            c.font = font_regular
-            c.alignment = align_center
-            c.border = border_all
-
-            # CBM (Col 12)
-            cbm_val = float(item.cbm) if item.cbm else 0.0
-            c = ws.cell(row=curr_row, column=12, value=cbm_val)
-            c.font = font_regular
-            c.alignment = align_right
-            c.number_format = '0.0000'
-            c.border = border_all
-
-            # Price USD (Col 13)
-            price_val = float(item.price_usd) if item.price_usd else 0.0
-            c = ws.cell(row=curr_row, column=13, value=price_val)
-            c.font = font_regular
-            c.alignment = align_right
-            c.number_format = '"$"#,##0.00'
-            c.border = border_all
-
-            # Units (Col 14)
-            u_val = item.units or 0
-            tot_units += u_val
-            c = ws.cell(row=curr_row, column=14, value=u_val)
-            c.font = font_bold_sm
-            c.alignment = align_center
-            c.border = border_all
-
-            # Total CBM (Col 15)
-            tcbm_val = float(item.total_cbm) if item.total_cbm else (u_val * cbm_val)
-            tot_cbm += tcbm_val
-            c = ws.cell(row=curr_row, column=15, value=tcbm_val)
-            c.font = font_regular
-            c.alignment = align_right
-            c.number_format = '0.0000'
-            c.border = border_all
-
-            # Total Amount (Col 16)
-            tamt_val = float(item.total_amount) if item.total_amount else (u_val * price_val)
-            tot_amt += tamt_val
-            c = ws.cell(row=curr_row, column=16, value=tamt_val)
-            c.font = font_bold_sm
-            c.alignment = align_right
-            c.number_format = '"$"#,##0.00'
-            c.border = border_all
-
-            # Remarks (Col 17)
-            c = ws.cell(row=curr_row, column=17, value=item.remarks or "")
-            c.font = font_regular
-            c.alignment = align_left
-            c.border = border_all
-
-            # Product Image embedding in Picture Column (Col 5)
-            img_path = None
-            if item.buyer_master and item.buyer_master.sample:
-                imgs = item.buyer_master.sample.images.all()
-                if imgs.exists() and imgs.first().image:
-                    img_path = imgs.first().image.path
-
-            if img_path and os.path.exists(img_path):
-                try:
-                    pil_img = PILImage.open(img_path)
-                    if pil_img.mode in ('RGBA', 'LA', 'P'):
-                        pil_img = pil_img.convert('RGB')
-                    pil_img.thumbnail((75, 50))
-                    tmp_f = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-                    pil_img.save(tmp_f.name, format='JPEG', quality=85)
-                    tmp_f.close()
-                    temp_files.append(tmp_f.name)
-
-                    xl_img = OpenpyxlImage(tmp_f.name)
-                    add_centered_image(ws, f"E{curr_row}", xl_img)
-                except Exception as e:
-                    print(f"Failed to embed image: {e}")
-
-            curr_row += 1
-
-        # Totals Row
-        ws.row_dimensions[curr_row].height = 30
-        style_box(curr_row, 1, curr_row, 13, "TOTAL", font=font_bold_md, alignment=align_right)
-        
-        c_u = ws.cell(row=curr_row, column=14, value=tot_units)
-        c_u.font = font_bold_md
-        c_u.alignment = align_center
-        c_u.border = border_all
-
-        c_cbm = ws.cell(row=curr_row, column=15, value=tot_cbm)
-        c_cbm.font = font_bold_md
-        c_cbm.alignment = align_right
-        c_cbm.number_format = '0.0000'
-        c_cbm.border = border_all
-
-        c_amt = ws.cell(row=curr_row, column=16, value=tot_amt)
-        c_amt.font = font_bold_md
-        c_amt.alignment = align_right
-        c_amt.number_format = '"$"#,##0.00'
-        c_amt.border = border_all
-
-        c_rem = ws.cell(row=curr_row, column=17, value="")
-        c_rem.border = border_all
-
-        # Adjust column widths
-        col_widths = {
-            1: 5, 2: 12, 3: 12, 4: 14, 5: 20,
-            6: 30, 7: 7, 8: 7, 9: 7, 10: 12,
-            11: 14, 12: 9, 13: 12, 14: 9, 15: 12, 16: 14, 17: 22
-        }
-        for col_idx, width in col_widths.items():
-            col_letter = get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = width
-            if col_idx == 9:
-                ws.column_dimensions[col_letter].hidden = True
-
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="PI_{pi.pi_no}.xlsx"'
-        wb.save(response)
-
-        for f in temp_files:
-            try:
-                os.remove(f)
-            except Exception:
-                pass
-
-        return response
 
 
 class SupplierPOItemDefectViewSet(viewsets.ModelViewSet):
@@ -6660,36 +6322,41 @@ class StoreMaterialReturnViewSet(viewsets.ModelViewSet):
             )
         return qs
 
-    def perform_create(self, serializer):
-        ret = serializer.save(returned_by=self.request.user)
-        item = ret.item
-        store_recipients = get_store_notification_recipients()
-        for u in store_recipients:
-            Notification.objects.create(
-                user=u,
-                title="Material Return Recorded",
-                message=f"Voucher #{ret.voucher_no}: Restored {ret.qty} {ret.unit} of {item.item_name} back to store balance.",
-                category="inventory",
-                link="/store-management/material-return" if u.role == 'store_manager' else "/store-management"
-            )
+    def create(self, request, *args, **kwargs):
+        return Response(
+            {
+                'detail': 'Contractor material returns are retired and new vouchers cannot be created. Contractors retain issued materials for subsequent work slots.',
+                'error': 'Contractor material returns are retired and new vouchers cannot be created.'
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {
+                'detail': 'Contractor material return records are historical and cannot be modified.',
+                'error': 'Contractor material return records are historical and cannot be modified.'
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response(
+            {
+                'detail': 'Contractor material return records are historical and cannot be modified.',
+                'error': 'Contractor material return records are historical and cannot be modified.'
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role != 'admin':
-            return Response({'detail': 'Only Admin users are authorized to void or delete store material return vouchers.'}, status=status.HTTP_403_FORBIDDEN)
-        instance = self.get_object()
-        reason = request.data.get('reason') or request.query_params.get('reason') or 'Admin Void Voucher'
-        
-        log_audit_event(
-            user=request.user,
-            action=AuditAction.DELETE,
-            module_name='Store Management',
-            model_name='StoreMaterialReturn',
-            object_id=instance.id,
-            object_repr=f"Voided Return Voucher #{instance.voucher_no} ({instance.item.item_name})",
-            reason=reason,
-            request=request
+        return Response(
+            {
+                'detail': 'Contractor material return records are historical and cannot be deleted.',
+                'error': 'Contractor material return records are historical and cannot be deleted.'
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-        return super().destroy(request, *args, **kwargs)
 
 
 class StoreRequisitionViewSet(viewsets.ModelViewSet):
@@ -7075,37 +6742,71 @@ class StoreStockSummaryView(APIView):
 
 class MonthlyContractorBillingView(APIView):
     """
-    GET /api/store/monthly-contractor-bill/?contractor=<id>&month=Jul-26
-    Generates monthly store billing summary for a specific contractor:
-    - Lists all Chargeable StoreDailyIssue records for that contractor in that month.
-    - Aggregates Total Chargeable Amount, Total Items, and Non-chargeable summary.
+    GET /api/store/monthly-contractor-bill/?contractor=<id>&production_unit=<unit_id>&month=Jul-26
+    Generates monthly store billing summary for a specific contractor at a specific factory unit:
+    - Factory-specific: Strictly isolates chargeable issues to the requested production_unit.
+    - Month-specific: Requires explicit month parameter (or 'all' for an intentional all-time statement).
+    - Decimal precision: Uses Decimal arithmetic for all currency calculations.
+    - Zero returns deduction: Per confirmed business policy, contractors do not return materials.
+    - Unassigned issue detection: Detects and reports unassigned issues (production_unit is null)
+      without silently mixing them into the factory bill.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         contractor_id = request.query_params.get('contractor')
+        production_unit_id = request.query_params.get('production_unit')
         month = request.query_params.get('month')
 
         if not contractor_id:
             return Response({'error': 'contractor parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not production_unit_id:
+            return Response({'error': 'production_unit parameter is required. Contractor billing is factory-specific.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not month or not str(month).strip():
+            return Response({'error': 'month parameter is required (e.g. "Jul-26", or "all" for all-time statement).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        month_str = str(month).strip()
+
         try:
             contractor = User.objects.get(id=contractor_id)
-        except User.DoesNotExist:
+        except (User.DoesNotExist, ValueError):
             return Response({'error': 'Contractor not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        qs = StoreDailyIssue.objects.filter(contractor=contractor)
-        if month:
-            qs = qs.filter(month_year__icontains=month)
+        try:
+            production_unit = ProductionUnit.objects.get(id=production_unit_id)
+        except (ProductionUnit.DoesNotExist, ValueError):
+            return Response({'error': 'Production unit not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        chargeable_qs = qs.filter(status=StoreItemStatus.CHARGE)
-        non_chargeable_qs = qs.filter(status=StoreItemStatus.NON_CHARGE)
+        base_qs = StoreDailyIssue.objects.filter(contractor=contractor)
+        if month_str.lower() not in ('all', 'all time', 'all-time'):
+            base_qs = base_qs.filter(month_year__icontains=month_str)
+
+        # Detect unassigned issues for this contractor/month so users can audit them
+        unassigned_issues_count = base_qs.filter(production_unit__isnull=True).count()
+
+        # Strict factory unit filter - do not silently mix issues across factories or unassigned issues
+        factory_qs = base_qs.filter(production_unit=production_unit)
+
+        chargeable_qs = factory_qs.filter(status=StoreItemStatus.CHARGE)
+        non_chargeable_qs = factory_qs.filter(status=StoreItemStatus.NON_CHARGE)
 
         chargeable_items = StoreDailyIssueSerializer(chargeable_qs, many=True).data
         non_chargeable_items = StoreDailyIssueSerializer(non_chargeable_qs, many=True).data
 
-        total_chargeable_amt = sum(float(item['chargeable_total'] or 0) for item in chargeable_items)
-        total_non_chargeable_amt = sum(float(item['non_chargeable_total'] or 0) for item in non_chargeable_items)
+        # Decimal precision arithmetic
+        total_chargeable_dec = sum(
+            (Decimal(str(item.get('chargeable_total') or '0.00')) for item in chargeable_items),
+            Decimal('0.00')
+        )
+        total_non_chargeable_dec = sum(
+            (Decimal(str(item.get('non_chargeable_total') or '0.00')) for item in non_chargeable_items),
+            Decimal('0.00')
+        )
+        net_payable_dec = total_chargeable_dec
+
+        month_display = 'All Time' if month_str.lower() in ('all', 'all time', 'all-time') else month_str
 
         return Response({
             'contractor': {
@@ -7114,12 +6815,28 @@ class MonthlyContractorBillingView(APIView):
                 'full_name': contractor.get_full_name() or contractor.username,
                 'phone': contractor.phone,
             },
-            'month_year': month or 'All Time',
+            'production_unit': {
+                'id': str(production_unit.id),
+                'name': production_unit.name,
+                'unit_code': production_unit.unit_code,
+            },
+            'month_year': month_display,
             'chargeable_items': chargeable_items,
             'non_chargeable_items': non_chargeable_items,
-            'total_chargeable_amount': total_chargeable_amt,
-            'total_non_chargeable_amount': total_non_chargeable_amt,
-            'total_issue_entries_count': len(chargeable_items) + len(non_chargeable_items)
+            # Canonical and aliased fields to maintain complete compatibility
+            'total_chargeable_amount': float(total_chargeable_dec),
+            'total_chargeable_amt': float(total_chargeable_dec),
+            'net_payable_amt': float(net_payable_dec),
+            'net_payable_amount': float(net_payable_dec),
+            'total_non_chargeable_amount': float(total_non_chargeable_dec),
+            'total_non_chargeable_amt': float(total_non_chargeable_dec),
+            'total_returned_amt': 0.0,
+            'total_returned_amount': 0.0,
+            'returned_items': [],
+            'total_issue_entries_count': len(chargeable_items) + len(non_chargeable_items),
+            'chargeable_entries_count': len(chargeable_items),
+            'non_chargeable_entries_count': len(non_chargeable_items),
+            'unassigned_issues_count': unassigned_issues_count,
         })
 
 
@@ -7442,20 +7159,11 @@ class StoreExportTemplateView(APIView):
                 ws.column_dimensions[get_column_letter(col_num)].width = 24
             filename = "store_daily_issue_template.xlsx"
 
-        elif template_type == 'material_return':
-            ws = wb.active
-            ws.title = "Material Return Entries"
-            headers = ["Voucher No", "Return Date (YYYY-MM-DD)", "Item Code", "Item Name", "Contractor Username/Name", "Quantity", "Unit", "Rate (INR)", "Remark"]
-            sample_row = ["RET-2026-001", "2026-08-10", "IT001", "Hardware Screw 2 inch", "Ramavtar 1.NO", 10, "pcs", 12.50, "Surplus material returned"]
-            ws.append(headers)
-            ws.append(sample_row)
-            for col_num in range(1, len(headers) + 1):
-                cell = ws.cell(row=1, column=col_num)
-                cell.fill = header_fill_dark
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-                ws.column_dimensions[get_column_letter(col_num)].width = 24
-            filename = "store_material_return_template.xlsx"
+        elif template_type in ('material_return', 'return', 'returns', 'material_returns'):
+            return Response({
+                'detail': 'Contractor material returns are retired and template downloads are no longer supported.',
+                'error': 'Contractor material returns are retired and template downloads are no longer supported.'
+            }, status=status.HTTP_400_BAD_REQUEST)
         else:
             return Response({'error': 'Invalid template type.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -7557,6 +7265,13 @@ class StoreExcelImportView(APIView):
 
         file_obj = request.FILES.get('file')
         import_type = request.data.get('import_type', 'unified')
+
+        if import_type in ('material_return', 'return', 'returns', 'material_returns'):
+            return Response({
+                'success': False,
+                'detail': 'Contractor material returns are retired and no longer supported for import. Contractors retain issued materials for subsequent work slots.',
+                'error': 'Contractor material returns are retired and no longer supported for import.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         if not file_obj:
             return Response({'error': 'No Excel file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -8537,69 +8252,12 @@ class StoreExcelImportView(APIView):
                     else:
                         updated_count += 1
 
-            elif import_type in ('material_return', 'return'):
-                header_row, col_map, data_rows = self._find_header_row_and_map(
-                    ws, ['voucher', 'contractor', 'item', 'qty', 'date', 'rate', 'unit'], max_search_rows=5
-                )
-
-                def get_c(row, *keywords, default=None):
-                    if col_map:
-                        for kw in keywords:
-                            for h_name, c_idx in col_map.items():
-                                if kw in h_name.lower():
-                                    if c_idx < len(row) and row[c_idx] is not None:
-                                        return row[c_idx]
-                    return default
-
-                for idx, r in enumerate(data_rows, start=header_row + 1):
-                    if not r or all(c is None for c in r):
-                        continue
-
-                    v_num = self._clean_str(get_c(r, 'voucher', 'vch', default=f"RET-{idx:04d}"))
-                    ret_date = self._parse_date_safe(get_c(r, 'date', default=None))
-                    item_ident = self._clean_str(get_c(r, 'item name', 'item', 'code', default=""))
-                    cont_ident = self._clean_str(get_c(r, 'contractor', default=""))
-                    qty = self._parse_num(get_c(r, 'qty', 'quantity', default=None), Decimal('0.00'))
-                    unit = self._clean_str(get_c(r, 'unit', default="pcs")) or "pcs"
-                    rate = self._parse_num(get_c(r, 'rate', default=None), Decimal('0.00'))
-                    remark = self._clean_str(get_c(r, 'remark', default=""))
-
-                    item = items_by_code.get(item_ident.upper()) or items_by_name.get(self._clean_key(item_ident))
-                    if not item:
-                        errors.append({
-                            'sheet': 'Material Returns',
-                            'row': idx,
-                            'field': 'Item Code / Name',
-                            'error': f"Item '{item_ident}' not found in Item Master."
-                        })
-                        continue
-
-                    contractor = None
-                    if cont_ident:
-                        c_key = self._clean_key(cont_ident)
-                        contractor = contractors_by_name.get(c_key)
-                        if not contractor:
-                            uname = re.sub(r'[^a-zA-Z0-9]', '_', cont_ident.lower())[:25]
-                            contractor = User.objects.create_user(username=uname, first_name=cont_ident, role='contractor')
-                            contractors_by_name[c_key] = contractor
-
-                    ret, created = StoreMaterialReturn.objects.update_or_create(
-                        voucher_no=v_num,
-                        defaults={
-                            'return_date': ret_date,
-                            'item': item,
-                            'contractor': contractor,
-                            'qty': qty,
-                            'unit': unit or item.unit,
-                            'rate': rate or item.base_rate,
-                            'remark': remark,
-                            'returned_by': request.user
-                        }
-                    )
-                    if created:
-                        created_count += 1
-                    else:
-                        updated_count += 1
+            elif import_type in ('material_return', 'return', 'returns', 'material_returns') or 'return' in (ws.title or '').lower():
+                return Response({
+                    'success': False,
+                    'detail': 'Contractor material returns are retired and no longer supported for import. Contractors retain issued materials for subsequent work slots.',
+                    'error': 'Contractor material returns are retired and no longer supported for import.'
+                }, status=status.HTTP_400_BAD_REQUEST)
 
                 # Single summary AuditLog for single sheet
                 try:
@@ -8722,28 +8380,11 @@ class StoreExportSelectedView(APIView):
                     issue.status
                 ])
 
-        elif module == 'material_return':
-            ws.title = "Selected Material Returns"
-            headers = ["Voucher No", "Return Date", "Item Code", "Item Name", "Contractor", "Quantity", "Unit", "Rate (INR)", "Total Amount (INR)", "Remark"]
-            ws.append(headers)
-
-            qs = StoreMaterialReturn.objects.all()
-            if selected_ids:
-                qs = qs.filter(id__in=selected_ids)
-
-            for ret in qs:
-                ws.append([
-                    ret.voucher_no,
-                    ret.return_date.strftime('%Y-%m-%d') if ret.return_date else "",
-                    ret.item.item_code if ret.item else "",
-                    ret.item.item_name if ret.item else "",
-                    ret.contractor.get_full_name() or ret.contractor.username if ret.contractor else "",
-                    float(ret.qty),
-                    ret.unit,
-                    float(ret.rate),
-                    float(ret.total_amount),
-                    ret.remark
-                ])
+        elif module in ('material_return', 'return', 'returns', 'material_returns'):
+            return Response({
+                'detail': 'Material return export option is obsolete and has been retired.',
+                'error': 'Material return export option is obsolete and has been retired.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         for col_num in range(1, len(headers) + 1):
             cell = ws.cell(row=1, column=col_num)
@@ -8788,9 +8429,11 @@ class StoreBulkDeleteView(APIView):
             elif module == 'daily_issue':
                 deleted_count, _ = StoreDailyIssue.objects.filter(id__in=selected_ids).delete()
                 model_name = 'Store Daily Issue'
-            elif module == 'material_return':
-                deleted_count, _ = StoreMaterialReturn.objects.filter(id__in=selected_ids).delete()
-                model_name = 'Store Material Return'
+            elif module in ('material_return', 'return', 'returns', 'material_returns'):
+                return Response({
+                    'detail': 'Store material return records are historical and cannot be deleted.',
+                    'error': 'Store material return records are historical and cannot be deleted.'
+                }, status=status.HTTP_400_BAD_REQUEST)
             else:
                 model_name = module
 

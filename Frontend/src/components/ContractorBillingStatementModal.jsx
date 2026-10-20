@@ -1,33 +1,71 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Printer, Download, FileText, User, Calendar, CheckCircle2 } from 'lucide-react';
+import { X, Printer, FileText, Calendar, Building2, AlertTriangle } from 'lucide-react';
 import api from '../api/axios';
 
-export default function ContractorBillingStatementModal({ isOpen, onClose, contractor, initialMonth = 'Jul-26' }) {
+export default function ContractorBillingStatementModal({
+  isOpen,
+  onClose,
+  contractor,
+  initialMonth = 'Jul-26',
+  productionUnits = [],
+  initialUnitId = null
+}) {
   const [month, setMonth] = useState(initialMonth);
+  const [units, setUnits] = useState(productionUnits);
+  const [selectedUnit, setSelectedUnit] = useState(initialUnitId || contractor?.production_unit || '');
   const [billingData, setBillingData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const printRef = useRef(null);
 
+  // Synchronize unit list from props or fetch if missing
   useEffect(() => {
-    if (isOpen && contractor) {
-      fetchContractorBill();
+    if (productionUnits && productionUnits.length > 0) {
+      setUnits(productionUnits);
+    } else if (isOpen) {
+      api.get('/production-units/')
+        .then(res => setUnits(res.data.results || res.data || []))
+        .catch(err => console.error('Failed to load production units for modal:', err));
     }
-  }, [isOpen, contractor, month]);
+  }, [productionUnits, isOpen]);
+
+  // Synchronize initial selections when modal opens or contractor changes
+  useEffect(() => {
+    if (isOpen) {
+      setMonth(initialMonth || 'Jul-26');
+      const defaultUnit = initialUnitId || contractor?.production_unit || (units[0]?.id || '');
+      setSelectedUnit(defaultUnit);
+    }
+  }, [isOpen, contractor, initialMonth, initialUnitId]);
+
+  // Fetch statement data when contractor, factory unit, or month changes
+  useEffect(() => {
+    if (isOpen && contractor && selectedUnit) {
+      fetchContractorBill();
+    } else if (isOpen && contractor && !selectedUnit) {
+      setBillingData(null);
+      setError('Please select a Factory Unit to view contractor statement.');
+    }
+  }, [isOpen, contractor, selectedUnit, month]);
 
   const fetchContractorBill = async () => {
-    if (!contractor) return;
+    if (!contractor || !selectedUnit) return;
     setLoading(true);
     setError(null);
     try {
       const res = await api.get('/store/monthly-contractor-bill/', {
-        params: { contractor: contractor.id, month: month }
+        params: {
+          contractor: contractor.id,
+          production_unit: selectedUnit,
+          month: month || 'all'
+        }
       });
       setBillingData(res.data);
     } catch (err) {
       console.error(err);
-      setError('Failed to load contractor billing statement.');
+      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to load contractor billing statement.');
+      setBillingData(null);
     } finally {
       setLoading(false);
     }
@@ -37,11 +75,12 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
 
   const handlePrint = () => {
     const printContent = printRef.current;
+    if (!printContent) return;
     const windowPrint = window.open('', '', 'width=900,height=700');
     windowPrint.document.write(`
       <html>
         <head>
-          <title>Store Billing Statement - ${contractor.full_name || contractor.username}</title>
+          <title>Store Billing Statement - ${contractor.full_name || contractor.username} - ${billingData?.production_unit?.name || 'Factory'}</title>
           <style>
             body { font-family: system-ui, sans-serif; padding: 20px; color: #1e293b; }
             h2 { text-align: center; margin-bottom: 4px; }
@@ -67,6 +106,8 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
     }, 250);
   };
 
+  const totalChargeable = billingData?.total_chargeable_amount ?? billingData?.total_chargeable_amt ?? billingData?.net_payable_amt ?? 0;
+
   return (
     <div style={{
       position: 'fixed',
@@ -86,7 +127,7 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
         backgroundColor: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '840px',
+        maxWidth: '860px',
         maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -123,12 +164,16 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
               </h3>
               <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
                 Contractor: <strong>{contractor.full_name || contractor.username}</strong>
+                {billingData?.production_unit?.name && (
+                  <span> &bull; Factory: <strong>{billingData.production_unit.name}</strong></span>
+                )}
               </p>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
               onClick={handlePrint}
+              disabled={loading || !billingData}
               style={{
                 padding: '0.5rem 1rem',
                 borderRadius: '8px',
@@ -137,10 +182,11 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
                 color: '#1e293b',
                 fontWeight: 600,
                 fontSize: '0.85rem',
-                cursor: 'pointer',
+                cursor: loading || !billingData ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.4rem'
+                gap: '0.4rem',
+                opacity: loading || !billingData ? 0.6 : 1
               }}
             >
               <Printer size={16} />
@@ -162,21 +208,68 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
           </div>
         </div>
 
-        {/* Filter Month */}
-        <div style={{ padding: '1rem 1.5rem', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={16} />
-            <span>Select Billing Month:</span>
-          </label>
-          <input
-            type="text"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            placeholder="e.g. Jul-26"
-            style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', fontWeight: 600 }}
-          />
+        {/* Filter Bar: Billing Month & Factory Unit */}
+        <div style={{
+          padding: '1rem 1.5rem',
+          backgroundColor: '#f8fafc',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1.5rem',
+          flexWrap: 'wrap'
+        }}>
+          {/* Factory Unit Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Building2 size={16} color="#8b5a2b" />
+              <span>Factory Unit:</span>
+            </label>
+            <select
+              value={selectedUnit}
+              onChange={(e) => setSelectedUnit(e.target.value)}
+              style={{
+                padding: '0.45rem 0.75rem',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                backgroundColor: '#ffffff',
+                color: '#0f172a'
+              }}
+            >
+              <option value="">-- Select Factory --</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.unit_code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Billing Month Input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar size={16} color="#8b5a2b" />
+              <span>Billing Month:</span>
+            </label>
+            <input
+              type="text"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              placeholder="e.g. Jul-26"
+              style={{
+                padding: '0.45rem 0.75rem',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                width: '120px'
+              }}
+            />
+          </div>
+
           <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            Enter month code like <strong>Jul-26</strong> or leave blank for all time.
+            Each factory unit has independent contractor billing.
           </span>
         </div>
 
@@ -185,11 +278,45 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
           <div style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem' }}>
             <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#0f172a', fontWeight: 800 }}>PINKCITY ENTERPRISES</h2>
             <h4 style={{ margin: '4px 0 0 0', fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>
-              STORE MATERIAL DEDUCTION BILL STATEMENT - {month || 'ALL TIME'}
+              STORE MATERIAL DEDUCTION BILL STATEMENT - {billingData?.month_year?.toUpperCase() || month?.toUpperCase() || 'ALL TIME'}
             </h4>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.88rem', color: '#8b5a2b', fontWeight: 700 }}>
+              Factory Unit: {billingData?.production_unit?.name ? `${billingData.production_unit.name} (${billingData.production_unit.unit_code})` : 'Selected Factory'}
+            </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem', backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+          {/* Unassigned Issues Warning Banner */}
+          {billingData && billingData.unassigned_issues_count > 0 && (
+            <div style={{
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fef3c7',
+              borderRadius: '8px',
+              padding: '0.75rem 1rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#b45309',
+              fontSize: '0.85rem'
+            }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Notice:</strong> Found {billingData.unassigned_issues_count} material issue transaction(s) for this contractor without an assigned factory unit. By factory billing policy, these are excluded from this statement until reassigned.
+              </span>
+            </div>
+          )}
+
+          {/* Contractor & Deductible Details Card */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '1.5rem',
+            marginBottom: '1.5rem',
+            backgroundColor: '#f8fafc',
+            padding: '1rem',
+            borderRadius: '10px',
+            border: '1px solid #e2e8f0'
+          }}>
             <div>
               <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Contractor Details:</p>
               <p style={{ margin: '4px 0 0 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
@@ -198,26 +325,31 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
               <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#475569' }}>
                 Phone: {contractor.phone || 'N/A'}
               </p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.85rem', color: '#475569' }}>
+                Factory: <strong>{billingData?.production_unit?.name || 'Selected Factory'}</strong>
+              </p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Net Payable / Deductible Amount:</p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Net Material Deduction Total:</p>
               <p style={{ margin: '4px 0 0 0', fontSize: '1.4rem', fontWeight: 800, color: '#c2410c' }}>
-                ₹ {billingData ? (billingData.net_payable_amt || billingData.total_chargeable_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+                ₹ {totalChargeable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
-              {billingData && billingData.total_returned_amt > 0 && (
-                <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 700 }}>
-                  (Includes ₹{billingData.total_returned_amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Material Return Credit)
-                </span>
-              )}
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                (Chargeable issues for {billingData?.production_unit?.name || 'this factory'})
+              </span>
             </div>
           </div>
 
           {loading ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>Loading bill statement...</div>
-          ) : billingData && (billingData.chargeable_items.length > 0 || (billingData.returned_items && billingData.returned_items.length > 0)) ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>Loading factory bill statement...</div>
+          ) : error ? (
+            <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#fef2f2', borderRadius: '8px', color: '#dc2626' }}>
+              {error}
+            </div>
+          ) : billingData && billingData.chargeable_items && billingData.chargeable_items.length > 0 ? (
             <div>
               <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#334155' }}>
-                Chargeable Store Material Issues List (To be deducted from contractor payment)
+                Chargeable Store Material Issues ({billingData.production_unit?.name}) &mdash; To be deducted from contractor payment
               </h4>
               <div style={{ borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '1.5rem' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -250,77 +382,42 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
                     ))}
                     <tr style={{ backgroundColor: '#fff7ed', fontWeight: 800, borderTop: '2px solid #fed7aa' }}>
                       <td colSpan={7} style={{ padding: '0.75rem', textAlign: 'right', color: '#9a3412', fontSize: '0.95rem' }}>
-                        GROSS CHARGEABLE ISSUES TOTAL:
+                        FACTORY CHARGEABLE ISSUES TOTAL:
                       </td>
                       <td style={{ padding: '0.75rem', textAlign: 'right', color: '#c2410c', fontSize: '1rem' }}>
-                        ₹ {(billingData.total_chargeable_amt || billingData.total_chargeable_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹ {totalChargeable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              {/* Material Returns Section */}
-              {billingData.returned_items && billingData.returned_items.length > 0 && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 700, color: '#15803d' }}>
-                    Material Return Credits (Credited back to contractor statement)
-                  </h4>
-                  <div style={{ borderRadius: '8px', border: '1px solid #dcfce7', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead style={{ backgroundColor: '#f0fdf4', borderBottom: '1px solid #bbf7d0' }}>
-                        <tr>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Return Voucher</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Date</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Store Item</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Returned Qty</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'left', color: '#15803d' }}>Unit</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Rate (₹)</th>
-                          <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#15803d' }}>Credit Total (₹)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {billingData.returned_items.map((item, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600, color: '#15803d' }}>{item.voucher_no}</td>
-                            <td style={{ padding: '0.65rem 0.75rem' }}>{item.return_date}</td>
-                            <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600 }}>{item.item_name}</td>
-                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>+{parseFloat(item.qty).toFixed(2)}</td>
-                            <td style={{ padding: '0.65rem 0.75rem' }}>{item.unit}</td>
-                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>₹ {parseFloat(item.rate).toFixed(2)}</td>
-                            <td style={{ padding: '0.65rem 0.75rem', textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
-                              - ₹ {parseFloat(item.chargeable_total).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                        <tr style={{ backgroundColor: '#f0fdf4', fontWeight: 800, borderTop: '2px solid #bbf7d0' }}>
-                          <td colSpan={6} style={{ padding: '0.75rem', textAlign: 'right', color: '#15803d', fontSize: '0.95rem' }}>
-                            TOTAL MATERIAL RETURNS CREDIT:
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#15803d', fontSize: '1rem' }}>
-                            - ₹ {(billingData.total_returned_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Net Payable Summary Box */}
-              <div style={{ backgroundColor: '#fef3c7', padding: '1rem 1.25rem', borderRadius: '10px', border: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* Total Deduction Summary Box */}
+              <div style={{
+                backgroundColor: '#fff7ed',
+                padding: '1rem 1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #fed7aa',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
                 <div>
-                  <h4 style={{ margin: 0, color: '#92400e', fontSize: '1.05rem', fontWeight: 800 }}>NET PAYABLE DEDUCTION TOTAL</h4>
-                  <span style={{ fontSize: '0.8rem', color: '#78350f' }}>(Gross Chargeable Issues - Material Returns Credit)</span>
+                  <h4 style={{ margin: 0, color: '#9a3412', fontSize: '1.05rem', fontWeight: 800 }}>
+                    TOTAL STORE MATERIAL DEDUCTION
+                  </h4>
+                  <span style={{ fontSize: '0.8rem', color: '#c2410c' }}>
+                    (Chargeable material issues for {billingData.production_unit?.name || 'this factory'})
+                  </span>
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#92400e' }}>
-                  ₹ {(billingData.net_payable_amt || billingData.total_chargeable_amt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#c2410c' }}>
+                  ₹ {totalChargeable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
           ) : (
             <div style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '8px', color: '#94a3b8' }}>
-              No store issues or returns found for this contractor in {month || 'the selected period'}.
+              No chargeable store issues found for this contractor at {billingData?.production_unit?.name || 'the selected factory'} in {month || 'the selected period'}.
             </div>
           )}
         </div>
@@ -328,3 +425,4 @@ export default function ContractorBillingStatementModal({ isOpen, onClose, contr
     </div>
   );
 }
+

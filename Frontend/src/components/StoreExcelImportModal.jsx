@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, Download, UploadCloud, CheckCircle, AlertTriangle, X, RefreshCw,
-  Layers, Package, ArrowDownRight, ArrowUpRight, Undo2, Copy, Check, Info,
+  Layers, Package, ArrowDownRight, ArrowUpRight, Copy, Check, Info,
   Sparkles, ShieldCheck, ShieldAlert, ArrowRight, CornerDownRight, Database
 } from 'lucide-react';
 import api from '../api/axios';
 
 export default function StoreExcelImportModal({ isOpen, onClose, onImportSuccess }) {
-  const [activeTab, setActiveTab] = useState('unified'); // 'unified' | 'items' | 'material_in' | 'daily_issue' | 'material_return'
+  const [activeTab, setActiveTab] = useState('unified'); // 'unified' | 'items' | 'material_in' | 'daily_issue'
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
@@ -206,7 +206,6 @@ export default function StoreExcelImportModal({ isOpen, onClose, onImportSuccess
       case 'items': return 'Store Item Master';
       case 'material_in': return 'Material Inward Receipts';
       case 'daily_issue': return 'Daily Outward Issues';
-      case 'material_return': return 'Material Returns';
       default: return type;
     }
   };
@@ -316,7 +315,6 @@ export default function StoreExcelImportModal({ isOpen, onClose, onImportSuccess
             { id: 'items', label: 'Item Master', icon: Package },
             { id: 'material_in', label: 'Material Inward', icon: ArrowDownRight },
             { id: 'daily_issue', label: 'Daily Outward Issue', icon: ArrowUpRight },
-            { id: 'material_return', label: 'Material Returns', icon: Undo2 },
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

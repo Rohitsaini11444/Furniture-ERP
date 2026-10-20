@@ -19,7 +19,6 @@ import ContractorBillingStatementModal from '../components/ContractorBillingStat
 import StoreItemDetailModal from '../components/StoreItemDetailModal';
 import StoreCategoryModal from '../components/StoreCategoryModal';
 import StoreItemMasterModal from '../components/StoreItemMasterModal';
-import StoreMaterialReturnModal from '../components/StoreMaterialReturnModal';
 import StoreRequisitionModal from '../components/StoreRequisitionModal';
 import StoreStockAdjustmentModal from '../components/StoreStockAdjustmentModal';
 import StoreReorderIndentModal from '../components/StoreReorderIndentModal';
@@ -86,7 +85,7 @@ export default function StoreManagement() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'material-returns' | 'requisitions' | 'adjustments' | 'contractors' | 'billing' | 'factory-units'
+  const [activeTab, setActiveTab] = useState('stock-summary'); // 'stock-summary' | 'item-master' | 'material-in' | 'daily-issue' | 'requisitions' | 'adjustments' | 'contractors' | 'billing' | 'factory-units'
 
   // Pagination states (20 entries per page)
   const ITEMS_PER_PAGE = 20;
@@ -98,7 +97,6 @@ export default function StoreManagement() {
   const [pageBilling, setPageBilling] = useState(1);
   const [pageRequisitions, setPageRequisitions] = useState(1);
   const [pageAdjustments, setPageAdjustments] = useState(1);
-  const [pageMaterialReturns, setPageMaterialReturns] = useState(1);
   const [pageUnits, setPageUnits] = useState(1);
   const [showMobileFabMenu, setShowMobileFabMenu] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -149,7 +147,6 @@ export default function StoreManagement() {
   const [productionUnits, setProductionUnits] = useState([]);
   const [materialInList, setMaterialInList] = useState([]);
   const [dailyIssuesList, setDailyIssuesList] = useState([]);
-  const [materialReturnsList, setMaterialReturnsList] = useState([]);
   const [requisitionsList, setRequisitionsList] = useState([]);
   const [stockAdjustmentsList, setStockAdjustmentsList] = useState([]);
 
@@ -167,13 +164,11 @@ export default function StoreManagement() {
   const [orderItemMaster, setOrderItemMaster] = useState('item_code');
   const [orderMaterialIn, setOrderMaterialIn] = useState('-inward_date');
   const [orderDailyIssue, setOrderDailyIssue] = useState('-id');
-  const [orderMaterialReturns, setOrderMaterialReturns] = useState('-id');
 
   // Total count states for Server-Side Pagination
   const [itemMasterTotalCount, setItemMasterTotalCount] = useState(0);
   const [materialInTotalCount, setMaterialInTotalCount] = useState(0);
   const [dailyIssuesTotalCount, setDailyIssuesTotalCount] = useState(0);
-  const [materialReturnsTotalCount, setMaterialReturnsTotalCount] = useState(0);
   const [requisitionsTotalCount, setRequisitionsTotalCount] = useState(0);
   const [stockAdjustmentsTotalCount, setStockAdjustmentsTotalCount] = useState(0);
   const [contractorsTotalCount, setContractorsTotalCount] = useState(0);
@@ -203,7 +198,6 @@ export default function StoreManagement() {
 
   const [isMaterialInModalOpen, setIsMaterialInModalOpen] = useState(false);
   const [isDailyIssueModalOpen, setIsDailyIssueModalOpen] = useState(false);
-  const [isMaterialReturnModalOpen, setIsMaterialReturnModalOpen] = useState(false);
   const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
 
@@ -247,8 +241,6 @@ export default function StoreManagement() {
         return 'material_in';
       case 'daily-issue':
         return 'daily_issue';
-      case 'material-returns':
-        return 'material_return';
       default:
         return 'items';
     }
@@ -383,18 +375,6 @@ export default function StoreManagement() {
         });
         setDailyIssuesList(res.data.results || res.data || []);
         setDailyIssuesTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
-      } else if (tabKey === 'material-returns') {
-        const p = targetPage !== undefined ? targetPage : pageMaterialReturns;
-        const res = await api.get('/store/material-returns/', {
-          params: {
-            page: p,
-            page_size: ITEMS_PER_PAGE,
-            search: searchVal || undefined,
-            contractor: contVal || undefined,
-          }
-        });
-        setMaterialReturnsList(res.data.results || res.data || []);
-        setMaterialReturnsTotalCount(res.data.count ?? (res.data.results || res.data || []).length);
       } else if (tabKey === 'requisitions') {
         const p = targetPage !== undefined ? targetPage : pageRequisitions;
         const res = await api.get('/store/requisitions/', {
@@ -454,7 +434,7 @@ export default function StoreManagement() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter, personnelRoleFilter, pageItemMaster, pageMaterialIn, pageDailyIssue, pageMaterialReturns, pageRequisitions, pageAdjustments, pageContractors, pageBilling]);
+  }, [searchQuery, selectedCategory, selectedStatus, selectedContractorFilter, selectedSupplierFilter, personnelRoleFilter, pageItemMaster, pageMaterialIn, pageDailyIssue, pageRequisitions, pageAdjustments, pageContractors, pageBilling]);
 
   // Fetch categories once on mount
   const fetchCategories = useCallback(async () => {
@@ -685,8 +665,7 @@ export default function StoreManagement() {
       if (
         (activeTab === 'item-master' && orderItemMaster === 'draft') ||
         (activeTab === 'material-in' && orderMaterialIn === 'draft') ||
-        (activeTab === 'daily-issue' && orderDailyIssue === 'draft') ||
-        (activeTab === 'material-returns' && orderMaterialReturns === 'draft')
+        (activeTab === 'daily-issue' && orderDailyIssue === 'draft')
       ) {
         return;
       }
@@ -695,7 +674,6 @@ export default function StoreManagement() {
         if (activeTab === 'item-master') currentPage = pageItemMaster;
         else if (activeTab === 'material-in') currentPage = pageMaterialIn;
         else if (activeTab === 'daily-issue') currentPage = pageDailyIssue;
-        else if (activeTab === 'material-returns') currentPage = pageMaterialReturns;
         else if (activeTab === 'requisitions') currentPage = pageRequisitions;
         else if (activeTab === 'adjustments') currentPage = pageAdjustments;
         else if (activeTab === 'contractors') currentPage = pageContractors;
@@ -721,7 +699,6 @@ export default function StoreManagement() {
     pageItemMaster,
     pageMaterialIn,
     pageDailyIssue,
-    pageMaterialReturns,
     pageRequisitions,
     pageAdjustments,
     pageContractors,
@@ -729,8 +706,7 @@ export default function StoreManagement() {
     personnelRoleFilter,
     orderItemMaster,
     orderMaterialIn,
-    orderDailyIssue,
-    orderMaterialReturns
+    orderDailyIssue
   ]);
 
   // Handle auto-opening item detail modal when navigated from top Navbar Search & tab routing
@@ -754,7 +730,6 @@ export default function StoreManagement() {
     setPageItemMaster(1);
     setPageMaterialIn(1);
     setPageDailyIssue(1);
-    setPageMaterialReturns(1);
     setPageRequisitions(1);
     setPageAdjustments(1);
     setPageContractors(1);
@@ -766,7 +741,6 @@ export default function StoreManagement() {
   const itemMasterDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_item'), [drafts]);
   const materialInDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_in'), [drafts]);
   const dailyIssueDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_issue'), [drafts]);
-  const materialReturnDrafts = React.useMemo(() => drafts.filter(d => d.formType === 'store_return'), [drafts]);
 
   // Order options with draft badge
   const itemMasterOrderOptions = [
@@ -790,12 +764,6 @@ export default function StoreManagement() {
     { value: 'draft', label: 'Drafts', badge: dailyIssueDrafts.length, icon: FileEdit, isDividerBefore: true },
   ];
 
-  const materialReturnOrderOptions = [
-    { value: '-id', label: 'Recently Created' },
-    { value: '-return_date', label: 'Newest Date' },
-    { value: 'draft', label: 'Drafts', badge: materialReturnDrafts.length, icon: FileEdit, isDividerBefore: true },
-  ];
-
   useEffect(() => {
     if (orderItemMaster === 'draft') setPageItemMaster(1);
   }, [orderItemMaster]);
@@ -805,9 +773,6 @@ export default function StoreManagement() {
   useEffect(() => {
     if (orderDailyIssue === 'draft') setPageDailyIssue(1);
   }, [orderDailyIssue]);
-  useEffect(() => {
-    if (orderMaterialReturns === 'draft') setPageMaterialReturns(1);
-  }, [orderMaterialReturns]);
 
   // Server-side paginated items directly from API responses
   const paginatedStockItems = stockSummaryData?.items || [];
@@ -823,7 +788,6 @@ export default function StoreManagement() {
       return true;
     });
   }, [billingContractors]);
-  const paginatedMaterialReturns = materialReturnsList;
   const paginatedRequisitions = requisitionsList;
   const paginatedAdjustments = stockAdjustmentsList;
 
@@ -1013,40 +977,6 @@ export default function StoreManagement() {
     return paginatedDailyIssues;
   }, [orderDailyIssue, dailyIssueDrafts, searchQuery, itemsList, contractors, contractorPersons, productionUnits, paginatedDailyIssues]);
 
-  const displayMaterialReturns = React.useMemo(() => {
-    if (orderMaterialReturns === 'draft') {
-      const q = searchQuery.toLowerCase().trim();
-      return materialReturnDrafts
-        .filter(d => {
-          if (!q) return true;
-          const vch = String(d.data?.voucher_no || '').toLowerCase();
-          return vch.includes(q);
-        })
-        .map(d => {
-          const itemObj = itemsList.find(i => String(i.id) === String(d.data?.item));
-          const contrObj = contractors.find(c => String(c.id) === String(d.data?.contractor));
-          const qty = parseFloat(d.data?.qty || 0);
-          const rate = parseFloat(d.data?.rate || 0);
-          const totalVal = !isNaN(qty) && !isNaN(rate) ? (qty * rate) : 0;
-          return {
-            id: d.id,
-            isDraft: true,
-            draftData: d.data,
-            voucher_no: d.data?.voucher_no || 'DRAFT',
-            return_date: d.data?.return_date || (d.savedAt ? new Date(d.savedAt).toISOString().split('T')[0] : 'Draft'),
-            contractor_name: contrObj?.full_name || contrObj?.username || 'Contractor',
-            item_code: itemObj?.item_code || '—',
-            item_name: itemObj?.item_name || 'Draft Item',
-            qty: d.data?.qty || 0,
-            unit: d.data?.unit || itemObj?.unit || 'pcs',
-            rate: d.data?.rate || 0,
-            total_amount: totalVal,
-            status: d.data?.status || 'charge',
-          };
-        });
-    }
-    return paginatedMaterialReturns;
-  }, [orderMaterialReturns, materialReturnDrafts, searchQuery, itemsList, contractors, paginatedMaterialReturns]);
 
   return (
     <div style={{ padding: '0.25rem 0.5rem 1rem 0.5rem', backgroundColor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
@@ -1173,7 +1103,6 @@ export default function StoreManagement() {
             { id: 'item-master', label: 'Item Master', icon: Tag, color: '#8b5a2b' },
             { id: 'material-in', label: 'Material In', icon: ArrowDownRight, color: '#16a34a' },
             { id: 'daily-issue', label: 'Daily Issue', icon: ArrowUpRight, color: '#ea580c' },
-            { id: 'material-returns', label: 'Returns', icon: Undo2, color: '#d97706' },
             { id: 'requisitions', label: 'Requisitions', icon: Plus, color: '#0284c7' },
             { id: 'adjustments', label: 'Adjustments', icon: ShieldAlert, color: '#d97706' },
             { id: 'contractors', label: 'Contractors & Staff', icon: Users, color: '#475569' },
@@ -1279,29 +1208,6 @@ export default function StoreManagement() {
           >
             <ArrowUpRight size={15} />
             <span>Daily Issue</span>
-          </button>
-
-          <button
-            onClick={() => navigate('/store-management/material-return')}
-            className="btn-subtle-motion btn-action-return"
-            title="Record Material Return"
-            style={{
-              padding: '0.42rem 0.8rem',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: '#d97706',
-              color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.82rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              boxShadow: '0 2px 4px rgba(217, 119, 6, 0.2)'
-            }}
-          >
-            <Undo2 size={15} />
-            <span>Material Return</span>
           </button>
 
           <button
@@ -2131,31 +2037,6 @@ export default function StoreManagement() {
         >
           <ArrowUpRight size={14} />
           <span>Daily Issue Entry (Sheet 2)</span>
-        </button>
-
-        <button
-          ref={el => navTabRefs.current['material-returns'] = el}
-          onClick={() => setActiveTab('material-returns')}
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            padding: '0.38rem 0.8rem',
-            borderRadius: '6px',
-            border: 'none',
-            backgroundColor: 'transparent',
-            color: activeTab === 'material-returns' ? '#ffffff' : '#64748b',
-            fontWeight: 700,
-            fontSize: '0.8rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            whiteSpace: 'nowrap',
-            transition: 'color 180ms ease'
-          }}
-        >
-          <Undo2 size={14} />
-          <span>Material Returns (Sheet 3)</span>
         </button>
 
         <button
@@ -3483,203 +3364,7 @@ export default function StoreManagement() {
         </div>
       )}
 
-      {/* TAB: MATERIAL RETURNS LOG */}
-      {activeTab === 'material-returns' && (
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
-                Store Material Returns Log (Sheet 3)
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Unused stock returned by contractors credited back into Store Inventory
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
-              <div className="store-search-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.35rem 0.75rem', maxWidth: '280px', flex: 1 }}>
-                <Search size={16} color="#94a3b8" style={{ flexShrink: 0 }} />
-                <input
-                  type="text"
-                  placeholder="Search voucher, contractor, item..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ width: '100%', border: 'none', outline: 'none', fontSize: '0.85rem' }}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    title="Clear search"
-                    aria-label="Clear search"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: '#94a3b8' }}
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </div>
-              <OrderBySelect
-                value={orderMaterialReturns}
-                onChange={(val) => setOrderMaterialReturns(val)}
-                options={materialReturnOrderOptions}
-              />
-              <button
-                onClick={() => navigate('/store-management/material-return')}
-                style={{ padding: '0.55rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: '#d97706', color: '#ffffff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-              >
-                <RotateCcw size={16} /> Record Material Return
-              </button>
-            </div>
-          </div>
 
-          <div className="desktop-table-view" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead style={{ backgroundColor: '#fef3c7', borderBottom: '2px solid #fde68a' }}>
-                <tr>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Voucher No</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Return Date</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Contractor</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'left', fontWeight: 700, color: '#b45309' }}>Item Code & Name</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Returned Qty</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Rate (₹)</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#b45309' }}>Total Value</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Credit Status</th>
-                  {orderMaterialReturns === 'draft' ? (
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Actions</th>
-                  ) : (
-                    user?.role === 'admin' && (
-                      <th style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: '#b45309' }}>Actions</th>
-                    )
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <TableSkeleton rows={6} cols={orderMaterialReturns === 'draft' ? 9 : (user?.role === 'admin' ? 9 : 8)} />
-                ) : displayMaterialReturns.length === 0 ? (
-                  <tr>
-                    <td colSpan={orderMaterialReturns === 'draft' ? 9 : (user?.role === 'admin' ? 9 : 8)} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
-                      {orderMaterialReturns === 'draft' ? 'No material return drafts saved.' : 'No material return vouchers recorded yet.'}
-                    </td>
-                  </tr>
-                ) : (
-                  displayMaterialReturns.map((ret, idx) => {
-                    const rowKey = ret.id || `ret-${idx}`;
-                    const isActive = activeRowId === rowKey;
-                    return (
-                    <tr
-                      key={rowKey}
-                      className={isActive ? 'row-active-highlight' : ''}
-                      onClick={() => {
-                        if (ret.isDraft) {
-                          navigate('/store-management/material-return', { state: { draftData: ret.draftData, draftId: ret.id } });
-                          return;
-                        }
-                        setActiveRowId(prev => prev === rowKey ? null : rowKey);
-                      }}
-                      title={ret.isDraft ? "Click to resume draft" : "Click to select & highlight row"}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        backgroundColor: isActive ? '#e0f2fe' : 'transparent',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#b45309' }}>{ret.voucher_no}</td>
-                      <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>{ret.return_date}</td>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>{ret.contractor_name || 'Self'}</td>
-                      <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: '#0f172a' }}>
-                        [{ret.item_code}] {ret.item_name}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
-                        +{ret.qty} {ret.unit}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', color: '#475569' }}>₹ {parseFloat(ret.rate || 0).toFixed(2)}</td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
-                        ₹ {parseFloat(ret.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        {ret.isDraft ? (
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '0.25rem 0.65rem',
-                            borderRadius: '12px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            backgroundColor: '#fef3c7',
-                            color: '#92400e'
-                          }}>
-                            • Draft
-                          </span>
-                        ) : (
-                          <span style={{
-                            padding: '0.25rem 0.65rem',
-                            borderRadius: '12px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            backgroundColor: ret.status === 'charge' ? '#dcfce7' : '#f1f5f9',
-                            color: ret.status === 'charge' ? '#15803d' : '#64748b'
-                          }}>
-                            {ret.status === 'charge' ? 'Charge Credit' : 'Non-Charge'}
-                          </span>
-                        )}
-                      </td>
-                      {orderMaterialReturns === 'draft' ? (
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/store-management/material-return', { state: { draftData: ret.draftData, draftId: ret.id } });
-                              }}
-                              title="Resume Editing Draft"
-                              style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                              <FileEdit size={13} color="#d97706" /> Resume
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm('Are you sure you want to discard this draft?')) {
-                                  deleteDraft(ret.id);
-                                }
-                              }}
-                              title="Discard Draft"
-                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 600 }}
-                            >
-                              <Trash2 size={13} /> Discard
-                            </button>
-                          </div>
-                        </td>
-                      ) : (
-                        user?.role === 'admin' && (
-                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                            <button
-                              onClick={() => handleVoidVoucher('/store/material-returns/', ret.id, ret.voucher_no)}
-                              title="Void / Delete Return Voucher (Admin Audit Trail)"
-                              style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#dc2626', fontWeight: 600, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                            >
-                              <Trash2 size={13} /> Void
-                            </button>
-                          </td>
-                        )
-                      )}
-                    </tr>
-                  );
-                }))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ padding: '0 1.25rem 1.25rem 1.25rem' }}>
-            <Pagination
-              currentPage={pageMaterialReturns}
-              totalPages={orderMaterialReturns === 'draft' ? (Math.ceil(displayMaterialReturns.length / ITEMS_PER_PAGE) || 1) : (Math.ceil(materialReturnsTotalCount / ITEMS_PER_PAGE) || 1)}
-              onPageChange={setPageMaterialReturns}
-            />
-          </div>
-        </div>
-      )}
 
       {/* TAB: MATERIAL REQUISITION NOTES (MRN) */}
       {activeTab === 'requisitions' && (
@@ -5446,6 +5131,8 @@ export default function StoreManagement() {
         onClose={() => setIsBillingModalOpen(false)}
         contractor={selectedContractorForBill}
         initialMonth={monthFilter}
+        productionUnits={productionUnits}
+        initialUnitId={selectedContractorForBill?.production_unit}
       />
 
       <StoreItemDetailModal
@@ -5477,14 +5164,6 @@ export default function StoreManagement() {
         onCategoryAdded={(newCat) => setCategories(prev => [...prev, newCat])}
       />
 
-      <StoreMaterialReturnModal
-        isOpen={isMaterialReturnModalOpen}
-        onClose={() => setIsMaterialReturnModalOpen(false)}
-        onSuccess={fetchBaselineData}
-        initialContractors={contractors}
-        initialItems={itemsList}
-        initialUnits={productionUnits}
-      />
 
       <StoreRequisitionModal
         isOpen={isRequisitionModalOpen}
@@ -5697,14 +5376,7 @@ export default function StoreManagement() {
               <ArrowUpRight size={16} color="#ea580c" />
               <span>Daily Issue (Outward)</span>
             </button>
-            <button
-              type="button"
-              className="store-mobile-fab-item"
-              onClick={() => { setShowMobileFabMenu(false); setIsMaterialReturnModalOpen(true); }}
-            >
-              <Undo2 size={16} color="#d97706" />
-              <span>Record Return</span>
-            </button>
+
             <button
               type="button"
               className="store-mobile-fab-item"

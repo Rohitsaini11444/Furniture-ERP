@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Search, Bell, Clock, LogOut, Users, ChevronDown, Menu, X, Shield, Briefcase, Mail, Phone, User as UserIcon, CheckCircle, Settings, ShieldCheck, Inbox, ChevronRight, ArrowLeft, Archive, ShoppingBag, Store, Warehouse, FileBox, AlertTriangle, AlertCircle, ArrowDownRight, ArrowUpRight, Undo2, Package } from 'lucide-react';
 import api from './api/axios';
 
@@ -32,7 +32,6 @@ import StoreManagement from './pages/StoreManagement';
 import StoreItemMasterPage from './pages/StoreItemMasterPage';
 import StoreMaterialInPage from './pages/StoreMaterialInPage';
 import StoreDailyIssuePage from './pages/StoreDailyIssuePage';
-import StoreMaterialReturnPage from './pages/StoreMaterialReturnPage';
 import AuditTrailPage from './pages/AuditTrailPage';
 import Breadcrumbs from './components/Breadcrumbs';
 
@@ -1642,7 +1641,7 @@ function AppLayout() {
             <Route path="/store-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreManagement /></ProtectedRoute>} />
             <Route path="/store-management/material-in" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreMaterialInPage /></ProtectedRoute>} />
             <Route path="/store-management/daily-issue" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreDailyIssuePage /></ProtectedRoute>} />
-            <Route path="/store-management/material-return" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreMaterialReturnPage /></ProtectedRoute>} />
+            <Route path="/store-management/material-return" element={<Navigate to="/store-management" replace />} />
             <Route path="/store-management/item-master/new" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
             <Route path="/store-management/item-master/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />

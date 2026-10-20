@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/axios';
-import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2, AlertCircle, CheckCircle, X, Pencil, DollarSign, Package, FileEdit } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, Download, Layers, ShoppingBag, Plus, ChevronRight, ChevronDown, FileText, Box, Check, Users, Clock, History, ArrowDownAZ, ArrowUpZA, FileSpreadsheet, Building2, AlertCircle, CheckCircle, X, Pencil, DollarSign, Package, FileEdit } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import SearchableSelect from '../components/SearchableSelect';
 import { OrderBySelect, ORDER_OPTIONS_DATE_PINO } from '../components/OrderBySelect';
@@ -78,7 +78,20 @@ function BuyerPIs() {
   const [expandedPiIds, setExpandedPiIds] = useState(new Set());
   const [expandedInnerTab, setExpandedInnerTab] = useState({});
 
-  
+  // Item selection for partial PI Excel export & format menu
+  const [selectedItemIds, setSelectedItemIds] = useState(new Set());
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   // Pagination & Ordering
   const [currentPage, setCurrentPage] = useState(() => {
     try {
@@ -179,12 +192,14 @@ function BuyerPIs() {
             items: p.items || [],
           });
           setEditingId(p.id);
+          setSelectedItemIds(new Set());
           if (p.buyer) {
             fetchBuyerMasters(p.buyer);
           }
         })
         .catch(err => console.error('Failed to fetch Buyer PI detail', err));
     } else if (id === 'new') {
+      setSelectedItemIds(new Set());
       if (location.state?.draftData) {
         setFormData(location.state.draftData);
         setIsDirty(true);
@@ -754,13 +769,19 @@ function BuyerPIs() {
     }
   };
 
-  const handleDownloadExcel = (piId, piNo) => {
-    api.get(`/buyer-pis/${piId}/export-excel/`, { responseType: 'blob' })
+  const handleDownloadExcel = (piId, piNo, format = 'general', itemIds = null) => {
+    const params = { export_format: format };
+    if (itemIds && itemIds.length > 0) {
+      params.item_ids = itemIds.join(',');
+    }
+    api.get(`/buyer-pis/${piId}/export-excel/`, { params, responseType: 'blob' })
       .then(res => {
         const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `PI_${piNo}.xlsx`);
+        const formatTag = format === 'ef' ? 'EF' : 'General';
+        const selectedTag = itemIds && itemIds.length > 0 ? '_Selected' : '';
+        link.setAttribute('download', `PI_${piNo}_${formatTag}${selectedTag}.xlsx`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -922,25 +943,167 @@ function BuyerPIs() {
                 >
                   <ShoppingBag size={16} /> <span>Create PO from PI</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadExcel(editingId, formData.pi_no)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.6rem 1rem',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#16a34a',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    fontSize: '0.88rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Download size={16} /> <span>Download PI Excel</span>
-                </button>
+
+                {/* Multi-Format PI Excel Download Dropdown */}
+                <div ref={exportMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.6rem 1rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: selectedItemIds.size > 0 ? '#15803d' : '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    title="Download Proforma Invoice in General or EF format"
+                  >
+                    <Download size={16} />
+                    <span>
+                      {selectedItemIds.size > 0
+                        ? `Download PI Excel (${selectedItemIds.size} Selected)`
+                        : 'Download PI Excel'}
+                    </span>
+                    <ChevronDown size={14} style={{ transform: showExportMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                  </button>
+
+                  {showExportMenu && (
+                    <div style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 6px)',
+                      width: '320px',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '10px',
+                      boxShadow: '0 12px 28px -4px rgba(0, 0, 0, 0.15), 0 8px 12px -6px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid #e2e8f0',
+                      zIndex: 60,
+                      padding: '0.5rem',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{ padding: '0.5rem 0.75rem', borderBottom: '1px solid #f1f5f9', marginBottom: '0.35rem' }}>
+                        <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Select Excel Format
+                        </p>
+                        {selectedItemIds.size > 0 ? (
+                          <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#16a34a', fontWeight: 650 }}>
+                            ✓ Exporting {selectedItemIds.size} selected product{selectedItemIds.size > 1 ? 's' : ''}
+                          </p>
+                        ) : (
+                          <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#94a3b8' }}>
+                            Exporting all {formData.items.length} products
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Format 1: General PI Format */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowExportMenu(false);
+                          const itemIdsArray = selectedItemIds.size > 0 ? Array.from(selectedItemIds) : null;
+                          handleDownloadExcel(editingId, formData.pi_no, 'general', itemIdsArray);
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: 'transparent',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <div style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '0.45rem', borderRadius: '6px', marginTop: '2px' }}>
+                          <FileSpreadsheet size={18} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 650, fontSize: '0.88rem', color: '#1e293b' }}>
+                            General PI Format
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px', lineHeight: 1.3 }}>
+                            Standard 17-column commercial invoice with buyer details & basic specs.
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Format 2: EF PI Format */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowExportMenu(false);
+                          const itemIdsArray = selectedItemIds.size > 0 ? Array.from(selectedItemIds) : null;
+                          handleDownloadExcel(editingId, formData.pi_no, 'ef', itemIdsArray);
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.75rem',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: 'transparent',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          marginTop: '0.25rem',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <div style={{ backgroundColor: '#eff6ff', color: '#2563eb', padding: '0.45rem', borderRadius: '6px', marginTop: '2px' }}>
+                          <Layers size={18} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 650, fontSize: '0.88rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span>EF PI Format</span>
+                            <span style={{ fontSize: '0.62rem', backgroundColor: '#dbeafe', color: '#1e40af', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>NEW</span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px', lineHeight: 1.3 }}>
+                            31-column comprehensive spec sheet with wood & fabric swatches, weights, delivery alert box & contract terms.
+                          </div>
+                        </div>
+                      </button>
+
+                      {selectedItemIds.size > 0 && (
+                        <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '0.35rem', paddingTop: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedItemIds(new Set())}
+                            style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                            Clear selection ({selectedItemIds.size})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowExportMenu(false);
+                              handleDownloadExcel(editingId, formData.pi_no, 'ef', null);
+                            }}
+                            style={{ border: 'none', background: 'none', color: '#2563eb', fontSize: '0.75rem', fontWeight: 650, cursor: 'pointer' }}
+                          >
+                            Export All Instead
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1401,6 +1564,85 @@ function BuyerPIs() {
                   </div>
                 )}
 
+                {/* Selection Banner for Partial PI Excel Download */}
+                {selectedItemIds.size > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    padding: '0.6rem 1rem',
+                    borderRadius: '8px',
+                    marginBottom: '1rem',
+                    flexWrap: 'wrap',
+                    gap: '0.75rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#166534', fontSize: '0.85rem', fontWeight: 600 }}>
+                      <CheckCircle size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
+                      <span>{selectedItemIds.size} of {formData.items.length} item(s) selected for partial Excel download</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadExcel(editingId, formData.pi_no, 'general', Array.from(selectedItemIds))}
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          backgroundColor: '#ffffff',
+                          color: '#15803d',
+                          border: '1px solid #86efac',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          fontWeight: 650,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}
+                        title="Download General Format with selected items"
+                      >
+                        <Download size={13} /> General PI ({selectedItemIds.size})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadExcel(editingId, formData.pi_no, 'ef', Array.from(selectedItemIds))}
+                        style={{
+                          padding: '0.35rem 0.75rem',
+                          backgroundColor: '#16a34a',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          fontWeight: 650,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                        }}
+                        title="Download EF Format with selected items"
+                      >
+                        <Download size={13} /> EF PI ({selectedItemIds.size})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItemIds(new Set())}
+                        style={{
+                          padding: '0.35rem 0.65rem',
+                          backgroundColor: '#ffffff',
+                          color: '#64748b',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="table-container" style={{
                   overflowX: 'auto',
                   width: '100%',
@@ -1408,9 +1650,25 @@ function BuyerPIs() {
                   borderRadius: '8px',
                   boxShadow: formErrors.items_general ? '0 0 0 1px #dc2626' : 'none'
                 }}>
-                  <table className="data-table" style={{ fontSize: '0.85rem', minWidth: '1750px', width: '100%' }}>
+                  <table className="data-table" style={{ fontSize: '0.85rem', minWidth: '1800px', width: '100%' }}>
                     <thead>
                       <tr>
+                        <th style={{ width: '45px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={formData.items.length > 0 && formData.items.every(it => it.id && selectedItemIds.has(it.id))}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                const allIds = new Set(formData.items.map(it => it.id).filter(Boolean));
+                                setSelectedItemIds(allIds);
+                              } else {
+                                setSelectedItemIds(new Set());
+                              }
+                            }}
+                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                            title="Select / Deselect all items for Excel export"
+                          />
+                        </th>
                         <th style={{ width: '50px' }}>S.No</th>
                         <th style={{ width: '140px' }}>Barcode</th>
                         <th style={{ width: '130px' }}>Buyer #</th>
@@ -1432,8 +1690,27 @@ function BuyerPIs() {
                       {formData.items.map((item, idx) => {
                         const rowErr = formErrors.items?.[idx] || {};
                         const hasRowErr = Object.keys(rowErr).length > 0;
+                        const isItemSelected = Boolean(item.id && selectedItemIds.has(item.id));
                         return (
-                          <tr key={idx} style={{ backgroundColor: hasRowErr ? '#fff8f8' : undefined }}>
+                          <tr key={idx} style={{ backgroundColor: isItemSelected ? '#f0fdf4' : (hasRowErr ? '#fff8f8' : undefined) }}>
+                            <td style={{ textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={isItemSelected}
+                                onChange={() => {
+                                  if (!item.id) return;
+                                  setSelectedItemIds(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(item.id)) next.delete(item.id);
+                                    else next.add(item.id);
+                                    return next;
+                                  });
+                                }}
+                                disabled={!item.id}
+                                style={{ cursor: item.id ? 'pointer' : 'not-allowed', width: '15px', height: '15px' }}
+                                title={item.id ? "Select item for Excel export" : "Save PI to enable export selection"}
+                              />
+                            </td>
                             <td style={{ textAlign: 'center' }}>{idx + 1}</td>
                             <td>
                               <input
@@ -1688,7 +1965,7 @@ function BuyerPIs() {
                       })}
                       {formData.items.length === 0 && (
                         <tr>
-                          <td colSpan="15" style={{
+                          <td colSpan="16" style={{
                             textAlign: 'center',
                             padding: '1.75rem',
                             color: formErrors.items_general ? '#dc2626' : '#94a3b8',
@@ -2872,7 +3149,7 @@ function BuyerPIs() {
 
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleDownloadExcel(p.id, p.pi_no); }}
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadExcel(p.id, p.pi_no, 'general'); }}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
@@ -2885,9 +3162,29 @@ function BuyerPIs() {
                                       color: '#16a34a',
                                       cursor: 'pointer'
                                     }}
-                                    title="Download PI Excel"
+                                    title="Download General PI Excel"
                                   >
                                     <Download size={13} />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadExcel(p.id, p.pi_no, 'ef'); }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #bfdbfe',
+                                      backgroundColor: '#eff6ff',
+                                      color: '#2563eb',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Download EF PI Excel (with swatches & contract terms)"
+                                  >
+                                    <Layers size={13} />
                                   </button>
 
                                   <button
