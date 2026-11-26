@@ -1622,8 +1622,8 @@ function AppLayout() {
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/samples" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
             <Route path="/samples/:id" element={<ProtectedRoute allowedRoles={['admin']}><Samples /></ProtectedRoute>} />
-            <Route path="/finishing" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Finishing /></ProtectedRoute>} />
-            <Route path="/finishing/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Finishing /></ProtectedRoute>} />
+            <Route path="/finishing" element={<ProtectedRoute allowedRoles={['admin']}><Finishing /></ProtectedRoute>} />
+            <Route path="/finishing/:id" element={<ProtectedRoute allowedRoles={['admin']}><Finishing /></ProtectedRoute>} />
             <Route path="/buyers" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyers/:id" element={<ProtectedRoute allowedRoles={['admin']}><Buyers /></ProtectedRoute>} />
             <Route path="/buyer-masters" element={<ProtectedRoute allowedRoles={['admin']}><BuyerMasters /></ProtectedRoute>} />
@@ -1638,12 +1638,12 @@ function AppLayout() {
             <Route path="/suppliers" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><SupplierManagement /></ProtectedRoute>} />
             
             {/* Gate Entry, Store & Stock */}
-            <Route path="/store-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreManagement /></ProtectedRoute>} />
-            <Route path="/store-management/material-in" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreMaterialInPage /></ProtectedRoute>} />
-            <Route path="/store-management/daily-issue" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreDailyIssuePage /></ProtectedRoute>} />
+            <Route path="/store-management" element={<ProtectedRoute allowedRoles={['admin', 'store_manager']}><StoreManagement /></ProtectedRoute>} />
+            <Route path="/store-management/material-in" element={<ProtectedRoute allowedRoles={['admin', 'store_manager']}><StoreMaterialInPage /></ProtectedRoute>} />
+            <Route path="/store-management/daily-issue" element={<ProtectedRoute allowedRoles={['admin', 'store_manager']}><StoreDailyIssuePage /></ProtectedRoute>} />
             <Route path="/store-management/material-return" element={<Navigate to="/store-management" replace />} />
-            <Route path="/store-management/item-master/new" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
-            <Route path="/store-management/item-master/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
+            <Route path="/store-management/item-master/new" element={<ProtectedRoute allowedRoles={['admin', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
+            <Route path="/store-management/item-master/edit/:id" element={<ProtectedRoute allowedRoles={['admin', 'store_manager']}><StoreItemMasterPage /></ProtectedRoute>} />
             <Route path="/gate-entry" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/gate-entry/:id" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GateEntry /></ProtectedRoute>} />
             <Route path="/stock" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><Stock /></ProtectedRoute>} />
@@ -1651,7 +1651,7 @@ function AppLayout() {
             <Route path="/stock-details/:stageKey" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'store_manager']}><StockDetails /></ProtectedRoute>} />
 
             {/* Tools & Catalog Generators */}
-            <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Tools /></ProtectedRoute>} />
+            <Route path="/tools" element={<ProtectedRoute allowedRoles={['admin']}><Tools /></ProtectedRoute>} />
 
             <Route path="/performa-invoices" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />
             <Route path="/performa-invoices/:id" element={<ProtectedRoute allowedRoles={['admin']}><BuyerPIs /></ProtectedRoute>} />

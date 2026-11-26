@@ -294,7 +294,6 @@ export default function StorePhysicalAuditModal({ isOpen, onClose, items = [], o
             }}
           >
             <span style={{ fontSize: '0.82rem', color: variancesCount > 0 ? '#b45309' : '#64748b', fontWeight: 650 }}>
-              {variancesCount > 0 ? `⚠️ ${variancesCount} Stock Variance(s) detected for Admin adjustment approval` : '✓ All physical counts match system stock'}
             </span>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button

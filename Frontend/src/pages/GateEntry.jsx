@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import {
   ArrowLeft, Search, CheckCircle, ClipboardCheck, AlertTriangle, ChevronRight, FileText, Package, XCircle, ChevronUp, ArrowRight, Box, Clock, Hourglass, Check, Truck, Download,
@@ -29,8 +29,9 @@ function formatDisplayDate(dateStr) {
 
 // ─── Status badge helpers ────────────────────────────────────────────────────
 const STATUS_STYLES = {
-  Pending:   { bg: '#fef3c7', color: '#d97706', icon: <CheckCircle size={12}/> },
-  Received:  { bg: '#dbeafe', color: '#1d4ed8', icon: <CheckCircle size={12}/> },
+  Pending:            { bg: '#fef3c7', color: '#d97706', icon: <Clock size={12}/> },
+  'Partial Received': { bg: '#fff7ed', color: '#ea580c', icon: <Hourglass size={12}/> },
+  Received:           { bg: '#ecfdf5', color: '#059669', icon: <CheckCircle size={12}/> },
 };
 
 function StatusBadge({ status }) {
@@ -440,11 +441,14 @@ function PassItemModal({ item, remaining, onClose, onSaved }) {
 // ─── QC Form (Gate Entry Check) ───────────────────────────────────────────────
 function QCForm({ poId, onBack }) {
   const { isStoreManager } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [po, setPo] = useState(null);
   const [poReceipts, setPoReceipts] = useState([]);
   const [poDebitNotes, setPoDebitNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showRecordInstallmentModal, setShowRecordInstallmentModal] = useState(false);
+  const [showRecordInstallmentModal, setShowRecordInstallmentModal] = useState(
+    searchParams.get('action') === 'record'
+  );
   const [expandedLogs, setExpandedLogs] = useState({});
   const [selectedDebitNote, setSelectedDebitNote] = useState(null);
   const [selectedGRN, setSelectedGRN] = useState(null);
@@ -472,6 +476,10 @@ function QCForm({ poId, onBack }) {
   const items = po.items || [];
   const totalItemsCount = items.length;
 
+  let totalOrderedUnits = 0;
+  let totalPassedUnits = 0;
+  let totalRejectedUnits = 0;
+  let totalOutstandingUnits = 0;
   let passedItemsCount = 0;
   let rejectedItemsCount = 0;
   let outstandingItemsCount = 0;
@@ -480,12 +488,19 @@ function QCForm({ poId, onBack }) {
     const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
     const passedTotal = parseFloat(item.passed_quantity || 0);
     const ordered = parseFloat(item.quantity || 0);
-    const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
+    const remaining = Math.max(0, ordered - passedTotal);
+
+    totalOrderedUnits += ordered;
+    totalPassedUnits += passedTotal;
+    totalRejectedUnits += rejectedTotal;
+    totalOutstandingUnits += remaining;
 
     if (passedTotal > 0) passedItemsCount++;
     if (rejectedTotal > 0) rejectedItemsCount++;
     if (remaining > 0) outstandingItemsCount++;
   });
+
+  const isGateEntryComplete = po.status === 'Received' || (totalItemsCount > 0 && totalOutstandingUnits === 0);
 
   const grnGroupMap = {};
   poReceipts.forEach(rcpt => {
@@ -514,6 +529,39 @@ function QCForm({ poId, onBack }) {
   });
   const grnRoundsList = Object.values(grnGroupMap).sort((a, b) => (b.round_number || 0) - (a.round_number || 0));
 
+  if (showRecordInstallmentModal && !isGateEntryComplete) {
+    return (
+      <RecordInstallmentModal
+        po={po}
+        onClose={() => {
+          setShowRecordInstallmentModal(false);
+          if (searchParams.get('action')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('action');
+            setSearchParams(next, { replace: true });
+          }
+        }}
+        onSaved={(resData) => {
+          setShowRecordInstallmentModal(false);
+          if (searchParams.get('action')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('action');
+            setSearchParams(next, { replace: true });
+          }
+          if (resData?.receipts?.length > 0) {
+            setSelectedGRN({
+              grn_number: resData.grn_number,
+              round_number: resData.round_number,
+              supplier_po: po,
+              batch_items: resData.receipts
+            });
+          }
+          loadPO();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="new-page-form" style={{ padding: '0.5rem 0 2rem' }}>
       <DebitNotePrintout
@@ -526,24 +574,6 @@ function QCForm({ poId, onBack }) {
         onClose={() => setSelectedGRN(null)}
       />
 
-      {showRecordInstallmentModal && (
-        <RecordInstallmentModal
-          po={po}
-          onClose={() => setShowRecordInstallmentModal(false)}
-          onSaved={(resData) => {
-            setShowRecordInstallmentModal(false);
-            if (resData?.receipts?.length > 0) {
-              setSelectedGRN({
-                grn_number: resData.grn_number,
-                round_number: resData.round_number,
-                supplier_po: po,
-                batch_items: resData.receipts
-              });
-            }
-            loadPO();
-          }}
-        />
-      )}
       {/* Header Card */}
       <div className="po-header-card">
         <div className="po-header-left">
@@ -599,20 +629,8 @@ function QCForm({ poId, onBack }) {
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
                   Status
                 </div>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  backgroundColor: '#fff7ed',
-                  border: '1px solid #ffedd5',
-                  color: '#ea580c',
-                  padding: '3px 10px',
-                  borderRadius: '999px',
-                  fontSize: '0.78rem',
-                  fontWeight: 700
-                }}>
-                  <Clock size={13} strokeWidth={2.5} />
-                  <span>{po.status || 'Pending'}</span>
+                <div style={{ marginTop: '3px' }}>
+                  <StatusBadge status={isGateEntryComplete ? 'Received' : (po.status || 'Pending')} />
                 </div>
               </div>
             </div>
@@ -645,6 +663,9 @@ function QCForm({ poId, onBack }) {
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
               Total Items
             </div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#2563eb', marginTop: '2px' }}>
+              {totalOrderedUnits} pcs
+            </div>
           </div>
 
           {/* Passed */}
@@ -667,6 +688,9 @@ function QCForm({ poId, onBack }) {
             </div>
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
               Passed
+            </div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#16a34a', marginTop: '2px' }}>
+              {totalPassedUnits} pcs
             </div>
           </div>
 
@@ -691,6 +715,9 @@ function QCForm({ poId, onBack }) {
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
               Rejected
             </div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#dc2626', marginTop: '2px' }}>
+              {totalRejectedUnits} pcs
+            </div>
           </div>
 
           {/* Outstanding */}
@@ -699,8 +726,8 @@ function QCForm({ poId, onBack }) {
               width: '32px',
               height: '32px',
               borderRadius: '8px',
-              backgroundColor: '#fff7ed',
-              color: '#ea580c',
+              backgroundColor: totalOutstandingUnits === 0 ? '#ecfdf5' : '#fff7ed',
+              color: totalOutstandingUnits === 0 ? '#059669' : '#ea580c',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -708,11 +735,14 @@ function QCForm({ poId, onBack }) {
             }}>
               <Hourglass size={18} strokeWidth={2.2} />
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: totalOutstandingUnits === 0 ? '#059669' : '#1e293b', lineHeight: 1 }}>
               {outstandingItemsCount}
             </div>
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#64748b', marginTop: '4px' }}>
               Outstanding
+            </div>
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: totalOutstandingUnits === 0 ? '#059669' : '#ea580c', marginTop: '2px' }}>
+              {totalOutstandingUnits} pcs
             </div>
           </div>
         </div>
@@ -730,10 +760,13 @@ function QCForm({ poId, onBack }) {
           <div style={{ width: '36px', height: '3px', backgroundColor: '#10b981', borderRadius: '2px', marginLeft: '1.85rem' }} />
         </div>
 
-        {!isStoreManager && (
+        {!isStoreManager && !isGateEntryComplete ? (
           <button
             type="button"
-            onClick={() => setShowRecordInstallmentModal(true)}
+            onClick={() => {
+              setShowRecordInstallmentModal(true);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             style={{
               backgroundColor: '#059669',
               color: '#ffffff',
@@ -752,7 +785,24 @@ function QCForm({ poId, onBack }) {
             <Truck size={18} />
             <span>+ Record Delivery Installment / Inward Shipment</span>
           </button>
-        )}
+        ) : isGateEntryComplete ? (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            backgroundColor: '#ecfdf5',
+            color: '#065f46',
+            border: '1px solid #a7f3d0',
+            padding: '0.55rem 1.1rem',
+            borderRadius: '10px',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
+          }}>
+            <CheckCircle size={16} color="#059669" />
+            <span>Gate Inward Completed</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Table Card Container */}
@@ -782,7 +832,7 @@ function QCForm({ poId, onBack }) {
                   const rejectedTotal = (item.defects || []).reduce((acc, d) => acc + parseFloat(d.quantity || 0), 0);
                   const passedTotal = parseFloat(item.passed_quantity || 0);
                   const ordered = parseFloat(item.quantity || 0);
-                  const remaining = Math.max(0, ordered - passedTotal - rejectedTotal);
+                  const remaining = Math.max(0, ordered - passedTotal);
 
                   let skuCode = item.description || '';
                   let skuDetail = '';
@@ -1712,8 +1762,10 @@ export default function GateEntry() {
               ) : filteredPOs.map((p, idx) => {
                 const isRecentlyVisited = String(p.id) === String(lastVisitedId);
                 const itemsCount = (p.items || []).length;
-                const totalUnits = (p.items || []).reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
-                const isReceived = p.status === 'Received';
+                const totalOrderedUnits = (p.items || []).reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+                const totalPassedUnits = (p.items || []).reduce((acc, it) => acc + (Number(it.passed_quantity) || 0), 0);
+                const totalOutstandingUnits = Math.max(0, totalOrderedUnits - totalPassedUnits);
+                const isReceived = p.status === 'Received' || (totalOrderedUnits > 0 && totalOutstandingUnits === 0);
                 return (
                   <tr
                     key={p.id}
@@ -1742,15 +1794,28 @@ export default function GateEntry() {
                       {formatDisplayDate(p.po_date)}
                     </td>
                     <td style={{ padding: '0.85rem 1rem' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
-                        {totalUnits > 0 && (
-                          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>({totalUnits} pcs)</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', width: 'fit-content' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
+                          {totalOrderedUnits > 0 && (
+                            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>({totalOrderedUnits} pcs)</span>
+                          )}
+                        </div>
+                        {totalOutstandingUnits === 0 && totalOrderedUnits > 0 ? (
+                          <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <CheckCircle size={12} color="#059669" />
+                            <span>All {totalPassedUnits} pcs received (0 outstanding)</span>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <Hourglass size={12} color="#ea580c" />
+                            <span>{totalOutstandingUnits} pcs outstanding ({totalPassedUnits} passed)</span>
+                          </div>
                         )}
                       </div>
                     </td>
                     <td style={{ padding: '0.85rem 1rem' }}>
-                      <StatusBadge status={p.status}/>
+                      <StatusBadge status={isReceived ? 'Received' : (p.status || 'Pending')}/>
                     </td>
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                       {isReceived ? (
@@ -1777,7 +1842,7 @@ export default function GateEntry() {
                         </button>
                       ) : (
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}?action=record`); }}
                           style={{
                             backgroundColor: '#0d9488',
                             border: '1px solid #0d9488',
@@ -1851,38 +1916,54 @@ export default function GateEntry() {
 
               <div style={{ height: '1px', background: '#e2e8f0', margin: '0' }} />
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-start' }}>
-                  <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Package size={18} color="#059669" />
-                    <div>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEMS & ORDERED QTY</div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>
-                        {(p.items || []).length} Line Item{(p.items || []).length !== 1 ? 's' : ''} ({p.total_ordered_qty !== undefined ? p.total_ordered_qty : (p.items || []).reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0)} Pcs)
-                      </div>
-                    </div>
-                  </div>
-                  <StatusBadge status={p.status} />
-                </div>
+              {(() => {
+                const mItemsCount = (p.items || []).length;
+                const mOrdered = (p.items || []).reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+                const mPassed = (p.items || []).reduce((acc, it) => acc + (Number(it.passed_quantity) || 0), 0);
+                const mOutstanding = Math.max(0, mOrdered - mPassed);
+                const mIsReceived = p.status === 'Received' || (mOrdered > 0 && mOutstanding === 0);
 
-                <button
-                  className="btn-secondary"
-                  onClick={(e) => { e.stopPropagation(); navigate(`/gate-entry/${p.id}`); }}
-                  style={{
-                    padding: '0.6rem 1rem',
-                    fontSize: '0.9rem',
-                    color: '#14b8a6',
-                    borderColor: '#99f6e4',
-                    borderRadius: '10px',
-                    background: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    fontWeight: 600
-                  }}
-                >
-                  Start QC
-                </button>
-              </div>
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', alignItems: 'flex-start' }}>
+                      <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Package size={18} color="#059669" />
+                        <div>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4b5563', letterSpacing: '0.02em', marginBottom: '0.1rem' }}>ITEMS & ORDERED QTY</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#059669' }}>
+                            {mItemsCount} Line Item{mItemsCount !== 1 ? 's' : ''} ({mOrdered} Pcs)
+                          </div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: mOutstanding === 0 ? '#059669' : '#ea580c', marginTop: '2px' }}>
+                            {mOutstanding === 0 ? `✓ All ${mPassed} pcs received` : `${mOutstanding} pcs outstanding`}
+                          </div>
+                        </div>
+                      </div>
+                      <StatusBadge status={mIsReceived ? 'Received' : (p.status || 'Pending')} />
+                    </div>
+
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(mIsReceived ? `/gate-entry/${p.id}` : `/gate-entry/${p.id}?action=record`);
+                      }}
+                      style={{
+                        padding: '0.6rem 1rem',
+                        fontSize: '0.9rem',
+                        color: mIsReceived ? '#475569' : '#14b8a6',
+                        borderColor: mIsReceived ? '#cbd5e1' : '#99f6e4',
+                        borderRadius: '10px',
+                        background: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontWeight: 600
+                      }}
+                    >
+                      {mIsReceived ? 'View QC' : 'Start QC'}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

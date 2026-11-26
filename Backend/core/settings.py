@@ -183,7 +183,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT') or os.path.join(BASE_DIR, 'media')
 
 # CORS
 cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
@@ -221,7 +221,8 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# File Upload Settings for Multi-Product / Section PPT Generation
+# Form & File Upload Settings
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 100000  # Default is 1000; increased to allow bulk admin actions on large datasets
 DATA_UPLOAD_MAX_NUMBER_FILES = 1000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB

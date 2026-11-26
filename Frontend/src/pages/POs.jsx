@@ -273,6 +273,22 @@ function POForm({ poId, onBack, onSaved }) {
     }
   }, [location.state, isNew]);
 
+  // Auto-fill next sequential PO number for new POs (e.g. PO-1, PO-2, ...)
+  useEffect(() => {
+    if (isNew && !location.state?.draftData?.header?.po_number) {
+      api.get('/supplier-pos/next-po-number/').then(res => {
+        if (res.data?.next_po_number) {
+          setHeader(h => {
+            if (!h.po_number) {
+              return { ...h, po_number: res.data.next_po_number };
+            }
+            return h;
+          });
+        }
+      }).catch(err => console.error('Error fetching next PO number:', err));
+    }
+  }, [isNew, location.state]);
+
   // Load existing PO for edit
   useEffect(() => {
     if (!isNew && poId) {
@@ -325,6 +341,38 @@ function POForm({ poId, onBack, onSaved }) {
     if (val) {
       api.get(`/buyer-pis/${val}/`).then(res => {
         setSelectedPiData(res.data);
+        if (res.data && res.data.items && res.data.items.length > 0) {
+          setItems(curr => {
+            const isOnlyEmpty = curr.length === 1 && !curr[0].description && !curr[0].quantity && !curr[0].rate;
+            if (isOnlyEmpty) {
+              const unfulfilled = res.data.items
+                .map(it => {
+                  const orderUnits = Number(it.units || 0);
+                  const allocated = Number(it.allocated_quantity || 0);
+                  const rem = it.remaining_quantity !== undefined ? Number(it.remaining_quantity) : Math.max(0, orderUnits - allocated);
+                  return { it, orderUnits, allocated, rem };
+                })
+                .filter(x => x.rem > 0);
+
+              if (unfulfilled.length > 0) {
+                return unfulfilled.map(({ it, orderUnits, allocated, rem }) => ({
+                  buyer: res.data.buyer || '',
+                  buyer_pi: res.data.id,
+                  buyer_pi_item: it.id || '',
+                  description: `${it.style_no || ''} - ${it.product_name || ''}`.trim() || 'Item from PI',
+                  quantity: String(rem % 1 === 0 ? parseInt(rem) : rem),
+                  unit: 'pcs',
+                  rate: '',
+                  amount: '',
+                  pi_units: orderUnits,
+                  allocated_quantity: allocated,
+                  remaining_quantity: rem,
+                }));
+              }
+            }
+            return curr;
+          });
+        }
       }).catch(err => console.error(err));
     } else {
       setSelectedPiData(null);
@@ -334,15 +382,33 @@ function POForm({ poId, onBack, onSaved }) {
   const handleAutoFillFromPI = () => {
     if (!selectedPiData || !selectedPiData.items || selectedPiData.items.length === 0) return;
     setIsDirty(true);
-    const newItems = selectedPiData.items.map(it => ({
+
+    const itemsWithRemaining = selectedPiData.items.map(it => {
+      const orderUnits = Number(it.units || 0);
+      const allocated = Number(it.allocated_quantity || 0);
+      const rem = it.remaining_quantity !== undefined ? Number(it.remaining_quantity) : Math.max(0, orderUnits - allocated);
+      return { it, orderUnits, allocated, rem };
+    });
+
+    const unfulfilled = itemsWithRemaining.filter(x => x.rem > 0);
+
+    if (unfulfilled.length === 0) {
+      alert(`All products in Buyer PI (${selectedPiData.pi_no}) have already been fully ordered in existing Purchase Orders.\n\nAll items have remaining quantity of 0.`);
+      return;
+    }
+
+    const newItems = unfulfilled.map(({ it, orderUnits, allocated, rem }) => ({
       buyer: selectedPiData.buyer || '',
       buyer_pi: selectedPiData.id,
       buyer_pi_item: it.id || '',
       description: `${it.style_no || ''} - ${it.product_name || ''}`.trim() || 'Item from PI',
-      quantity: it.units ? String(it.units) : '1',
+      quantity: String(rem % 1 === 0 ? parseInt(rem) : rem),
       unit: 'pcs',
       rate: '',
       amount: '',
+      pi_units: orderUnits,
+      allocated_quantity: allocated,
+      remaining_quantity: rem,
     }));
     setItems(newItems);
   };
@@ -360,15 +426,34 @@ function POForm({ poId, onBack, onSaved }) {
             setItems(curr => {
               const isOnlyEmpty = curr.length === 1 && !curr[0].description && !curr[0].quantity;
               if (isOnlyEmpty) {
-                return res.data.items.map(it => ({
+                const unfulfilled = res.data.items
+                  .map(it => {
+                    const orderUnits = Number(it.units || 0);
+                    const allocated = Number(it.allocated_quantity || 0);
+                    const rem = it.remaining_quantity !== undefined ? Number(it.remaining_quantity) : Math.max(0, orderUnits - allocated);
+                    return { it, orderUnits, allocated, rem };
+                  })
+                  .filter(x => x.rem > 0);
+
+                const itemsToMap = unfulfilled.length > 0 ? unfulfilled : res.data.items.map(it => ({
+                  it,
+                  orderUnits: Number(it.units || 0),
+                  allocated: Number(it.allocated_quantity || 0),
+                  rem: Number(it.units || 1)
+                }));
+
+                return itemsToMap.map(({ it, orderUnits, allocated, rem }) => ({
                   buyer: res.data.buyer || '',
                   buyer_pi: res.data.id,
                   buyer_pi_item: it.id || '',
                   description: `${it.style_no || ''} - ${it.product_name || ''}`.trim() || 'Item from PI',
-                  quantity: it.units ? String(it.units) : '1',
+                  quantity: String(rem % 1 === 0 ? parseInt(rem) : rem),
                   unit: 'pcs',
                   rate: '',
                   amount: '',
+                  pi_units: orderUnits,
+                  allocated_quantity: allocated,
+                  remaining_quantity: rem,
                 }));
               }
               return curr;
@@ -756,20 +841,43 @@ function POForm({ poId, onBack, onSaved }) {
               <div className="po-header-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem', marginBottom: '1.25rem' }}>
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>Status *</label>
-                  <SearchableSelect
-                    options={[
-                      { id: 'Pending', name: 'Pending', icon: Clock },
-                      { id: 'Received', name: 'Received', icon: CheckCircle },
-                      { id: 'Cancelled', name: 'Cancelled', icon: XCircle }
-                    ]}
-                    value={header.status}
-                    onChange={val => updateHeader('status', val)}
-                    showSearch={false}
-                    clearable={false}
-                    placeholder="Select status..."
-                    titleKey="name"
-                    disabled={isStoreManager}
-                  />
+                  {isNew ? (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        padding: '0.5rem 0.85rem',
+                        backgroundColor: '#f1f5f9',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#475569',
+                        fontWeight: 700,
+                        fontSize: '0.85rem',
+                        height: '38px',
+                        boxSizing: 'border-box',
+                        userSelect: 'none'
+                      }}
+                    >
+                      <Clock size={14} color="#64748b" />
+                      <span>Pending</span>
+                    </div>
+                  ) : (
+                    <SearchableSelect
+                      options={[
+                        { id: 'Pending', name: 'Pending', icon: Clock },
+                        { id: 'Received', name: 'Received', icon: CheckCircle },
+                        { id: 'Cancelled', name: 'Cancelled', icon: XCircle }
+                      ]}
+                      value={header.status}
+                      onChange={val => updateHeader('status', val)}
+                      showSearch={false}
+                      clearable={false}
+                      placeholder="Select status..."
+                      titleKey="name"
+                      disabled={isStoreManager}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
@@ -1035,6 +1143,11 @@ function POForm({ poId, onBack, onSaved }) {
                             style={{ width: '95px', fontSize: '0.82rem', padding: '6px 8px' }}
                             placeholder="0.00" value={item.quantity}
                             onChange={e => updateItem(idx, 'quantity', e.target.value)} />
+                          {item.remaining_quantity !== undefined && (
+                            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, marginTop: '2px', whiteSpace: 'nowrap' }}>
+                              Rem: {item.remaining_quantity}{item.pi_units ? ` / ${item.pi_units}` : ''}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '6px 8px' }}>
                           <CustomSelect

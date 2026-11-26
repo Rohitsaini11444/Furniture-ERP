@@ -4,6 +4,7 @@ import api from '../api/axios';
 import { TableSkeleton, CardSkeleton } from '../components/TableSkeleton';
 import CustomSelect from '../components/CustomSelect';
 import { useAuth } from '../context/AuthContext';
+import DirectStageTransferModal from '../components/DirectStageTransferModal';
 import {
   Boxes,
   Wrench,
@@ -24,7 +25,8 @@ import {
   FileText,
   Factory,
   ArrowRightLeft,
-  Building2
+  Building2,
+  Sparkles
 } from 'lucide-react';
 
 const STAGE_CONFIG = {
@@ -50,6 +52,7 @@ export default function ProductionPipeline() {
 
   // Modal states
   const [showAssignModal, setShowAssignModal] = useState(false);
+  const [transferStockItem, setTransferStockItem] = useState(null);
   const [assignForm, setAssignForm] = useState({
     stage: 'sanding',
     stock_item: '',
@@ -244,6 +247,29 @@ export default function ProductionPipeline() {
             <RefreshCw size={16} /> Refresh Data
           </button>
           {isSupervisor && (
+            <button
+              type="button"
+              onClick={() => {
+                const firstAvailable = stockItems.find(s => s.stock_type !== 'packaged' && parseFloat(s.quantity) > 0);
+                if (firstAvailable) {
+                  setTransferStockItem(firstAvailable);
+                } else {
+                  alert('No un-packaged stock available to transfer.');
+                }
+              }}
+              className="btn-primary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                backgroundColor: '#8b5a2b',
+                boxShadow: '0 4px 12px rgba(139, 90, 43, 0.25)'
+              }}
+            >
+              <ArrowRight size={16} strokeWidth={2.5} /> Direct Push Stage
+            </button>
+          )}
+          {isSupervisor && (
             <button onClick={() => handleOpenAssignModal('sanding')} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Plus size={18} /> Start Stage Batch Job
             </button>
@@ -316,7 +342,7 @@ export default function ProductionPipeline() {
       <div className="pipeline-stats-grid">
         <div
           className="pipeline-stat-card"
-          onClick={() => navigate('/stock/details/raw')}
+          onClick={() => { setActiveTab('stock'); setStockTypeFilter('raw'); }}
           style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #0284c7', boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -328,13 +354,13 @@ export default function ProductionPipeline() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Gate Receiving</span>
-            <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700 }}>Open Page →</span>
+            <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700 }}>Filter Table ↓</span>
           </div>
         </div>
 
         <div
           className="pipeline-stat-card"
-          onClick={() => navigate('/stock/details/sanded')}
+          onClick={() => { setActiveTab('stock'); setStockTypeFilter('sanded'); }}
           style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #d97706', boxShadow: '0 2px 8px rgba(217, 119, 6, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -346,13 +372,13 @@ export default function ProductionPipeline() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Sanding QC</span>
-            <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>Open Page →</span>
+            <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700 }}>Filter Table ↓</span>
           </div>
         </div>
 
         <div
           className="pipeline-stat-card"
-          onClick={() => navigate('/stock/details/polished')}
+          onClick={() => { setActiveTab('stock'); setStockTypeFilter('polished'); }}
           style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #7c3aed', boxShadow: '0 2px 8px rgba(124, 58, 237, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -364,13 +390,13 @@ export default function ProductionPipeline() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Passed Polishing QC</span>
-            <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>Open Page →</span>
+            <span style={{ fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>Filter Table ↓</span>
           </div>
         </div>
 
         <div
           className="pipeline-stat-card"
-          onClick={() => navigate('/stock/details/packaged')}
+          onClick={() => { setActiveTab('stock'); setStockTypeFilter('packaged'); }}
           style={{ background: '#ffffff', borderRadius: '12px', padding: '1.2rem', border: '1.5px solid #059669', boxShadow: '0 2px 8px rgba(5, 150, 105, 0.1)', cursor: 'pointer', transition: 'all 0.2s' }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -382,7 +408,7 @@ export default function ProductionPipeline() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.3rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Ready for Shipment</span>
-            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Open Page →</span>
+            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Filter Table ↓</span>
           </div>
         </div>
       </div>
@@ -538,21 +564,47 @@ export default function ProductionPipeline() {
                     </td>
                     {isSupervisor && (
                       <td>
-                        {stock.stock_type === 'raw' && parseFloat(stock.quantity) > 0 && (
-                          <button onClick={() => handleOpenAssignModal('sanding', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                            Assign Sanding <ArrowRight size={14} />
-                          </button>
-                        )}
-                        {stock.stock_type === 'sanded' && parseFloat(stock.quantity) > 0 && (
-                          <button onClick={() => handleOpenAssignModal('polishing', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: '#c084fc', color: '#7e22ce' }}>
-                            Assign Polishing <ArrowRight size={14} />
-                          </button>
-                        )}
-                        {stock.stock_type === 'polished' && parseFloat(stock.quantity) > 0 && (
-                          <button onClick={() => handleOpenAssignModal('packaging', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: '#86efac', color: '#15803d' }}>
-                            Assign Packaging <ArrowRight size={14} />
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {stock.stock_type !== 'packaged' && parseFloat(stock.quantity) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setTransferStockItem(stock)}
+                              title={`Directly transfer ${stock.style_no} forward to another stage`}
+                              style={{
+                                backgroundColor: '#8b5a2b',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 2px 4px rgba(139, 90, 43, 0.25)'
+                              }}
+                            >
+                              <ArrowRight size={13} strokeWidth={2.5} />
+                              <span>Push Stage</span>
+                            </button>
+                          )}
+                          {stock.stock_type === 'raw' && parseFloat(stock.quantity) > 0 && (
+                            <button onClick={() => handleOpenAssignModal('sanding', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                              Assign Sanding <ArrowRight size={14} />
+                            </button>
+                          )}
+                          {stock.stock_type === 'sanded' && parseFloat(stock.quantity) > 0 && (
+                            <button onClick={() => handleOpenAssignModal('polishing', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: '#c084fc', color: '#7e22ce' }}>
+                              Assign Polishing <ArrowRight size={14} />
+                            </button>
+                          )}
+                          {stock.stock_type === 'polished' && parseFloat(stock.quantity) > 0 && (
+                            <button onClick={() => handleOpenAssignModal('packaging', stock)} className="btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', borderColor: '#86efac', color: '#15803d' }}>
+                              Assign Packaging <ArrowRight size={14} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -595,7 +647,30 @@ export default function ProductionPipeline() {
                 </div>
 
                 {isSupervisor && parseFloat(stock.quantity) > 0 && (
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {stock.stock_type !== 'packaged' && (
+                      <button
+                        type="button"
+                        onClick={() => setTransferStockItem(stock)}
+                        style={{
+                          backgroundColor: '#8b5a2b',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '8px',
+                          padding: '0.55rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 4px rgba(139, 90, 43, 0.25)'
+                        }}
+                      >
+                        <ArrowRight size={14} strokeWidth={2.5} /> Push Stage
+                      </button>
+                    )}
                     {stock.stock_type === 'raw' && (
                       <button onClick={() => handleOpenAssignModal('sanding', stock)} className="btn-secondary" style={{ width: '100%', justifyContent: 'center', padding: '0.55rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
                         Assign Sanding <ArrowRight size={15} />
@@ -758,6 +833,37 @@ export default function ProductionPipeline() {
       {/* ── TAB 5: QC Requests & Rework ── */}
       {activeTab === 'qc' && (
         <div>
+          {/* Coming Soon Notice */}
+          <div style={{
+            backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '1rem 1.25rem',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Clock size={18} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>
+                  Contractor QC & Inspection System (Under Development)
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                  Detailed contractor QC logs and defect tracking are currently in review. Supervisors can directly push products forward using the <strong>Push Stage</strong> button in Stock Levels.
+                </div>
+              </div>
+            </div>
+            <span style={{ backgroundColor: '#dbeafe', color: '#1e40af', fontSize: '0.74rem', fontWeight: 800, padding: '4px 10px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+              Coming Soon
+            </span>
+          </div>
+
           <h3 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1e293b', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Clock color="#d97706" size={20} /> Pending QC Inspection Requests ({qcPendingJobs.length})
           </h3>
@@ -982,6 +1088,22 @@ export default function ProductionPipeline() {
 
             {/* Form */}
             <form onSubmit={handleAssignSubmit} style={{ padding: '1.5rem 1.75rem' }}>
+              <div style={{
+                backgroundColor: '#fffbeb',
+                border: '1px solid #fef3c7',
+                borderRadius: '8px',
+                padding: '0.65rem 0.85rem',
+                marginBottom: '1.2rem',
+                fontSize: '0.78rem',
+                color: '#92400e',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontWeight: 600
+              }}>
+                <Sparkles size={16} color="#d97706" style={{ flexShrink: 0 }} />
+                <span>Notice: Contractor assignment workflow is under review (Coming Soon). For direct forward movement, use the <strong>Push Stage</strong> button on the stock table.</span>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                 {/* Stage */}
                 <div className="form-group" style={{ margin: 0 }}>
@@ -1010,7 +1132,7 @@ export default function ProductionPipeline() {
                   <CustomSelect
                     value={assignForm.stock_item}
                     onChange={e => {
-                      const val = e.target ? e.target.value : e;
+                      const val = e?.target ? e.target.value : e;
                       const sel = stockItems.find(s => String(s.id) === String(val));
                       setAssignForm({
                         ...assignForm,
@@ -1018,19 +1140,27 @@ export default function ProductionPipeline() {
                         assigned_qty: sel ? sel.quantity : ''
                       });
                     }}
+                    direction="down"
+                    maxVisibleItems={5}
+                    searchable={true}
+                    searchPlaceholder="Search product or style..."
                     options={[
                       { value: '', label: '-- Choose Stock Item --' },
                       ...stockItems
                         .filter(s => {
+                          if (parseFloat(s.quantity) <= 0) return false;
                           if (assignForm.stage === 'sanding') return s.stock_type === 'raw';
                           if (assignForm.stage === 'polishing') return s.stock_type === 'sanded';
                           if (assignForm.stage === 'packaging') return s.stock_type === 'polished';
                           return true;
                         })
-                        .map(s => ({
-                          value: s.id,
-                          label: `${s.style_no} - ${s.item_name} (${s.quantity} ${s.unit} available)`
-                        }))
+                        .map(s => {
+                          const poTag = s.po_number_str ? `[PO #${s.po_number_str}] ` : '';
+                          return {
+                            value: s.id,
+                            label: `${s.style_no} - ${s.item_name} ${poTag}(${s.quantity} ${s.unit} available)`
+                          };
+                        })
                     ]}
                     placeholder="-- Choose Stock Item --"
                   />
@@ -1044,9 +1174,13 @@ export default function ProductionPipeline() {
                   <CustomSelect
                     value={assignForm.contractor}
                     onChange={e => {
-                      const val = e.target ? e.target.value : e;
+                      const val = e?.target ? e.target.value : e;
                       setAssignForm({ ...assignForm, contractor: val });
                     }}
+                    direction="down"
+                    maxVisibleItems={5}
+                    searchable={true}
+                    searchPlaceholder="Search contractor..."
                     options={[
                       { value: '', label: '-- Choose Contractor --' },
                       ...contractors.map(c => ({
@@ -1223,6 +1357,16 @@ export default function ProductionPipeline() {
             </form>
           </div>
         </div>
+      )}
+      {/* Direct Stage Transfer Modal */}
+      {transferStockItem && (
+        <DirectStageTransferModal
+          stockItem={transferStockItem}
+          onClose={() => setTransferStockItem(null)}
+          onTransferred={() => {
+            fetchData();
+          }}
+        />
       )}
     </div>
   );

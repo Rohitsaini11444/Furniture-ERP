@@ -22,6 +22,9 @@ export function CustomSelect({
   disabled = false,
   searchable = false,
   searchPlaceholder = 'Search...',
+  direction = 'auto',
+  maxVisibleItems = null,
+  maxHeight = null,
 }) {
   const [open, setOpen] = useState(false);
   const [menuCoords, setMenuCoords] = useState(null);
@@ -30,13 +33,17 @@ export function CustomSelect({
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
 
+  const resolvedMaxHeight = maxVisibleItems
+    ? (maxVisibleItems * 38 + (searchable ? 42 : 0))
+    : (typeof maxHeight === 'number' ? maxHeight : (typeof maxHeight === 'string' ? maxHeight : 260));
+
   // Measure trigger element and compute viewport coordinates
   const updateCoords = useCallback(() => {
     if (!triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const menuMaxHeight = 260;
-    const openUpward = spaceBelow < menuMaxHeight && rect.top > menuMaxHeight;
+    const heightNum = typeof resolvedMaxHeight === 'number' ? resolvedMaxHeight : 260;
+    const openUpward = direction === 'down' ? false : (direction === 'up' ? true : (spaceBelow < heightNum && rect.top > heightNum));
 
     setMenuCoords({
       top: openUpward ? rect.top - 4 : rect.bottom + 4,
@@ -44,7 +51,7 @@ export function CustomSelect({
       width: rect.width,
       openUpward
     });
-  }, []);
+  }, [direction, resolvedMaxHeight]);
 
   // Sync coordinates and handle click outside & scroll/resize tracking
   useEffect(() => {
@@ -230,7 +237,7 @@ export function CustomSelect({
             borderRadius: '12px',
             border: '1px solid #e2e8f0',
             boxShadow: '0 12px 36px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)',
-            maxHeight: '260px',
+            maxHeight: typeof resolvedMaxHeight === 'number' ? `${resolvedMaxHeight}px` : resolvedMaxHeight,
             overflowY: 'auto',
             animation: menuCoords.openUpward ? 'fadeSlideUp 0.15s ease' : 'fadeSlideDown 0.15s ease',
             scrollbarWidth: 'thin',

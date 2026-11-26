@@ -14,6 +14,7 @@ import { OrderBySelect, ORDER_OPTIONS_DATE_QTY } from '../components/OrderBySele
 import { StatusSelect, STOCK_STATUS_FILTER_OPTIONS, STOCK_STATUS_FORM_OPTIONS } from '../components/StatusSelect';
 import CustomSelect from '../components/CustomSelect';
 import StockOriginModal from '../components/StockOriginModal';
+import DirectStageTransferModal from '../components/DirectStageTransferModal';
 import { useAuth } from '../context/AuthContext';
 
 function Stock() {
@@ -28,9 +29,10 @@ function Stock() {
   const [buyers, setBuyers] = useState([]);
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [transferStockItem, setTransferStockItem] = useState(null);
 
   // Active View Tabs & Unit Filters
-  const [activeTab, setActiveTab] = useState('stock'); // 'stock' | 'sanding' | 'polishing' | 'packaging' | 'qc'
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'raw' | 'sanded' | 'polished' | 'packaged' | 'qc'
   const [selectedUnitId, setSelectedUnitId] = useState('all');
 
   // Filters & Search State
@@ -208,16 +210,29 @@ function Stock() {
     ? productionJobs
     : productionJobs.filter(j => j.production_unit === selectedUnitId);
 
+  // Filter active stock (exclude zero-quantity/depleted items)
+  const activeStockItems = unitFilteredStock.filter(s => parseFloat(s.quantity) > 0);
+  const rawItems = activeStockItems.filter(s => s.stock_type === 'raw');
+  const sandedItems = activeStockItems.filter(s => s.stock_type === 'sanded');
+  const polishedItems = activeStockItems.filter(s => s.stock_type === 'polished');
+  const packagedItems = activeStockItems.filter(s => s.stock_type === 'packaged');
+
+  const displayedStock = activeTab === 'raw' ? rawItems
+    : activeTab === 'sanded' ? sandedItems
+    : activeTab === 'polished' ? polishedItems
+    : activeTab === 'packaged' ? packagedItems
+    : activeStockItems;
+
   // Live Stage Totals
-  const rawStockTotal = unitFilteredStock.filter(s => s.stock_type === 'raw').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const sandedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'sanded').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const polishedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'polished').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
-  const packagedStockTotal = unitFilteredStock.filter(s => s.stock_type === 'packaged').reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const rawStockTotal = rawItems.reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const sandedStockTotal = sandedItems.reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const polishedStockTotal = polishedItems.reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
+  const packagedStockTotal = packagedItems.reduce((acc, curr) => acc + (parseFloat(curr.quantity) || 0), 0);
 
   // Overall Stock Summary
-  const totalStockItemsCount = unitFilteredStock.length;
-  const totalPassedQuantity = unitFilteredStock.reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0);
-  const estimatedStockValue = unitFilteredStock.reduce((acc, i) => acc + ((parseFloat(i.quantity) || 0) * (parseFloat(i.unit_price) || 0)), 0);
+  const totalStockItemsCount = activeStockItems.length;
+  const totalPassedQuantity = activeStockItems.reduce((acc, i) => acc + (parseFloat(i.quantity) || 0), 0);
+  const estimatedStockValue = activeStockItems.reduce((acc, i) => acc + ((parseFloat(i.quantity) || 0) * (parseFloat(i.unit_price) || 0)), 0);
 
   const openStageModal = (key, title) => {
     setActiveStageKey(key);
@@ -1338,7 +1353,9 @@ function Stock() {
                   justifyContent: 'space-between',
                   gap: '0.85rem',
                   boxShadow: '0 1px 3px rgba(2, 132, 199, 0.04)',
-                  animationDelay: '100ms'
+                  cursor: 'pointer',
+                  animationDelay: '100ms',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {/* Left: Icon Box */}
@@ -1414,7 +1431,9 @@ function Stock() {
                   justifyContent: 'space-between',
                   gap: '0.85rem',
                   boxShadow: '0 1px 3px rgba(217, 119, 6, 0.04)',
-                  animationDelay: '135ms'
+                  cursor: 'pointer',
+                  animationDelay: '135ms',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {/* Left: Icon Box */}
@@ -1490,7 +1509,9 @@ function Stock() {
                   justifyContent: 'space-between',
                   gap: '0.85rem',
                   boxShadow: '0 1px 3px rgba(124, 58, 237, 0.04)',
-                  animationDelay: '170ms'
+                  cursor: 'pointer',
+                  animationDelay: '170ms',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {/* Left: Icon Box */}
@@ -1566,7 +1587,9 @@ function Stock() {
                   justifyContent: 'space-between',
                   gap: '0.85rem',
                   boxShadow: '0 1px 3px rgba(22, 163, 74, 0.04)',
-                  animationDelay: '205ms'
+                  cursor: 'pointer',
+                  animationDelay: '205ms',
+                  transition: 'all 0.15s ease'
                 }}
               >
                 {/* Left: Icon Box */}
@@ -1748,8 +1771,8 @@ function Stock() {
             <div className="stock-nav-sliding-underline" style={navIndicatorStyle} />
 
             <button
-              ref={el => navTabRefs.current['stock'] = el}
-              onClick={() => setActiveTab('stock')}
+              ref={el => navTabRefs.current['all'] = el}
+              onClick={() => setActiveTab('all')}
               style={{
                 position: 'relative',
                 zIndex: 2,
@@ -1757,8 +1780,8 @@ function Stock() {
                 borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'stock' ? 750 : 600,
-                color: activeTab === 'stock' ? '#ffffff' : '#57534e',
+                fontWeight: activeTab === 'all' ? 750 : 600,
+                color: activeTab === 'all' ? '#ffffff' : '#57534e',
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
@@ -1768,22 +1791,22 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <span>Stock Levels</span>
+              <span>All Active Stock</span>
               <span style={{
                 padding: '1px 6px',
                 borderRadius: '999px',
                 fontSize: '0.68rem',
                 fontWeight: 750,
-                backgroundColor: activeTab === 'stock' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
-                color: activeTab === 'stock' ? '#ffffff' : '#78716c'
+                backgroundColor: activeTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
+                color: activeTab === 'all' ? '#ffffff' : '#78716c'
               }}>
-                {unitFilteredStock.length}
+                {activeStockItems.length}
               </span>
             </button>
 
             <button
-              ref={el => navTabRefs.current['sanding'] = el}
-              onClick={() => setActiveTab('sanding')}
+              ref={el => navTabRefs.current['raw'] = el}
+              onClick={() => setActiveTab('raw')}
               style={{
                 position: 'relative',
                 zIndex: 2,
@@ -1791,8 +1814,8 @@ function Stock() {
                 borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'sanding' ? 750 : 600,
-                color: activeTab === 'sanding' ? '#ffffff' : '#57534e',
+                fontWeight: activeTab === 'raw' ? 750 : 600,
+                color: activeTab === 'raw' ? '#ffffff' : '#57534e',
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
@@ -1802,22 +1825,22 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <span>Sanding Stage</span>
+              <span>Raw Stock ({rawStockTotal.toLocaleString()} pcs)</span>
               <span style={{
                 padding: '1px 6px',
                 borderRadius: '999px',
                 fontSize: '0.68rem',
                 fontWeight: 750,
-                backgroundColor: activeTab === 'sanding' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
-                color: activeTab === 'sanding' ? '#ffffff' : '#78716c'
+                backgroundColor: activeTab === 'raw' ? 'rgba(255,255,255,0.25)' : '#e0f2fe',
+                color: activeTab === 'raw' ? '#ffffff' : '#0369a1'
               }}>
-                {getJobsByStage('sanding').length}
+                {rawItems.length}
               </span>
             </button>
 
             <button
-              ref={el => navTabRefs.current['polishing'] = el}
-              onClick={() => setActiveTab('polishing')}
+              ref={el => navTabRefs.current['sanded'] = el}
+              onClick={() => setActiveTab('sanded')}
               style={{
                 position: 'relative',
                 zIndex: 2,
@@ -1825,8 +1848,8 @@ function Stock() {
                 borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'polishing' ? 750 : 600,
-                color: activeTab === 'polishing' ? '#ffffff' : '#57534e',
+                fontWeight: activeTab === 'sanded' ? 750 : 600,
+                color: activeTab === 'sanded' ? '#ffffff' : '#57534e',
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
@@ -1836,22 +1859,22 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <span>Polishing Stage</span>
+              <span>Sanded Stage ({sandedStockTotal.toLocaleString()} pcs)</span>
               <span style={{
                 padding: '1px 6px',
                 borderRadius: '999px',
                 fontSize: '0.68rem',
                 fontWeight: 750,
-                backgroundColor: activeTab === 'polishing' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
-                color: activeTab === 'polishing' ? '#ffffff' : '#78716c'
+                backgroundColor: activeTab === 'sanded' ? 'rgba(255,255,255,0.25)' : '#fef3c7',
+                color: activeTab === 'sanded' ? '#ffffff' : '#b45309'
               }}>
-                {getJobsByStage('polishing').length}
+                {sandedItems.length}
               </span>
             </button>
 
             <button
-              ref={el => navTabRefs.current['packaging'] = el}
-              onClick={() => setActiveTab('packaging')}
+              ref={el => navTabRefs.current['polished'] = el}
+              onClick={() => setActiveTab('polished')}
               style={{
                 position: 'relative',
                 zIndex: 2,
@@ -1859,8 +1882,8 @@ function Stock() {
                 borderRadius: '7px',
                 border: 'none',
                 background: 'none',
-                fontWeight: activeTab === 'packaging' ? 750 : 600,
-                color: activeTab === 'packaging' ? '#ffffff' : '#57534e',
+                fontWeight: activeTab === 'polished' ? 750 : 600,
+                color: activeTab === 'polished' ? '#ffffff' : '#57534e',
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 display: 'flex',
@@ -1870,16 +1893,50 @@ function Stock() {
                 transition: 'color 180ms ease'
               }}
             >
-              <span>Packaging Stage</span>
+              <span>Polished Stage ({polishedStockTotal.toLocaleString()} pcs)</span>
               <span style={{
                 padding: '1px 6px',
                 borderRadius: '999px',
                 fontSize: '0.68rem',
                 fontWeight: 750,
-                backgroundColor: activeTab === 'packaging' ? 'rgba(255,255,255,0.25)' : '#f5f5f4',
-                color: activeTab === 'packaging' ? '#ffffff' : '#78716c'
+                backgroundColor: activeTab === 'polished' ? 'rgba(255,255,255,0.25)' : '#f3e8ff',
+                color: activeTab === 'polished' ? '#ffffff' : '#7e22ce'
               }}>
-                {getJobsByStage('packaging').length}
+                {polishedItems.length}
+              </span>
+            </button>
+
+            <button
+              ref={el => navTabRefs.current['packaged'] = el}
+              onClick={() => setActiveTab('packaged')}
+              style={{
+                position: 'relative',
+                zIndex: 2,
+                padding: '0.38rem 0.8rem',
+                borderRadius: '7px',
+                border: 'none',
+                background: 'none',
+                fontWeight: activeTab === 'packaged' ? 750 : 600,
+                color: activeTab === 'packaged' ? '#ffffff' : '#57534e',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                whiteSpace: 'nowrap',
+                transition: 'color 180ms ease'
+              }}
+            >
+              <span>Finished Goods ({packagedStockTotal.toLocaleString()} pcs)</span>
+              <span style={{
+                padding: '1px 6px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 750,
+                backgroundColor: activeTab === 'packaged' ? 'rgba(255,255,255,0.25)' : '#dcfce7',
+                color: activeTab === 'packaged' ? '#ffffff' : '#15803d'
+              }}>
+                {packagedItems.length}
               </span>
             </button>
 
@@ -2039,7 +2096,7 @@ function Stock() {
           {/* ── TAB CONTENT WRAPPER ── */}
           <div key={activeTab} className="stock-tab-content-wrapper">
             {/* ── TAB CONTENT 1: Inventory Stock Items Table ── */}
-            {activeTab === 'stock' && (
+            {activeTab !== 'qc' && (
               <div className="po-desktop-table table-fade-slide-in">
                 <div style={{
                   backgroundColor: '#ffffff',
@@ -2054,7 +2111,7 @@ function Stock() {
                         <th style={{ padding: '0.45rem 0.75rem', width: '36px' }}>
                           <input
                             type="checkbox"
-                            checked={selectedRowIds.size === unitFilteredStock.length && unitFilteredStock.length > 0}
+                            checked={selectedRowIds.size === displayedStock.length && displayedStock.length > 0}
                             onChange={toggleSelectAll}
                             style={{ cursor: 'pointer', accentColor: '#5c3a21' }}
                           />
@@ -2072,7 +2129,7 @@ function Stock() {
                     <tbody>
                       {loading ? (
                         <TableSkeleton rows={6} cols={9} hasImage={false} />
-                      ) : unitFilteredStock.length === 0 ? (
+                      ) : displayedStock.length === 0 ? (
                         <tr>
                           <td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#78716c' }}>
                             <div style={{
@@ -2089,11 +2146,11 @@ function Stock() {
                               <Package size={24} />
                             </div>
                             <div style={{ fontWeight: 750, fontSize: '0.92rem', color: '#1c1917', marginBottom: '0.25rem' }}>No stock items found</div>
-                            <div style={{ fontSize: '0.8rem', color: '#78716c' }}>Try adjusting your search terms or filters to find what you're looking for.</div>
+                            <div style={{ fontSize: '0.8rem', color: '#78716c' }}>There are currently no items in this manufacturing stage.</div>
                           </td>
                         </tr>
                       ) : (
-                        unitFilteredStock.map((item, idx) => (
+                        displayedStock.map((item, idx) => (
                           <tr
                             key={item.id}
                             className="table-row-stagger stock-table-row"
@@ -2186,28 +2243,50 @@ function Stock() {
                           </td>
                           <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.3rem' }}>
-                              {isSupervisor && (
+                              {isSupervisor && item.stock_type !== 'packaged' && parseFloat(item.quantity) > 0 && (
                                 <button
                                   type="button"
                                   className="stock-action-pill"
-                                  onClick={() => handleOpenAssignModal('sanding', item)}
+                                  onClick={() => setTransferStockItem(item)}
+                                  title={`Directly transfer ${item.style_no} forward to another stage`}
                                   style={{
-                                    backgroundColor: '#ffffff',
-                                    color: '#44403c',
-                                    border: '1px solid #e7e5e4',
+                                    backgroundColor: '#8b5a2b',
+                                    color: '#ffffff',
+                                    border: 'none',
                                     borderRadius: '6px',
-                                    padding: '2px 6px',
+                                    padding: '3px 8px',
                                     fontSize: '0.74rem',
-                                    fontWeight: 650,
+                                    fontWeight: 750,
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '2px',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(139, 90, 43, 0.25)',
+                                    transition: 'all 0.15s ease'
                                   }}
+                                  onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#5c3a21'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#8b5a2b'; }}
                                 >
-                                  Arrange <ChevronDown size={11} color="#78716c" />
+                                  <ArrowRight size={12} strokeWidth={2.5} />
+                                  <span>Push Stage</span>
                                 </button>
+                              )}
+                              {item.stock_type === 'packaged' && (
+                                <span style={{
+                                  backgroundColor: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 750,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}>
+                                  <CheckCircle2 size={11} color="#16a34a" />
+                                  <span>Ready to Ship</span>
+                                </span>
                               )}
                               <button
                                 type="button"
@@ -2317,7 +2396,7 @@ function Stock() {
                 color: '#78716c'
               }}>
                 <div>
-                  Showing {unitFilteredStock.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, unitFilteredStock.length)} of {unitFilteredStock.length} items
+                  Showing {displayedStock.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, displayedStock.length)} of {displayedStock.length} items
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -2396,133 +2475,6 @@ function Stock() {
                     <option value={50}>50</option>
                   </select>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── TAB CONTENT 2: Stage Production Jobs (Sanding, Polishing, Packaging) ── */}
-          {(activeTab === 'sanding' || activeTab === 'polishing' || activeTab === 'packaging') && (
-            <div className="po-desktop-table">
-              <div style={{
-                backgroundColor: '#ffffff',
-                borderRadius: '12px',
-                border: '1px solid #e7e5e4',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                overflow: 'hidden'
-              }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#faf8f5', borderBottom: '1px solid #e7e5e4' }}>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>JOB ID</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STYLE NO.</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PRODUCT NAME</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED CONTRACTOR</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ASSIGNED QTY</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PASSED QTY</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'left', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>STATUS</th>
-                      <th style={{ padding: '0.45rem 0.75rem', textAlign: 'right', fontSize: '0.69rem', fontWeight: 750, color: '#57534e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ACTIONS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getJobsByStage(activeTab).length === 0 ? (
-                      <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: '#78716c' }}>
-                          <Wrench size={28} style={{ marginBottom: '0.4rem', color: '#d6d3d1' }} />
-                          <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>No active jobs found for {activeTab} stage.</div>
-                        </td>
-                      </tr>
-                    ) : (
-                      getJobsByStage(activeTab).map((job) => (
-                        <tr key={job.id} className="stock-table-row" style={{ borderBottom: '1px solid #f5f5f4' }}>
-                          <td style={{ padding: '0.35rem 0.75rem' }}>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '1.5px 6px',
-                              borderRadius: '5px',
-                              backgroundColor: '#e0f2fe',
-                              color: '#0369a1',
-                              fontFamily: 'ui-monospace, monospace',
-                              fontWeight: 750,
-                              fontSize: '0.74rem'
-                            }}>
-                              #JOB-{job.id}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 700, color: '#1c1917', fontSize: '0.8rem' }}>{job.style_no}</td>
-                          <td style={{ padding: '0.35rem 0.75rem', fontWeight: 700, color: '#1c1917', fontSize: '0.82rem' }}>{job.item_name}</td>
-                          <td style={{ padding: '0.35rem 0.75rem', color: '#44403c', fontWeight: 600, fontSize: '0.78rem' }}>{job.contractor_name || 'Unassigned'}</td>
-                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 750, color: '#1c1917', fontSize: '0.82rem' }}>{job.assigned_qty} {job.unit}</td>
-                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '0.82rem' }}>{job.passed_qty || 0} {job.unit}</td>
-                          <td style={{ padding: '0.35rem 0.75rem' }}>
-                            <span style={{
-                              padding: '1.5px 7px',
-                              borderRadius: '999px',
-                              fontSize: '0.68rem',
-                              fontWeight: 750,
-                              textTransform: 'uppercase',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              backgroundColor: job.status === 'qc_requested' ? '#fffbeb' : job.status === 'qc_completed' ? '#ecfdf5' : '#f0f9ff',
-                              border: job.status === 'qc_requested' ? '1px solid #fde68a' : job.status === 'qc_completed' ? '1px solid #a7f3d0' : '1px solid #bae6fd',
-                              color: job.status === 'qc_requested' ? '#92400e' : job.status === 'qc_completed' ? '#065f46' : '#0369a1'
-                            }}>
-                              <span style={{
-                                width: '4px',
-                                height: '4px',
-                                borderRadius: '50%',
-                                backgroundColor: job.status === 'qc_requested' ? '#f59e0b' : job.status === 'qc_completed' ? '#10b981' : '#0284c7'
-                              }} />
-                              {job.status === 'qc_requested' ? 'QC REQUESTED' : job.status === 'qc_completed' ? 'QC COMPLETED' : 'IN PRODUCTION'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.35rem 0.75rem', textAlign: 'right' }}>
-                            {isSupervisor ? (
-                              <button
-                                type="button"
-                                className="btn-subtle-motion"
-                                onClick={() => handleOpenQCModal(job)}
-                                style={{
-                                  backgroundColor: '#059669',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  padding: '3px 9px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  boxShadow: '0 1px 2px rgba(5,150,105,0.2)'
-                                }}
-                              >
-                                Perform QC
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-subtle-motion"
-                                onClick={() => handleRequestQC(job.id)}
-                                style={{
-                                  backgroundColor: '#2563eb',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  padding: '3px 9px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  boxShadow: '0 1px 2px rgba(37,99,235,0.2)'
-                                }}
-                              >
-                                Request QC
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           )}
@@ -2673,41 +2625,62 @@ function Stock() {
                   <label className="form-label" style={{ fontWeight: 600, color: '#1c1917', marginBottom: '0.4rem' }}>
                     Source Stock Item *
                   </label>
-                  <select
-                    className="form-input"
+                  <CustomSelect
                     value={assignForm.stock_item}
                     onChange={e => {
-                      const sel = stockItems.find(s => s.id === e.target.value);
-                      setAssignForm({ ...assignForm, stock_item: e.target.value, assigned_qty: sel ? sel.quantity : '' });
+                      const val = e?.target ? e.target.value : e;
+                      const sel = stockItems.find(s => String(s.id) === String(val));
+                      setAssignForm({ ...assignForm, stock_item: val, assigned_qty: sel ? sel.quantity : '' });
                     }}
-                    required
-                  >
-                    <option value="">Select Stock Item...</option>
-                    {unitFilteredStock.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.style_no} — {s.item_name} (Avail: {s.quantity} {s.unit})
-                      </option>
-                    ))}
-                  </select>
+                    direction="down"
+                    maxVisibleItems={5}
+                    searchable={true}
+                    searchPlaceholder="Search product or style..."
+                    options={[
+                      { value: '', label: 'Select Stock Item...' },
+                      ...unitFilteredStock
+                        .filter(s => {
+                          if (parseFloat(s.quantity) <= 0) return false;
+                          if (assignForm.stage === 'sanding') return s.stock_type === 'raw';
+                          if (assignForm.stage === 'polishing') return s.stock_type === 'sanded';
+                          if (assignForm.stage === 'packaging') return s.stock_type === 'polished';
+                          return true;
+                        })
+                        .map(s => {
+                          const poTag = s.po_number_str ? `[PO #${s.po_number_str}] ` : '';
+                          return {
+                            value: s.id,
+                            label: `${s.style_no} — ${s.item_name} ${poTag}(Avail: ${s.quantity} ${s.unit})`
+                          };
+                        })
+                    ]}
+                    placeholder="Select Stock Item..."
+                  />
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label" style={{ fontWeight: 600, color: '#1c1917', marginBottom: '0.4rem' }}>
                     Contractor *
                   </label>
-                  <select
-                    className="form-input"
+                  <CustomSelect
                     value={assignForm.contractor}
-                    onChange={e => setAssignForm({ ...assignForm, contractor: e.target.value })}
-                    required
-                  >
-                    <option value="">Select Contractor...</option>
-                    {contractors.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.first_name || c.username} ({c.email || 'Contractor'})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={e => {
+                      const val = e?.target ? e.target.value : e;
+                      setAssignForm({ ...assignForm, contractor: val });
+                    }}
+                    direction="down"
+                    maxVisibleItems={5}
+                    searchable={true}
+                    searchPlaceholder="Search contractor..."
+                    options={[
+                      { value: '', label: 'Select Contractor...' },
+                      ...contractors.map(c => ({
+                        value: c.id,
+                        label: `${c.first_name || c.username} (${c.email || 'Contractor'})`
+                      }))
+                    ]}
+                    placeholder="Select Contractor..."
+                  />
                 </div>
 
                 <div className="form-group" style={{ margin: 0 }}>
@@ -2853,6 +2826,22 @@ function Stock() {
           </div>
         </div>
       )}
+
+      {/* Direct Stage Transfer Modal */}
+      {transferStockItem && (
+        <DirectStageTransferModal
+          stockItem={transferStockItem}
+          onClose={() => setTransferStockItem(null)}
+          onTransferred={() => {
+            fetchData();
+            setToastNotification({
+              type: 'success',
+              text: `Successfully transferred ${transferStockItem.style_no || 'product'} to next stage.`
+            });
+          }}
+        />
+      )}
+
       {/* Toast Notification */}
       {toastNotification && (
         <div style={{

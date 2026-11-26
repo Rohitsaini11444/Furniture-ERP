@@ -45,3 +45,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Backup system local staging, logs and tools
+backup_system/staging/
+backup_system/logs/
+tools/

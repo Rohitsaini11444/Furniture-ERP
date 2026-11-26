@@ -453,36 +453,38 @@ export default function StoreDailyIssueModal({ isOpen, onClose, items, contracto
                 Rate (₹)
               </label>
               <input
-                type="number"
-                step="0.01"
-                value={formData.rate}
-                onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                placeholder="0.00"
-                required
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-                Chargeability Status *
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                required
+                type="text"
+                value={formData.rate !== '' && formData.rate !== null && formData.rate !== undefined ? Number(formData.rate).toFixed(2) : '0.00'}
+                readOnly
                 style={{
                   width: '100%',
                   padding: '0.65rem',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
-                  backgroundColor: formData.status === 'charge' ? '#fff7ed' : '#f0fdf4',
-                  fontWeight: 600,
-                  color: formData.status === 'charge' ? '#c2410c' : '#16a34a'
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontWeight: 600
                 }}
-              >
-                <option value="charge">Chargeable (Billed to Contractor)</option>
-                <option value="non-charge">Non-Chargeable (Shop floor consumable)</option>
-              </select>
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Chargeability Status
+              </label>
+              <input
+                type="text"
+                value={formData.status === 'free' ? 'Free (Company)' : 'Chargeable (Debit)'}
+                readOnly
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontWeight: 600
+                }}
+              />
             </div>
           </div>
 

@@ -21,6 +21,59 @@ from .models import (
 )
 
 
+# ─────────────────────────────── Relative Media Fields & Utilities ───────────────────────────────────────
+
+def to_relative_media_url(file_field_val):
+    """
+    Returns a root-relative media URL (e.g., '/media/samples/example.jpg')
+    rather than an absolute URL bound to 127.0.0.1:8000 or a specific host IP.
+    This guarantees that LAN client PCs (like PC-2) resolve images through
+    their current browser origin / Vite proxy without connection errors.
+    """
+    if not file_field_val:
+        return None
+    try:
+        url = file_field_val.url
+        if not url:
+            return None
+        # Strip any accidental absolute localhost/host prefix if present
+        if url.startswith('http://') or url.startswith('https://'):
+            from urllib.parse import urlparse
+            p = urlparse(url)
+            return p.path or url
+        if not url.startswith('/'):
+            url = '/' + url
+        return url
+    except Exception:
+        return None
+
+
+class RelativeImageField(serializers.ImageField):
+    """
+    ImageField returning a root-relative URL (/media/...) instead of an absolute URI.
+    """
+    def to_representation(self, value):
+        if not value:
+            return None
+        use_url = getattr(self, 'use_url', True)
+        if use_url:
+            return to_relative_media_url(value)
+        return value.name
+
+
+class RelativeFileField(serializers.FileField):
+    """
+    FileField returning a root-relative URL (/media/...) instead of an absolute URI.
+    """
+    def to_representation(self, value):
+        if not value:
+            return None
+        use_url = getattr(self, 'use_url', True)
+        if use_url:
+            return to_relative_media_url(value)
+        return value.name
+
+
 # ─────────────────────────────── Auth Serializers ─────────────────────────────────────────────────────────
 
 class LoginSerializer(serializers.Serializer):
@@ -117,6 +170,7 @@ class UserSerializer(serializers.ModelSerializer):
     store_issues_count = serializers.SerializerMethodField()
     chargeable_total = serializers.SerializerMethodField()
     latest_issue_date = serializers.SerializerMethodField()
+    profile_image = RelativeImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
@@ -195,6 +249,8 @@ class UserMinimalSerializer(serializers.ModelSerializer):
 # ─────────────────────────────── ERP Core Serializers ─────────────────────────────────────────────────────
 
 class FinishSerializer(serializers.ModelSerializer):
+    image = RelativeImageField(required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Finish
@@ -204,9 +260,12 @@ class FinishSerializer(serializers.ModelSerializer):
             'marble_type', 'surface_treatment',
             'material_type', 'pattern',
             'plastic_type', 'plastic_finish',
-            'image', 'created_at', 'updated_at',
+            'image', 'image_url', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_image_url(self, obj):
+        return to_relative_media_url(obj.image)
 
     def validate_category(self, value):
         if not value:
@@ -361,6 +420,9 @@ class FinishSerializer(serializers.ModelSerializer):
 
 
 class FinishDropdownSerializer(serializers.ModelSerializer):
+    image = RelativeImageField(required=False, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Finish
         fields = [
@@ -368,11 +430,15 @@ class FinishDropdownSerializer(serializers.ModelSerializer):
             'wood_type', 'metal_type', 'coating_type',
             'marble_type', 'surface_treatment',
             'material_type', 'pattern',
-            'plastic_type', 'plastic_finish', 'image'
+            'plastic_type', 'plastic_finish', 'image', 'image_url'
         ]
+
+    def get_image_url(self, obj):
+        return to_relative_media_url(obj.image)
 
 
 class SampleImageSerializer(serializers.ModelSerializer):
+    image = RelativeImageField(required=False, allow_null=True)
     image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -381,12 +447,7 @@ class SampleImageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'uploaded_at']
 
     def get_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.image:
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+        return to_relative_media_url(obj.image)
 
 
 class BuyerSerializer(serializers.ModelSerializer):
@@ -737,6 +798,7 @@ class SampleCompactSerializer(serializers.ModelSerializer):
 
 
 class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
+    image = RelativeImageField(required=False, allow_null=True)
     image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -745,18 +807,14 @@ class BuyerMasterFinishingImageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'uploaded_at']
 
     def get_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.image:
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+        return to_relative_media_url(obj.image)
 
 
 class BuyerMasterSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
     sample_detail = SampleDropdownSerializer(source='sample', read_only=True)
     finishing_images = BuyerMasterFinishingImageSerializer(many=True, read_only=True)
+    packaging_image = RelativeImageField(required=False, allow_null=True)
     packaging_image_url = serializers.SerializerMethodField()
 
     units = serializers.IntegerField(
@@ -1038,12 +1096,7 @@ class BuyerMasterSerializer(serializers.ModelSerializer):
 
 
     def get_packaging_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.packaging_image:
-            if request:
-                return request.build_absolute_uri(obj.packaging_image.url)
-            return obj.packaging_image.url
-        return None
+        return to_relative_media_url(obj.packaging_image)
 
 class BuyerMasterListSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerDropdownSerializer(source='buyer', read_only=True)
@@ -1178,6 +1231,7 @@ class SupplierSerializer(serializers.ModelSerializer):
 
 
 class SupplierPOItemDefectSerializer(serializers.ModelSerializer):
+    defective_image = RelativeImageField(required=False, allow_null=True)
     reported_by_name = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -1193,20 +1247,17 @@ class SupplierPOItemDefectSerializer(serializers.ModelSerializer):
         return None
 
     def get_image_url(self, obj):
-        request = self.context.get('request')
-        if obj.defective_image:
-            if request:
-                return request.build_absolute_uri(obj.defective_image.url)
-            return obj.defective_image.url
-        return None
+        return to_relative_media_url(obj.defective_image)
 
     def get_images(self, obj):
-        request = self.context.get('request')
         imgs = []
-        if obj.defective_image:
-            imgs.append(request.build_absolute_uri(obj.defective_image.url) if request else obj.defective_image.url)
+        u = to_relative_media_url(obj.defective_image)
+        if u:
+            imgs.append(u)
         for d_img in obj.images.all():
-            imgs.append(request.build_absolute_uri(d_img.image.url) if request else d_img.image.url)
+            du = to_relative_media_url(d_img.image)
+            if du:
+                imgs.append(du)
         return imgs
 
     def create(self, validated_data):
@@ -1363,6 +1414,7 @@ class SupplierPOSerializer(serializers.ModelSerializer):
     extension_logs = POExtensionLogSerializer(many=True, read_only=True)
     supplier_history = POSupplierHistorySerializer(many=True, read_only=True)
     buyer_pi_no = serializers.CharField(source='buyer_pi.pi_no', read_only=True)
+    po_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     class Meta:
         model = SupplierPO
@@ -1445,6 +1497,22 @@ class SupplierPOSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        if not validated_data.get('po_number'):
+            po_numbers = SupplierPO.objects.values_list('po_number', flat=True)
+            max_num = 0
+            for num_str in po_numbers:
+                if not num_str:
+                    continue
+                m = re.match(r'^PO-(\d+)$', str(num_str).strip(), re.IGNORECASE)
+                if m:
+                    try:
+                        val = int(m.group(1))
+                        if val > max_num:
+                            max_num = val
+                    except ValueError:
+                        pass
+            validated_data['po_number'] = f"PO-{max_num + 1}"
+
         if not validated_data.get('buyer_pi'):
             for it in items_data:
                 if it.get('buyer_pi'):
@@ -1924,15 +1992,12 @@ class BuyerPIItemSerializer(serializers.ModelSerializer):
         return value
 
     def get_image_url(self, obj):
-        request = self.context.get('request')
         if obj.buyer_master and obj.buyer_master.sample:
             sample_imgs = obj.buyer_master.sample.images.all()
             if sample_imgs.exists():
                 img = sample_imgs.first()
-                if request and img.image:
-                    return request.build_absolute_uri(img.image.url)
-                elif img.image:
-                    return img.image.url
+                if img.image:
+                    return to_relative_media_url(img.image)
         return None
 
     def get_allocated_quantity(self, obj):
@@ -2419,11 +2484,8 @@ class UserSessionSerializer(serializers.ModelSerializer):
         return ""
 
     def get_profile_image(self, obj):
-        request = self.context.get('request')
         if obj.user and obj.user.profile_image:
-            if request:
-                return request.build_absolute_uri(obj.user.profile_image.url)
-            return obj.user.profile_image.url
+            return to_relative_media_url(obj.user.profile_image)
         return None
 
     def get_time_ago(self, obj):
@@ -2447,6 +2509,8 @@ class StockItemSerializer(serializers.ModelSerializer):
     buyer_detail = BuyerSerializer(source='buyer', read_only=True)
     sample_id_str = serializers.CharField(source='sample.sample_id', read_only=True)
     po_number_str = serializers.CharField(source='po_item.supplier_po.po_number', read_only=True)
+    supervisor_id = serializers.UUIDField(source='po_item.supplier_po.supervisor_id', read_only=True)
+    supervisor_name = serializers.CharField(source='po_item.supplier_po.supervisor.get_full_name', read_only=True)
 
     quantity = serializers.DecimalField(
         max_digits=12,
@@ -2632,6 +2696,7 @@ class StoreItemSerializer(serializers.ModelSerializer):
     unit_balance_stock_qty = serializers.SerializerMethodField()
     total_stock_value = serializers.ReadOnlyField()
     rate_history = StoreItemRateHistorySerializer(many=True, read_only=True)
+    image = RelativeImageField(required=False, allow_null=True)
 
     base_rate = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False, default=Decimal('0.00'),
@@ -2798,7 +2863,7 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
         error_messages={'min_value': 'Issued quantity must be greater than 0.', 'max_digits': 'Quantity exceeds maximum allowable digits (12).'}
     )
     rate = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal('0.00'),
+        max_digits=12, decimal_places=2, min_value=Decimal('0.00'), required=False,
         error_messages={'min_value': 'Issue rate cannot be negative.', 'max_digits': 'Rate exceeds maximum allowable digits (12).'}
     )
 
@@ -2835,7 +2900,14 @@ class StoreDailyIssueSerializer(serializers.ModelSerializer):
         if not item:
             raise serializers.ValidationError({"item": ["Store item is required."]})
 
+        # Enforce fixed rate and charge status from StoreItem master
+        attrs['rate'] = Decimal(str(item.current_rate or item.base_rate or '0.00')).quantize(Decimal('0.01'))
+        attrs['status'] = item.default_status or StoreItemStatus.CHARGE
+
         qty = attrs.get('qty')
+        rate_val = attrs.get('rate', Decimal('0.00'))
+        if qty is not None and rate_val is not None and (qty * rate_val) >= Decimal('10000000000'):
+            raise serializers.ValidationError({"qty": ["Total amount exceeds maximum allowable limit (₹9,999,999,999.99)."]})
         if item and production_unit and qty is not None:
             # Check 1: Was this item ever received (Material In) in this production unit?
             if not item.has_material_in_for_unit(production_unit.id):

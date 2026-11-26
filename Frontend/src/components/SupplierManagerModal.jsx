@@ -189,11 +189,11 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
         className="modal-content modal-content-xl supplier-modal-content"
         onClick={e => e.stopPropagation()}
         style={{
-          width: '95vw',
-          maxWidth: '1160px',
+          width: '96vw',
+          maxWidth: '1400px',
           maxHeight: '92vh',
           backgroundColor: '#ffffff',
-          borderRadius: '20px',
+          borderRadius: '16px',
           boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.05)',
           display: 'flex',
           flexDirection: 'column',
@@ -203,7 +203,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
       >
         {/* ── Modal Header ── */}
         <div style={{
-          padding: '1.25rem 1.75rem',
+          padding: '1rem 1.5rem',
           backgroundColor: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
           display: 'flex',
@@ -211,11 +211,11 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
           justifyContent: 'space-between',
           flexShrink: 0
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
             <div style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '12px',
+              width: '38px',
+              height: '38px',
+              borderRadius: '10px',
               backgroundColor: '#fef3c7',
               border: '1px solid #fde68a',
               color: '#b45309',
@@ -223,28 +223,28 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
-              boxShadow: '0 2px 6px rgba(180, 83, 9, 0.12)'
+              boxShadow: '0 2px 5px rgba(180, 83, 9, 0.1)'
             }}>
-              <Building2 size={24} />
+              <Building2 size={20} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
                   Supplier Master Directory
                 </h2>
                 <span style={{
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   fontWeight: 700,
                   backgroundColor: '#f1f5f9',
                   color: '#475569',
-                  padding: '3px 8px',
-                  borderRadius: '20px',
+                  padding: '2px 7px',
+                  borderRadius: '16px',
                   border: '1px solid #e2e8f0'
                 }}>
                   {suppliers.length} Registered
                 </span>
               </div>
-              <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '3px 0 0 0' }}>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
                 Create, update, and manage supplier profiles, GSTIN identifiers, and default freight cartage rates.
               </p>
             </div>
@@ -254,9 +254,9 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
             onClick={onClose}
             aria-label="Close"
             style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
               border: '1px solid #e2e8f0',
               backgroundColor: '#f8fafc',
               color: '#64748b',
@@ -269,44 +269,15 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
             onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
         {/* ── Modal Body Content ── */}
-        <div style={{ padding: '1.5rem 1.75rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '1.25rem 1.5rem', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {isFormOpen ? (
             /* ── Add / Edit Supplier Form (Structured Multi-Section Card) ── */
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                paddingBottom: '0.75rem',
-                borderBottom: '1px solid #e2e8f0'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#8b5a2b' }}>
-                    {editingId ? '✏️ Edit Supplier Profile' : '✨ Create New Supplier Profile'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsFormOpen(false)}
-                  style={{
-                    background: 'none',
-                    border: '1px solid #cbd5e1',
-                    padding: '4px 12px',
-                    borderRadius: '8px',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    fontSize: '0.82rem',
-                    fontWeight: 600
-                  }}
-                >
-                  Cancel & Back to List
-                </button>
-              </div>
 
               {/* General Top Alert */}
               {fieldErrors.general && (
@@ -562,7 +533,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                   type="button"
                   className="btn-secondary"
                   onClick={() => setIsFormOpen(false)}
-                  style={{ padding: '0.65rem 1.25rem', borderRadius: '10px' }}
+                  style={{ padding: '0.5rem 1.15rem', borderRadius: '8px', fontSize: '0.85rem' }}
                 >
                   Cancel
                 </button>
@@ -573,9 +544,10 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                   style={{
                     backgroundColor: '#8b5a2b',
                     borderColor: '#8b5a2b',
-                    padding: '0.65rem 1.5rem',
-                    borderRadius: '10px',
+                    padding: '0.5rem 1.35rem',
+                    borderRadius: '8px',
                     fontWeight: 700,
+                    fontSize: '0.85rem',
                     boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)'
                   }}
                 >
@@ -592,10 +564,10 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: '1rem'
+                gap: '0.75rem'
               }}>
-                <div style={{ position: 'relative', flex: '1 1 320px', maxWidth: '520px' }}>
-                  <Search size={17} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <div style={{ position: 'relative', flex: '1 1 280px', maxWidth: '460px' }}>
+                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)' }} />
                   <input
                     type="text"
                     className="form-input"
@@ -603,11 +575,11 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     style={{
-                      height: '42px',
-                      paddingLeft: '38px',
-                      paddingRight: search ? '36px' : '14px',
-                      fontSize: '0.88rem',
-                      borderRadius: '10px',
+                      height: '38px',
+                      paddingLeft: '34px',
+                      paddingRight: search ? '32px' : '12px',
+                      fontSize: '0.84rem',
+                      borderRadius: '8px',
                       backgroundColor: '#f8fafc',
                       border: '1px solid #cbd5e1'
                     }}
@@ -618,7 +590,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                       onClick={() => setSearch('')}
                       style={{
                         position: 'absolute',
-                        right: '10px',
+                        right: '8px',
                         top: '50%',
                         transform: 'translateY(-50%)',
                         background: 'none',
@@ -628,7 +600,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                         padding: '2px'
                       }}
                     >
-                      <X size={15} />
+                      <X size={13} />
                     </button>
                   )}
                 </div>
@@ -640,20 +612,20 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.5rem',
-                    height: '42px',
-                    padding: '0 1.25rem',
-                    fontSize: '0.88rem',
+                    gap: '0.45rem',
+                    height: '38px',
+                    padding: '0 1rem',
+                    fontSize: '0.84rem',
                     fontWeight: 700,
                     backgroundColor: '#8b5a2b',
                     borderColor: '#8b5a2b',
                     color: '#ffffff',
-                    borderRadius: '10px',
+                    borderRadius: '8px',
                     boxShadow: '0 2px 6px rgba(139, 90, 43, 0.25)',
                     cursor: 'pointer'
                   }}
                 >
-                  <Plus size={18} /> Add New Supplier
+                  <Plus size={16} /> Add New Supplier
                 </button>
               </div>
 
@@ -661,14 +633,14 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
               <div style={{
                 flex: 1,
                 border: '1px solid #e2e8f0',
-                borderRadius: '14px',
+                borderRadius: '12px',
                 overflow: 'auto',
                 backgroundColor: '#ffffff',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                 minHeight: '280px',
-                maxHeight: 'calc(90vh - 220px)'
+                maxHeight: 'calc(90vh - 200px)'
               }}>
-                <table style={{ width: '100%', minWidth: '980px', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr style={{
                       backgroundColor: '#f8fafc',
@@ -677,25 +649,25 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                       top: 0,
                       zIndex: 10
                     }}>
-                      <th style={{ padding: '12px 18px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '240px' }}>
+                      <th style={{ padding: '10px 14px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '160px' }}>
                         Supplier Name
                       </th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '140px' }}>
+                      <th style={{ padding: '10px 12px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '105px' }}>
                         Phone
                       </th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '170px' }}>
+                      <th style={{ padding: '10px 12px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '130px' }}>
                         GSTIN / UIN
                       </th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '120px' }}>
+                      <th style={{ padding: '10px 12px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '90px' }}>
                         State
                       </th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '180px' }}>
+                      <th style={{ padding: '10px 12px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '140px' }}>
                         Cartage Rate & Ledger
                       </th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '200px' }}>
+                      <th style={{ padding: '10px 12px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', minWidth: '130px' }}>
                         Address
                       </th>
-                      <th style={{ padding: '12px 18px', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', minWidth: '110px' }}>
+                      <th style={{ padding: '10px 8px', fontSize: '0.74rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center', minWidth: '76px' }}>
                         Actions
                       </th>
                     </tr>
@@ -770,52 +742,52 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                           onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
                           {/* Supplier Name */}
-                          <td style={{ padding: '14px 18px', verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <td style={{ padding: '8px 14px', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
                               <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '8px',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '6px',
                                 backgroundColor: '#fef3c7',
                                 color: '#b45309',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '0.8rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 800,
                                 flexShrink: 0
                               }}>
                                 {(sup.name?.[0] || 'S').toUpperCase()}
                               </div>
-                              <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem' }}>
+                              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.84rem' }}>
                                 {sup.name}
                               </span>
                             </div>
                           </td>
 
                           {/* Phone */}
-                          <td style={{ padding: '14px 16px', verticalAlign: 'middle', fontSize: '0.85rem', color: sup.phone ? '#1e293b' : '#94a3b8' }}>
+                          <td style={{ padding: '8px 12px', verticalAlign: 'middle', fontSize: '0.80rem', color: sup.phone ? '#1e293b' : '#94a3b8', whiteSpace: 'nowrap' }}>
                             {sup.phone ? (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                                <Phone size={13} color="#64748b" />
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Phone size={12} color="#64748b" />
                                 {sup.phone}
                               </span>
                             ) : '—'}
                           </td>
 
                           {/* GSTIN / UIN */}
-                          <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                          <td style={{ padding: '8px 12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                             {sup.gstin ? (
                               <span style={{
                                 fontFamily: 'monospace',
-                                fontSize: '0.8rem',
+                                fontSize: '0.74rem',
                                 fontWeight: 700,
                                 backgroundColor: '#f8fafc',
                                 border: '1px solid #e2e8f0',
-                                padding: '3px 8px',
-                                borderRadius: '6px',
+                                padding: '2px 6px',
+                                borderRadius: '5px',
                                 color: '#0f172a',
-                                letterSpacing: '0.04em'
+                                letterSpacing: '0.03em'
                               }}>
                                 {sup.gstin}
                               </span>
@@ -825,41 +797,41 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                           </td>
 
                           {/* State */}
-                          <td style={{ padding: '14px 16px', verticalAlign: 'middle', fontSize: '0.85rem', color: sup.state_name ? '#334155' : '#94a3b8', fontWeight: 600 }}>
+                          <td style={{ padding: '8px 12px', verticalAlign: 'middle', fontSize: '0.80rem', color: sup.state_name ? '#334155' : '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
                             {sup.state_name || '—'}
                           </td>
 
                           {/* Cartage Rate & Ledger */}
-                          <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <td style={{ padding: '8px 12px', verticalAlign: 'middle' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <span style={{
                                 display: 'inline-block',
                                 width: 'fit-content',
                                 fontWeight: 800,
                                 color: '#b45309',
                                 backgroundColor: '#fef3c7',
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '0.78rem'
+                                padding: '1px 6px',
+                                borderRadius: '5px',
+                                fontSize: '0.72rem'
                               }}>
                                 {sup.cartage_gst_rate !== undefined ? `${sup.cartage_gst_rate}%` : '18.00%'}
                               </span>
-                              <span style={{ fontSize: '0.72rem', color: '#64748b', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sup.cartage_ledger_name}>
+                              <span style={{ fontSize: '0.68rem', color: '#64748b', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sup.cartage_ledger_name}>
                                 {sup.cartage_ledger_name || 'PUR. CARTAGE GST @ 18%'}
                               </span>
                             </div>
                           </td>
 
                           {/* Address */}
-                          <td style={{ padding: '14px 16px', verticalAlign: 'middle', fontSize: '0.82rem', color: '#64748b', maxWidth: '220px' }}>
-                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sup.address}>
+                          <td style={{ padding: '8px 12px', verticalAlign: 'middle', fontSize: '0.78rem', color: '#64748b' }}>
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }} title={sup.address}>
                               {sup.address || '—'}
                             </span>
                           </td>
 
                           {/* Actions */}
-                          <td style={{ padding: '14px 18px', verticalAlign: 'middle', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
+                          <td style={{ padding: '8px 8px', verticalAlign: 'middle', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.35rem' }}>
                               <button
                                 onClick={() => handleOpenEdit(sup)}
                                 title="Edit Supplier Profile"
@@ -867,9 +839,9 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                                   backgroundColor: '#eff6ff',
                                   border: '1px solid #bfdbfe',
                                   color: '#1d4ed8',
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '8px',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -879,7 +851,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                                 onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#dbeafe'; }}
                                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#eff6ff'; }}
                               >
-                                <Edit size={14} />
+                                <Edit size={13} />
                               </button>
                               <button
                                 onClick={() => handleDelete(sup)}
@@ -888,9 +860,9 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                                   backgroundColor: '#fef2f2',
                                   border: '1px solid #fecaca',
                                   color: '#dc2626',
-                                  width: '32px',
-                                  height: '32px',
-                                  borderRadius: '8px',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -900,7 +872,7 @@ export default function SupplierManagerModal({ isOpen, onClose, onUpdated }) {
                                 onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#fee2e2'; }}
                                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#fef2f2'; }}
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={13} />
                               </button>
                             </div>
                           </td>

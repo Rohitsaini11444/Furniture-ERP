@@ -247,8 +247,12 @@ function ImageGrid({ images, onRemove, onPreview }) {
 
 // ─── Lightbox ─────────────────────────────────────────────────────────────────
 
-function Lightbox({ images, startIndex, onClose }) {
+function Lightbox({ images, startIndex = 0, onClose, title }) {
   const [current, setCurrent] = React.useState(startIndex);
+
+  React.useEffect(() => {
+    setCurrent(startIndex || 0);
+  }, [startIndex]);
 
   React.useEffect(() => {
     const handleKey = (e) => {
@@ -258,32 +262,45 @@ function Lightbox({ images, startIndex, onClose }) {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [images.length, onClose]);
+  }, [images?.length, onClose]);
 
-  const src = images[current]?.preview ?? images[current]?.image_url;
+  if (!images || images.length === 0) return null;
+
+  const currentItem = images[current];
+  const src = currentItem?.preview ?? currentItem?.image_url ?? (typeof currentItem === 'string' ? currentItem : currentItem?.image || '');
 
   return (
     <div className="lightbox-overlay" onClick={onClose}>
       <div className="lightbox-box" onClick={e => e.stopPropagation()}>
-        <button className="lightbox-close" onClick={onClose} title="Close (Esc)">
+        <button type="button" className="lightbox-close" onClick={onClose} title="Close (Esc)">
           <X size={22} />
         </button>
 
+        {title && (
+          <div className="lightbox-title-badge">
+            {title}
+          </div>
+        )}
+
         {images.length > 1 && (
           <button
+            type="button"
             className="lightbox-arrow lightbox-arrow-left"
             onClick={() => setCurrent(i => Math.max(i - 1, 0))}
             disabled={current === 0}
+            title="Previous image (←)"
           >&#8592;</button>
         )}
 
-        <img src={src} alt={`preview-${current}`} className="lightbox-img" />
+        <img src={src} alt={title || `preview-${current}`} className="lightbox-img" />
 
         {images.length > 1 && (
           <button
+            type="button"
             className="lightbox-arrow lightbox-arrow-right"
             onClick={() => setCurrent(i => Math.min(i + 1, images.length - 1))}
             disabled={current === images.length - 1}
+            title="Next image (→)"
           >&#8594;</button>
         )}
 
@@ -359,6 +376,7 @@ function Samples() {
   // Images: [{id, image_url, preview, file, isNew}]
   const [images, setImages] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [previewLightbox, setPreviewLightbox] = useState(null);
 
   // Filters
   const [filterSearch, setFilterSearch] = useState('');
@@ -1846,7 +1864,7 @@ function Samples() {
                               fontSize: '0.62rem',
                               color: catConfig.color
                             }}>
-                              ▼
+                              
                             </span>
                           </div>
 
@@ -2564,15 +2582,65 @@ function Samples() {
                         )}
 
                         {/* IMG */}
-                        <td>
-                          <div className="sample-img-container">
+                        <td
+                          style={{ width: '56px' }}
+                          onClick={(e) => {
+                            if (primaryImg) {
+                              e.stopPropagation();
+                              const sampleImages = (s.images && s.images.length > 0)
+                                ? s.images
+                                : [{ image_url: primaryImg }];
+                              setPreviewLightbox({
+                                images: sampleImages,
+                                startIndex: 0,
+                                title: [s.style_no, s.product_name].filter(Boolean).join(' — ')
+                              });
+                            }
+                          }}
+                        >
+                          <div
+                            className={`sample-img-container ${primaryImg ? 'sample-img-clickable' : ''}`}
+                            title={primaryImg ? "Click to enlarge image" : ""}
+                            onClick={(e) => {
+                              if (primaryImg) {
+                                e.stopPropagation();
+                                const sampleImages = (s.images && s.images.length > 0)
+                                  ? s.images
+                                  : [{ image_url: primaryImg }];
+                                setPreviewLightbox({
+                                  images: sampleImages,
+                                  startIndex: 0,
+                                  title: [s.style_no, s.product_name].filter(Boolean).join(' — ')
+                                });
+                              }
+                            }}
+                          >
                             {primaryImg ? (
-                              <img
-                                src={primaryImg}
-                                alt={s.product_name || s.style_no}
-                                className="sample-thumb-img"
-                                loading="lazy"
-                              />
+                              <>
+                                <img
+                                  src={primaryImg}
+                                  alt={s.product_name || s.style_no}
+                                  className="sample-thumb-img"
+                                  loading="lazy"
+                                />
+                                {s.images && s.images.length > 1 && (
+                                  <span style={{
+                                    position: 'absolute',
+                                    bottom: '1px',
+                                    right: '1px',
+                                    backgroundColor: 'rgba(0,0,0,0.65)',
+                                    color: '#ffffff',
+                                    fontSize: '0.55rem',
+                                    fontWeight: 750,
+                                    lineHeight: 1,
+                                    padding: '1px 3px',
+                                    borderRadius: '3px',
+                                    pointerEvents: 'none'
+                                  }}>
+                                    +{s.images.length}
+                                  </span>
+                                )}
+                              </>
                             ) : (
                               <div className="sample-thumb-placeholder">
                                 <ImageIcon size={16} />
@@ -2706,6 +2774,7 @@ function Samples() {
             ) : (
               filtered.map(s => {
                 const isRecentlyVisited = String(s.id) === String(lastVisitedId);
+                const mobileCardImg = (s.images && s.images.length > 0) ? s.images[0].image_url : null;
                 return (
                   <div 
                     className={`mobile-card smooth-fade-in ${isRecentlyVisited ? 'card-recently-visited' : ''}`}
@@ -2731,9 +2800,45 @@ function Samples() {
                       />
                     </div>
                     
-                    <div className="mobile-card-img">
-                      {s.images && s.images.length > 0 ? (
-                        <img src={s.images[0].image_url} alt="sample" />
+                    <div
+                      className={`mobile-card-img ${mobileCardImg ? 'mobile-card-img-clickable' : ''}`}
+                      onClick={(e) => {
+                        if (mobileCardImg) {
+                          e.stopPropagation();
+                          const sampleImages = (s.images && s.images.length > 0)
+                            ? s.images
+                            : [{ image_url: mobileCardImg }];
+                          setPreviewLightbox({
+                            images: sampleImages,
+                            startIndex: 0,
+                            title: [s.style_no, s.product_name].filter(Boolean).join(' — ')
+                          });
+                        }
+                      }}
+                      title={mobileCardImg ? "Click to enlarge image" : ""}
+                      style={{ position: 'relative' }}
+                    >
+                      {mobileCardImg ? (
+                        <>
+                          <img src={mobileCardImg} alt={s.product_name || "sample"} />
+                          {s.images && s.images.length > 1 && (
+                            <span style={{
+                              position: 'absolute',
+                              bottom: '3px',
+                              right: '3px',
+                              backgroundColor: 'rgba(0,0,0,0.65)',
+                              color: '#ffffff',
+                              fontSize: '0.62rem',
+                              fontWeight: 750,
+                              lineHeight: 1,
+                              padding: '2px 4px',
+                              borderRadius: '4px',
+                              pointerEvents: 'none'
+                            }}>
+                              +{s.images.length}
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <div className="mobile-card-no-img"><ImageIcon size={20} color="#a8a29e" /></div>
                       )}
@@ -2819,7 +2924,17 @@ function Samples() {
         </>
       )}
 
-      {/* Lightbox */}
+      {/* Lightbox for catalog list preview */}
+      {previewLightbox && (
+        <Lightbox
+          images={previewLightbox.images}
+          startIndex={previewLightbox.startIndex || 0}
+          title={previewLightbox.title}
+          onClose={() => setPreviewLightbox(null)}
+        />
+      )}
+
+      {/* Lightbox for form preview */}
       {lightboxIndex !== null && (
         <Lightbox
           images={images}

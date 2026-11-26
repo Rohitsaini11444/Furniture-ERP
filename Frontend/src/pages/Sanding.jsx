@@ -623,9 +623,13 @@ function Sanding() {
                     className="form-input"
                     value={assignForm.contractor}
                     onChange={(e) => {
-                      const val = e.target ? e.target.value : e;
+                      const val = e?.target ? e.target.value : e;
                       setAssignForm((p) => ({ ...p, contractor: val }));
                     }}
+                    direction="down"
+                    maxVisibleItems={5}
+                    searchable={true}
+                    searchPlaceholder="Search contractor..."
                     options={[
                       { value: '', label: '-- Choose a contractor --' },
                       ...contractors.map((c) => ({ value: c.id, label: c.full_name }))

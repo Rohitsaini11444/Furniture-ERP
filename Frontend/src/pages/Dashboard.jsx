@@ -13,15 +13,15 @@ import CustomSelect from '../components/CustomSelect';
 
 const ALL_TILES = [
   { name: 'Sample',                  icon: <Box size={28} />,           color: '#22c55e', link: '/samples',           roles: ['admin'] },
-  { name: 'Finishing Catalog',       icon: <Palette size={28} />,       color: '#8b5a2b', link: '/finishing',         roles: ['admin', 'supervisor'] },
+  { name: 'Finishing Catalog',       icon: <Palette size={28} />,       color: '#8b5a2b', link: '/finishing',         roles: ['admin'] },
   { name: 'Buyers',                  icon: <Users size={28} />,         color: '#ec4899', link: '/buyers',            roles: ['admin'] },
   { name: 'Buyer Master',            icon: <Layers size={28} />,        color: '#6366f1', link: '/buyer-masters',     roles: ['admin'] },
   { name: 'Performa Invoice (PI)',   icon: <Receipt size={28} />,       color: '#8b5cf6', link: '/performa-invoices', roles: ['admin'] },
   { name: 'PO & Gate Entry',         icon: <ClipboardCheck size={28} />, color: '#14b8a6', link: '/pos',               roles: ['admin', 'supervisor'] },
   { name: 'Production Pipeline',     icon: <Boxes size={28} />,         color: '#3b82f6', link: '/production-pipeline', roles: ['admin', 'supervisor', 'contractor'] },
-  { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'supervisor', 'contractor', 'store_manager'] },
+  { name: 'Store Management',       icon: <Warehouse size={28} />,     color: '#ea580c', link: '/store-management',  roles: ['admin', 'store_manager'] },
   { name: 'Audit Trail Logs',       icon: <ShieldCheck size={28} />,   color: '#dc2626', link: '/audit-trail',       roles: ['admin'] },
-  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin', 'supervisor'] },
+  { name: 'Presentation & Tools',    icon: <Sparkles size={28} />,      color: '#8b5cf6', link: '/tools',             roles: ['admin'] },
 ];
 
 const WORKFLOW_STEPS = [
@@ -789,6 +789,15 @@ function Dashboard() {
               </Link>
               <Link to="/store-management" className="quick-action-btn">
                 <Boxes size={16} color="#8b5cf6" /> Store Overview
+              </Link>
+            </>
+          ) : user?.role === 'supervisor' ? (
+            <>
+              <Link to="/pos" className="quick-action-btn">
+                <ClipboardCheck size={16} color="#14b8a6" /> PO & Gate Entry
+              </Link>
+              <Link to="/production-pipeline" className="quick-action-btn">
+                <Boxes size={16} color="#3b82f6" /> Production Pipeline
               </Link>
             </>
           ) : (

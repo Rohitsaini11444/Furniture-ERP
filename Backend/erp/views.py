@@ -1939,6 +1939,29 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
                 changed_by=self.request.user
             )
 
+    @action(detail=False, methods=['get'], url_path='next-po-number')
+    def next_po_number(self, request):
+        """
+        Generate the next sequential PO number in the series (e.g. PO-1, PO-2, ...).
+        Extracts numbers from all existing PO numbers matching ^PO-(\d+)$ (case-insensitive)
+        and returns PO-{max_number + 1}.
+        """
+        po_numbers = SupplierPO.objects.values_list('po_number', flat=True)
+        max_num = 0
+        for num_str in po_numbers:
+            if not num_str:
+                continue
+            m = re.match(r'^PO-(\d+)$', str(num_str).strip(), re.IGNORECASE)
+            if m:
+                try:
+                    val = int(m.group(1))
+                    if val > max_num:
+                        max_num = val
+                except ValueError:
+                    pass
+        next_number = f"PO-{max_num + 1}"
+        return Response({'next_po_number': next_number})
+
     @action(detail=True, methods=['post'], url_path='extend-due-date')
     def extend_due_date(self, request, pk=None):
         po = self.get_object()
@@ -2063,25 +2086,30 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
             )
             created_receipts.append(receipt)
 
-            # Raw Stock Addition
+            # Raw Stock Addition (Consolidated by PO Item)
             if passed_qty > 0:
                 words = po_item.description.split()
                 style = words[0] if words else "RAW-ITEM"
                 item_name = po_item.description[:100] if po_item.description else "Raw Furniture Item"
 
-                StockItem.objects.create(
+                raw_stock, _ = StockItem.objects.get_or_create(
                     stock_type='raw',
                     po_item=po_item,
-                    buyer=po_item.buyer,
-                    style_no=style,
-                    item_name=item_name,
-                    quantity=passed_qty,
-                    unit=po_item.unit or 'pcs',
-                    unit_price=po_item.rate,
-                    location='Main Gate Raw Store',
-                    status='In Stock',
-                    remarks=f"GRN #{grn_number} (Round #{round_number}) via Inv #{invoice_no or 'N/A'}"
+                    defaults={
+                        'buyer': po_item.buyer,
+                        'style_no': style,
+                        'item_name': item_name,
+                        'quantity': Decimal('0'),
+                        'unit': po_item.unit or 'pcs',
+                        'unit_price': po_item.rate,
+                        'location': 'Main Gate Raw Store',
+                        'status': 'In Stock',
+                        'remarks': f"PO #{po.po_number} Consolidated Inward Raw Stock"
+                    }
                 )
+                raw_stock.quantity += passed_qty
+                raw_stock.status = 'In Stock'
+                raw_stock.save()
 
             # Rejections Logging & Defect Images
             if rejected_qty > 0:
@@ -2173,15 +2201,18 @@ class SupplierPOViewSet(viewsets.ModelViewSet):
             generated_debit_notes.append(SupplierDebitNoteSerializer(dn).data)
 
         # Update PO Status
-        all_items = po.items.all()
-        total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
-        total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+        totals = po.items.aggregate(
+            total_ordered=Sum('quantity'),
+            total_passed=Sum('passed_quantity')
+        )
+        total_ordered = totals['total_ordered'] or Decimal('0')
+        total_passed = totals['total_passed'] or Decimal('0')
 
         if total_passed >= total_ordered and total_ordered > 0:
             po.status = 'Received'
         elif total_passed > 0:
             po.status = 'Partial Received'
-        po.save()
+        po.save(update_fields=['status'])
 
         return Response({
             'detail': f'Recorded Delivery Round #{round_number} ({grn_number}) with {len(created_receipts)} item(s).',
@@ -3539,15 +3570,18 @@ class SupplierPOItemViewSet(viewsets.ModelViewSet):
 
         # Check if parent PO status should update
         if po:
-            all_items = po.items.all()
-            total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
-            total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+            totals = po.items.aggregate(
+                total_ordered=Sum('quantity'),
+                total_passed=Sum('passed_quantity')
+            )
+            total_ordered = totals['total_ordered'] or Decimal('0')
+            total_passed = totals['total_passed'] or Decimal('0')
 
             if total_passed >= total_ordered and total_ordered > 0:
                 po.status = 'Received'
             elif total_passed > 0:
                 po.status = 'Partial Received'
-            po.save()
+            po.save(update_fields=['status'])
             
         return Response({
             'detail': f'Gate QC recorded for Round #{round_number} (GRN #{grn_number}).',
@@ -3598,6 +3632,8 @@ class StockItemViewSet(viewsets.ModelViewSet):
             qs = qs.filter(stock_type=stock_type_param)
         if status_param:
             qs = qs.filter(status=status_param)
+        elif not self.request.query_params.get('include_zero', '').lower() == 'true':
+            qs = qs.filter(quantity__gt=0)
         if buyer_param:
             qs = qs.filter(buyer_id=buyer_param)
         if search_param:
@@ -3659,6 +3695,134 @@ class StockItemViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = 'attachment; filename="Inventory_Stock.xlsx"'
         wb.save(response)
         return response
+
+    @action(detail=True, methods=['post'], url_path='transfer-stage')
+    def transfer_stage(self, request, pk=None):
+        """
+        Directly transfer stock from one manufacturing stage forward to another
+        (e.g., raw -> sanded, raw -> packaged, sanded -> polished, etc.).
+        - Forward transitions only.
+        - Supervisor can only transfer items under their assigned PO/supervision.
+        """
+        user = request.user
+        source_stock = self.get_object()
+
+        STAGE_ORDER = {
+            'raw': 1,
+            'sanded': 2,
+            'polished': 3,
+            'packaged': 4
+        }
+
+        # 1. Permission check: Admin or the assigned Supervisor
+        if getattr(user, 'role', '') != 'admin':
+            assigned_sup_id = None
+            if source_stock.po_item and source_stock.po_item.supplier_po:
+                assigned_sup_id = source_stock.po_item.supplier_po.supervisor_id
+            
+            # If PO has an assigned supervisor, ensure it matches current user
+            if assigned_sup_id and str(assigned_sup_id) != str(user.id):
+                return Response(
+                    {'detail': 'Permission denied. You can only transfer stock for POs assigned to your supervision.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+        # 2. Extract and validate parameters
+        to_stage = (request.data.get('to_stage') or '').strip().lower()
+        if to_stage not in STAGE_ORDER:
+            return Response(
+                {'detail': f"Invalid target stage '{to_stage}'. Must be one of: sanded, polished, packaged."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_stage = source_stock.stock_type
+        if STAGE_ORDER.get(to_stage, 0) <= STAGE_ORDER.get(current_stage, 0):
+            return Response(
+                {'detail': f"Cannot transfer backward or to same stage ({current_stage} -> {to_stage}). Transfers must move forward."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        move_all = bool(request.data.get('move_all', False))
+        if move_all:
+            transfer_qty = source_stock.quantity
+        else:
+            try:
+                transfer_qty = Decimal(str(request.data.get('quantity', 0)))
+            except Exception:
+                return Response({'detail': 'Invalid quantity value.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if transfer_qty <= 0:
+            return Response({'detail': 'Quantity must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if transfer_qty > source_stock.quantity:
+            return Response(
+                {'detail': f"Insufficient stock. Requested: {transfer_qty} {source_stock.unit}, Available: {source_stock.quantity} {source_stock.unit}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        notes = request.data.get('transfer_notes') or ''
+
+        with transaction.atomic():
+            # Deduct from source
+            source_stock.quantity -= transfer_qty
+            if source_stock.quantity <= 0:
+                source_stock.delete()
+            else:
+                source_stock.status = 'In Stock'
+                source_stock.save(update_fields=['quantity', 'status'])
+
+            # Increment or create destination stock
+            STAGE_NAMES = {
+                'sanded': 'Sanded Store',
+                'polished': 'Polishing Store',
+                'packaged': 'Finished Goods Store'
+            }
+            dest_location = STAGE_NAMES.get(to_stage, f"{to_stage.capitalize()} Store")
+
+            dest_stock, created = StockItem.objects.get_or_create(
+                stock_type=to_stage,
+                po_item=source_stock.po_item,
+                defaults={
+                    'buyer': source_stock.buyer,
+                    'buyer_master': source_stock.buyer_master,
+                    'sample': source_stock.sample,
+                    'style_no': source_stock.style_no,
+                    'item_name': source_stock.item_name,
+                    'quantity': Decimal('0'),
+                    'unit': source_stock.unit,
+                    'unit_price': source_stock.unit_price,
+                    'location': dest_location,
+                    'production_unit': source_stock.production_unit,
+                    'status': 'In Stock',
+                    'remarks': f"Direct transfer from {current_stage} to {to_stage}"
+                }
+            )
+            dest_stock.quantity += transfer_qty
+            dest_stock.status = 'In Stock'
+            dest_stock.save(update_fields=['quantity', 'status'])
+
+            # Audit log
+            po_str = source_stock.po_item.supplier_po.po_number if (source_stock.po_item and source_stock.po_item.supplier_po) else 'N/A'
+            AuditLog.objects.create(
+                user=user,
+                username=user.get_full_name() or user.username,
+                user_role=getattr(user, 'role', 'supervisor') or 'supervisor',
+                action='UPDATE',
+                module_name='Stock Management',
+                model_name='StockItem',
+                object_id=str(dest_stock.id),
+                object_repr=f"{source_stock.style_no} ({po_str})",
+                reason=f"Direct stage transfer: {transfer_qty} {source_stock.unit} moved from {current_stage.upper()} to {to_stage.upper()}. Note: {notes}"
+            )
+
+        return Response({
+            'detail': f"Successfully transferred {transfer_qty} {source_stock.unit} from {current_stage.capitalize()} to {to_stage.capitalize()}.",
+            'source_stock_id': str(source_stock.id),
+            'source_remaining_qty': float(source_stock.quantity),
+            'dest_stock_id': str(dest_stock.id),
+            'dest_total_qty': float(dest_stock.quantity),
+            'dest_stock': StockItemSerializer(dest_stock).data
+        }, status=status.HTTP_200_OK)
 
 
 class GeneratePresentationView(APIView):
@@ -4011,31 +4175,41 @@ class GateInwardReceiptViewSet(viewsets.ModelViewSet):
         po_item.save()
 
         # Update Overall Supplier PO Status
-        all_items = po.items.all()
-        total_ordered = sum(it.quantity or Decimal('0') for it in all_items)
-        total_passed = sum(it.passed_quantity or Decimal('0') for it in all_items)
+        totals = po.items.aggregate(
+            total_ordered=Sum('quantity'),
+            total_passed=Sum('passed_quantity')
+        )
+        total_ordered = totals['total_ordered'] or Decimal('0')
+        total_passed = totals['total_passed'] or Decimal('0')
 
         if total_passed >= total_ordered and total_ordered > 0:
             po.status = 'Received'
         elif total_passed > 0:
             po.status = 'Partial Received'
-        po.save()
+        po.save(update_fields=['status'])
 
-        # Add passed quantity to Raw Stock
+        # Add passed quantity to Raw Stock (Consolidated by PO Item)
         if passed_qty > 0:
-            StockItem.objects.create(
+            words = po_item.description.split() if po_item.description else []
+            style = words[0] if words else (po_item.buyer.code if po_item.buyer else 'RAW-PO')
+            raw_stock, _ = StockItem.objects.get_or_create(
                 stock_type='raw',
                 po_item=po_item,
-                buyer=po_item.buyer,
-                style_no=po_item.buyer.code if po_item.buyer else 'RAW-PO',
-                item_name=po_item.description[:250],
-                quantity=passed_qty,
-                unit=po_item.unit or 'pcs',
-                unit_price=po_item.rate,
-                location='Main Gate Raw Store',
-                status='In Stock',
-                remarks=f"GRN #{grn_number} (Round #{round_number}) via Inv #{receipt.supplier_invoice_no or challan_no or 'N/A'} for PO #{po.po_number}"
+                defaults={
+                    'buyer': po_item.buyer,
+                    'style_no': style,
+                    'item_name': po_item.description[:250] if po_item.description else 'Raw Furniture Item',
+                    'quantity': Decimal('0'),
+                    'unit': po_item.unit or 'pcs',
+                    'unit_price': po_item.rate,
+                    'location': 'Main Gate Raw Store',
+                    'status': 'In Stock',
+                    'remarks': f"PO #{po.po_number} Consolidated Inward Raw Stock"
+                }
             )
+            raw_stock.quantity += passed_qty
+            raw_stock.status = 'In Stock'
+            raw_stock.save()
 
         # Handle Rejections & Automated Debit Notes (E-Way Bill Limit <= Rs 2,00,000)
         generated_debit_notes = []
@@ -6177,19 +6351,28 @@ class StoreDailyIssueViewSet(viewsets.ModelViewSet):
                 if current_accum > avail:
                     r_err['qty'] = f"Insufficient balance in {production_unit.name}. Available: {avail} {s_item.unit}, Total Requested: {current_accum}."
 
-            rate_raw = row.get('rate')
-            rate_dec = Decimal('0.00')
-            if rate_raw is not None and str(rate_raw).strip() != '':
-                try:
-                    rate_dec = Decimal(str(rate_raw).strip())
-                    if rate_dec < 0:
-                        r_err['rate'] = 'Rate cannot be negative.'
-                except Exception:
-                    r_err['rate'] = 'Invalid rate format.'
-            elif s_item:
-                rate_dec = Decimal(str(s_item.current_rate or s_item.base_rate or 0))
+            if s_item:
+                rate_dec = Decimal(str(s_item.current_rate or s_item.base_rate or '0.00')).quantize(Decimal('0.01'))
+            else:
+                rate_raw = row.get('rate')
+                rate_dec = Decimal('0.00')
+                if rate_raw is not None and str(rate_raw).strip() != '':
+                    try:
+                        rate_dec = Decimal(str(rate_raw).strip()).quantize(Decimal('0.01'))
+                        if rate_dec < 0:
+                            r_err['rate'] = 'Rate cannot be negative.'
+                    except Exception:
+                        r_err['rate'] = 'Invalid rate format.'
 
-            status_val = (row.get('status') or 'charge').strip().lower()
+            if 'qty' not in r_err and qty_dec > 0 and rate_dec > 0:
+                line_total = (qty_dec * rate_dec).quantize(Decimal('0.01'))
+                if line_total >= Decimal('10000000000'):
+                    r_err['qty'] = 'Total line amount exceeds allowable maximum limit (₹9,999,999,999.99).'
+
+            if s_item:
+                status_val = (s_item.default_status or 'charge').strip().lower()
+            else:
+                status_val = (row.get('status') or 'charge').strip().lower()
             if status_val not in ['charge', 'free']:
                 status_val = 'charge'
 

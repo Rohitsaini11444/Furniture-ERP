@@ -523,11 +523,6 @@ export default function StoreMaterialInPage() {
           </div>
         </div>
 
-        {/* Quick helper tip */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: '#64748b' }}>
-          <FileText size={16} color="#0284c7" />
-          <span>Add multiple items from a single supplier bill simultaneously</span>
-        </div>
       </div>
 
       {/* Notifications */}
@@ -586,9 +581,6 @@ export default function StoreMaterialInPage() {
                 <Warehouse size={16} color="#8b5a2b" />
                 <span>1. Invoice & Supplier Details (Enter Once Per Bill)</span>
               </h2>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                Fields marked with * are required
-              </span>
             </div>
 
             <div className="mat-in-grid-header" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1rem' }}>

@@ -1347,7 +1347,18 @@ class StoreDailyIssue(models.Model):
         if not self.month_year and self.issue_date:
             if hasattr(self.issue_date, 'strftime'):
                 self.month_year = self.issue_date.strftime('%b-%y')
-        self.total_amount = self.qty * self.rate
+        if (self.rate is None or self.rate == 0) and self.item:
+            self.rate = self.item.current_rate or self.item.base_rate or Decimal('0.00')
+        if (not self.status or self.status == '') and self.item:
+            self.status = self.item.default_status or StoreItemStatus.CHARGE
+        self.rate = Decimal(str(self.rate or '0.00')).quantize(Decimal('0.01'))
+        self.qty = Decimal(str(self.qty or '0.000')).quantize(Decimal('0.001'))
+
+        calc_total = (self.qty * self.rate).quantize(Decimal('0.01'))
+        if calc_total >= Decimal('10000000000'):
+            calc_total = Decimal('9999999999.99')
+        self.total_amount = calc_total
+
         if self.status == StoreItemStatus.CHARGE:
             self.chargeable_total = self.total_amount
             self.non_chargeable_total = Decimal('0.00')
@@ -1401,7 +1412,18 @@ class StoreMaterialReturn(models.Model):
         if not self.month_year and self.return_date:
             if hasattr(self.return_date, 'strftime'):
                 self.month_year = self.return_date.strftime('%b-%y')
-        self.total_amount = self.qty * self.rate
+        if (self.rate is None or self.rate == 0) and self.item:
+            self.rate = self.item.current_rate or self.item.base_rate or Decimal('0.00')
+        if (not self.status or self.status == '') and self.item:
+            self.status = self.item.default_status or StoreItemStatus.CHARGE
+        self.rate = Decimal(str(self.rate or '0.00')).quantize(Decimal('0.01'))
+        self.qty = Decimal(str(self.qty or '0.000')).quantize(Decimal('0.001'))
+
+        calc_total = (self.qty * self.rate).quantize(Decimal('0.01'))
+        if calc_total >= Decimal('10000000000'):
+            calc_total = Decimal('9999999999.99')
+        self.total_amount = calc_total
+
         if self.status == StoreItemStatus.CHARGE:
             self.chargeable_total = self.total_amount
             self.non_chargeable_total = Decimal('0.00')

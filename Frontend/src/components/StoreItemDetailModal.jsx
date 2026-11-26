@@ -13,7 +13,7 @@ export default function StoreItemDetailModal({ isOpen, onClose, item, onEdit, on
   const imageUrl = rawImg
     ? (rawImg.startsWith('http://') || rawImg.startsWith('https://')
       ? rawImg
-      : `http://127.0.0.1:8000${rawImg.startsWith('/') ? '' : '/'}${rawImg}`)
+      : (rawImg.startsWith('/') ? rawImg : `/${rawImg}`))
     : null;
   const balanceQty = Number(item.balance_stock_qty || item.total_stock_qty || 0);
   const reorderLevel = Number(item.reorder_level || 0);

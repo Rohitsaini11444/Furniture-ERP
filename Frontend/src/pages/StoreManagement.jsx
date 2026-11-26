@@ -36,7 +36,7 @@ const getStoreImageUrl = (img) => {
   if (img.startsWith('http://') || img.startsWith('https://')) return img;
   const backendBase = import.meta.env.VITE_API_URL 
     ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') 
-    : 'http://127.0.0.1:8000';
+    : '';
   return `${backendBase}${img.startsWith('/') ? '' : '/'}${img}`;
 };
 
@@ -1422,7 +1422,7 @@ export default function StoreManagement() {
               {selectedRowIds.size} Selected
             </div>
             <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#f5ece1' }}>
-              Multi-Select Actions Mode Active ({activeTab.replace('-', ' ').toUpperCase()})
+              Multi-Select ({activeTab.replace('-', ' ').toUpperCase()})
             </span>
           </div>
 
@@ -1597,7 +1597,7 @@ export default function StoreManagement() {
       )}
 
       {/* Desktop & Mobile KPI Stats Cards Bar */}
-      {loading ? (
+      {(!stockSummaryData && loading) ? (
         <StatCardsSkeleton count={4} />
       ) : (
         <>

@@ -995,8 +995,8 @@ export default function StoreDailyIssuePage() {
                       <th style={{ minWidth: '360px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Store Item *</th>
                       <th style={{ width: '130px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Issue Qty *</th>
                       <th style={{ width: '80px', padding: '0.75rem 0.5rem', textAlign: 'center', fontWeight: 700, fontSize: '0.8rem' }}>Unit</th>
-                      <th style={{ width: '160px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Charge Status</th>
-                      <th style={{ width: '130px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Rate (₹)</th>
+                      <th style={{ width: '130px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Charge Status</th>
+                      <th style={{ width: '110px', padding: '0.75rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.8rem' }}>Rate (₹)</th>
                       <th style={{ width: '140px', padding: '0.75rem 0.75rem', textAlign: 'right', fontWeight: 700, fontSize: '0.8rem' }}>Line Total (₹)</th>
                       <th style={{ width: '50px', padding: '0.75rem 0.5rem', textAlign: 'center', fontWeight: 700, fontSize: '0.8rem' }}>Act</th>
                     </tr>
@@ -1057,6 +1057,13 @@ export default function StoreDailyIssuePage() {
                               step="0.01"
                               value={row.qty}
                               onChange={(e) => handleRowFieldChange(idx, 'qty', e.target.value)}
+                              onKeyDown={(e) => {
+                                // If Tab on last row's qty, auto-create next row
+                                if (e.key === 'Tab' && !e.shiftKey && idx === formData.items.length - 1) {
+                                  e.preventDefault();
+                                  handleAddItemRow(1);
+                                }
+                              }}
                               placeholder={unitBal !== null ? `Max: ${unitBal}` : "0.00"}
                               style={{
                                 width: '100%',
@@ -1094,57 +1101,35 @@ export default function StoreDailyIssuePage() {
 
                           {/* Charge Status */}
                           <td style={{ padding: '0.65rem 0.75rem' }}>
-                            <select
-                              value={row.status || 'charge'}
-                              onChange={(e) => handleRowFieldChange(idx, 'status', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '0.55rem 0.65rem',
-                                borderRadius: '7px',
-                                border: '1px solid #cbd5e1',
-                                backgroundColor: row.status === 'charge' ? '#fffaf5' : '#f0fdf4',
-                                color: row.status === 'charge' ? '#ea580c' : '#166534',
-                                fontWeight: 700,
-                                fontSize: '0.8rem',
-                                boxSizing: 'border-box',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="charge">Chargeable (Debit)</option>
-                              <option value="free">Free (Company Store)</option>
-                            </select>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              fontWeight: 700,
+                              fontSize: '0.75rem',
+                              textTransform: 'uppercase'
+                            }}>
+                              {row.status === 'free' ? 'Free' : 'Chargeable'}
+                            </span>
                           </td>
 
                           {/* Rate */}
                           <td style={{ padding: '0.65rem 0.75rem' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.rate}
-                              onChange={(e) => handleRowFieldChange(idx, 'rate', e.target.value)}
-                              onKeyDown={(e) => {
-                                // If Tab on last row's rate, auto-create next row
-                                if (e.key === 'Tab' && !e.shiftKey && idx === formData.items.length - 1) {
-                                  handleAddItemRow(1);
-                                }
-                              }}
-                              placeholder="0.00"
-                              style={{
-                                width: '100%',
-                                padding: '0.55rem 0.65rem',
-                                borderRadius: '7px',
-                                border: `1.5px solid ${rowErr.rate ? '#dc2626' : '#cbd5e1'}`,
-                                backgroundColor: rowErr.rate ? '#fff5f5' : '#ffffff',
-                                fontWeight: 700,
-                                fontSize: '0.85rem',
-                                boxSizing: 'border-box'
-                              }}
-                            />
-                            {rowErr.rate && (
-                              <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '2px' }}>
-                                {rowErr.rate}
-                              </div>
-                            )}
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              fontWeight: 700,
+                              fontSize: '0.75rem'
+                            }}>
+                              {row.rate !== '' && row.rate !== null && row.rate !== undefined
+                                ? Number(row.rate).toFixed(2)
+                                : '0.00'}
+                            </span>
                           </td>
 
                           {/* Line Total */}
@@ -1206,7 +1191,7 @@ export default function StoreDailyIssuePage() {
                 borderBottomRightRadius: '14px'
               }}>
                 <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  Tip: Press <kbd style={{ padding: '2px 5px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#0f172a', fontWeight: 700, fontSize: '0.72rem' }}>Tab</kbd> on the last rate field to automatically add a new row
+                  Tip: Press <kbd style={{ padding: '2px 5px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#0f172a', fontWeight: 700, fontSize: '0.72rem' }}>Tab</kbd> on Issue Qty to automatically add a new row
                 </div>
               </div>
             </div>
