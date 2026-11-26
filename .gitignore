@@ -1,62 +1,34 @@
-# # ========================
-# # Python / Django
-# # ========================
-# Backend/__pycache__/
-# Backend/*.py[cod]
-# Backend/db.sqlite3
-# Backend/*.sqlite3
-# Backend/.env
-# Backend/venv/
-# Backend/env/
-# Backend/staticfiles/
-# Backend/media/
-
-# # ========================
-# # React
-# # ========================
-# Frontend/node_modules/
-# Frontend/build/
-# Frontend/dist/
-# Frontend/.env
-
-# # ========================
-# # VS Code
-# # ========================
-# .vscode/
-
-# # ========================
-# # OS Files
-# # ========================
-# .DS_Store
-# Thumbs.db
-
-# # ========================
-# # Logs
-# # ========================
-# *.log
-
-
 # Python / Django
-Backend/__pycache__/
-Backend/*.py[cod]
-Backend/.env
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
 Backend/venv/
 Backend/env/
 Backend/staticfiles/
 Backend/media/
 
-# React
+# Database & Local Secrets (NEVER commit live data or secrets)
+Backend/*.sqlite3*
+Backend/db.sqlite3*
+*.sqlite3
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# React / Node
 Frontend/node_modules/
 Frontend/build/
 Frontend/dist/
-Frontend/.env
 
-# VS Code
+# Backups & Logs
+backup_system/logs/
+backup_system/staging/
+backups/
+*.log
+
+# VS Code & OS
 .vscode/
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
