@@ -1,18 +1,17 @@
 """
 Django settings for core project.
 """
-# deployment testing changes 
 import os
 from pathlib import Path
 from datetime import timedelta
+from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from Backend/.env
 load_dotenv(BASE_DIR / '.env')
-
-from django.core.exceptions import ImproperlyConfigured
 
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 't', 'yes')
 
@@ -46,7 +45,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'erp',
-
 ]
 
 MIDDLEWARE = [
@@ -86,33 +84,18 @@ WSGI_APPLICATION = 'core.wsgi.application'
 AUTH_USER_MODEL = 'erp.User'
 
 # ==============================================================================
-# DATABASE RESOLUTION WORKFLOW (LOCAL vs PRODUCTION)
+# DATABASE RESOLUTION WORKFLOW (LOCAL / LAN / PRODUCTION)
 # ==============================================================================
-# LOCAL DEVELOPMENT:
-#   When DATABASE_URL environment variable is NOT set, Django resolves the database
-#   using local DB_* variables from Backend/.env (localhost:5432 / erp_furniture_db).
-#   Commands like `python manage.py makemigrations` and `python manage.py migrate`
-#   affect ONLY the local PostgreSQL database.
-#
-# PRODUCTION MIGRATIONS:
-#   To run schema migrations against the Production Neon PostgreSQL database, use:
-#   `.\scripts\migrate-production.ps1`
-#   This temporarily sets DATABASE_URL only during migration execution and requires
-#   explicit human confirmation ('MIGRATE-PRODUCTION').
-# ==============================================================================
-
-from urllib.parse import urlparse, parse_qs
-
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
     url = urlparse(DATABASE_URL)
     query_params = parse_qs(url.query)
     ssl_setting = query_params.get('sslmode', [os.environ.get('DB_SSLMODE', 'require')])[0]
-    
+
     db_host = url.hostname or os.environ.get('DB_HOST')
     db_options = {'sslmode': ssl_setting}
-    
+
     if db_host and 'neon.tech' in db_host:
         endpoint_id = db_host.split('.')[0]
         db_options['options'] = f'endpoint={endpoint_id}'
@@ -134,7 +117,14 @@ if DATABASE_URL:
             'OPTIONS': db_options,
         }
     }
-
+elif os.environ.get('DB_ENGINE', '').strip().lower() == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+            'OPTIONS': {'timeout': 20},
+        }
+    }
 else:
     DATABASES = {
         'default': {
@@ -151,17 +141,6 @@ else:
         }
     }
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('DB_NAME', 'erp_furniture_db'),
-#         'USER': os.environ.get('DB_USER', 'postgres'),
-#         'PASSWORD': os.environ.get('DB_PASSWORD', 'Postgres@123'),
-#         'HOST': os.environ.get('DB_HOST', 'localhost'),
-#         'PORT': os.environ.get('DB_PORT', '5432'),
-#     }
-# }
-
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -176,14 +155,18 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static & Media
-STATIC_URL = 'static/'
+# Static, Built Frontend SPA & Media
+STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+FRONTEND_DIST_DIR = BASE_DIR.parent / 'Frontend' / 'dist'
+if FRONTEND_DIST_DIR.exists():
+    WHITENOISE_ROOT = FRONTEND_DIST_DIR
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('MEDIA_ROOT') or os.path.join(BASE_DIR, 'media')
+SERVE_MEDIA = os.environ.get('SERVE_MEDIA', 'True').lower() in ('true', '1', 't', 'yes')
 
 # CORS
 cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS')
@@ -227,11 +210,17 @@ DATA_UPLOAD_MAX_NUMBER_FILES = 1000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
 
-# Production Security Settings (Enabled automatically when DEBUG is False)
+# Production Security Settings (Enabled when DEBUG is False)
+ENABLE_HTTPS = os.environ.get('ENABLE_HTTPS', 'False').lower() in ('true', '1', 't', 'yes')
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = True
+    if ENABLE_HTTPS:
+        SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+        SESSION_COOKIE_SECURE = True
+        CSRF_COOKIE_SECURE = True
 
 # Production Error Logging Configuration
 LOGGING = {
@@ -261,6 +250,3 @@ LOGGING = {
         },
     },
 }
-
-
-

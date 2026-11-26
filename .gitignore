@@ -5,9 +5,10 @@
 *.s3db
 db.sqlite3
 Backend/db.sqlite3
-Backend/*.sqlite3
+Backend/*.sqlite3*
 
 # Python & Bytecode
+**/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,20 +23,25 @@ Backend/venv/
 
 # Django & Media Uploads
 staticfiles/
+Backend/staticfiles/
 media/
 Backend/media/
 
 # Environment Variables
 .env
+**/.env
 *.env
 *.env*
 .env.*
+!**/.env.example
 
 # Node & Frontend Build
 node_modules/
 Frontend/node_modules/
 dist/
+Frontend/dist/
 build/
+Frontend/build/
 
 # VS Code & OS
 .vscode/
@@ -43,10 +49,9 @@ build/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs & Backups
 *.log
-
-# Backup system local staging, logs and tools
 backup_system/staging/
 backup_system/logs/
+backups/
 tools/
