@@ -11,25 +11,12 @@ Keep **two separate folders** so staff using the Live ERP are never affected whi
 
 Staff PCs on the office Wi-Fi/LAN simply open **`http://<SERVER-LAN-IP>:8000`** in their browser.
 - **Zero CORS issues:** Frontend and `/api` + `/media` are served from the same origin (`:8000`).
-- **Source code protected:** `Frontend` is served as a compiled production bundle (`Frontend/dist`), and `DJANGO_DEBUG=False` hides Python tracebacks.
-- **No folder sharing needed:** Do **not** share your `ERP Furniture` or `C:\ERP-Live` source folders over Windows Network Sharing.
+- **Source code protected:** `Frontend` is served as a compiled production bundle (`Frontend/dist`), and `DEBUG=False` hides Python tracebacks.
+- **No source-folder sharing needed:** Do **not** share `ERP Furniture` or `C:\ERP-Live` code folders over Windows Network Sharing.
 
 ---
 
-## 2. One-Time Git Cleanup (Important)
-
-Run this once in your Dev folder to stop Git from tracking compiled `.pyc` files and `db.sqlite3` (without deleting your local files):
-
-```powershell
-git rm -r --cached Backend/core/__pycache__ Backend/erp/__pycache__
-git rm --cached Backend/db.sqlite3
-```
-
-Then commit `.gitignore` and your setup changes on `development`.
-
----
-
-## 3. One-Time Live LAN Setup
+## 2. One-Time Live LAN Setup
 
 On the office server PC (run PowerShell **as Administrator** if enabling the firewall rule):
 
@@ -41,18 +28,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-live-lan.ps1 -LiveDir "
 What this does automatically:
 1. Clones only the `main` branch into `C:\ERP-Live`.
 2. Creates `C:\ERP-Live\Backend\venv` and installs `requirements.txt` (including `waitress`, `whitenoise`, `python-dotenv`).
-3. Generates `C:\ERP-Live\Backend\.env` with a strong random `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=False`, and your LAN IP in `DJANGO_ALLOWED_HOSTS`.
+3. Generates `C:\ERP-Live\Backend\.env` with a strong random `SECRET_KEY`, `DEBUG=False`, your LAN IP in `ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS`, and `DB_*` settings.
 4. Runs `migrate`, `collectstatic`, `check`, and builds `Frontend\dist`.
 5. Adds a Windows Firewall rule for TCP `8000` restricted to **Private / Domain** networks only (blocked on Public Wi-Fi).
-
-> If you already have live data in `Backend\db.sqlite3` and `Backend\media\`, copy them once into `C:\ERP-Live\Backend\`.
 
 Start the Live LAN server anytime by double-clicking:
 - `C:\ERP-Live\scripts\start-lan-server.bat`
 
 ---
 
-## 4. Daily Development → Live Release Workflow
+## 3. Daily Development → Live Release Workflow
 
 1. **Develop & test** on `development` branch in your Dev folder.
 2. **Commit & push `development`:**
@@ -71,11 +56,11 @@ Start the Live LAN server anytime by double-clicking:
    ```
 4. **Update Live LAN Server:**
    - Stop `start-lan-server.bat` (`Ctrl+C`), run **`C:\ERP-Live\scripts\deploy-live.bat`**, and start `start-lan-server.bat` again.
-   - `deploy-live.bat` automatically takes a full backup (`db.sqlite3`, `.env`, `media/`, and `repo.bundle`) before pulling `main`, migrating, and rebuilding `Frontend`.
+   - `deploy-live.bat` automatically takes a full backup (`pg_dump` / `db.sqlite3`, `.env`, `media/`, and `repo.bundle`) before pulling `main`, migrating, and rebuilding `Frontend`.
 
 ---
 
-## 5. Emergency Rollback
+## 4. Emergency Rollback
 
 If a live update introduces a bug:
 
@@ -84,16 +69,16 @@ cd C:\ERP-Live
 powershell -ExecutionPolicy Bypass -File .\scripts\rollback-live.ps1 -TargetRef HEAD~1
 ```
 
-If database migrations changed in the broken update, also restore `db.sqlite3` from the timestamped folder inside `C:\ERP-Backups\`.
+If database migrations changed in the broken update, restore `postgres_backup.dump` (via `pg_restore`) or `db.sqlite3` from `C:\ERP-Backups\`.
 
 ---
 
-## 6. Automated Daily Backups
+## 5. Automated Daily Backups
 
 `scripts\backup-erp.bat` safely snapshots:
-- `db.sqlite3` using Python's online SQLite backup API (safe even while users are logged in)
+- PostgreSQL database via `pg_dump -F c` (or `db.sqlite3` via SQLite online backup API)
 - `Backend\.env`
-- `Backend\media\`
+- `Backend\media\` (or configured `MEDIA_ROOT`)
 - Full offline Git history (`repo.bundle`)
 - Keeps the newest 30 snapshots in `C:\ERP-Backups`
 
@@ -101,11 +86,11 @@ To automate daily backups (and/or auto-start the server on boot), use **Windows 
 - **Daily Backup (e.g. 8:00 PM):** Action -> `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ERP-Live\scripts\backup-erp.ps1"`
 - **Auto-start Server at Boot:** Action -> `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ERP-Live\scripts\start-lan-server.ps1"`
 
-> **Off-PC Safety Rule:** Keep `C:\ERP-Backups` synced to an external USB hard drive, NAS, or your private GitHub/cloud backup so a single PC failure never loses business data.
+> **Off-PC Safety Rule:** Sync `C:\ERP-Backups` to an external USB hard drive, NAS, or encrypted cloud backup so a single PC failure never loses business data.
 
 ---
 
-## 7. Optional: 100% Offline Git (Without GitHub)
+## 6. Optional: 100% Offline Git (Without GitHub)
 
 If you ever want zero internet dependency even for Git:
 ```powershell
